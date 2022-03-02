@@ -118,6 +118,9 @@ class SparseAttention(SparseOPBase):
         self.M = seq_len
         self.N = seq_len
         self.K = hidden_dim
+        err_msg = 'Currently, seq_len and hidden_dim should be divisible by 32'
+        assert seq_len % 32 == 0, err_msg
+        assert hidden_dim % 32 == 0, err_msg
         # currently only support 32 x 64
         self.block_size_h = 32
         self.block_size_w = 64
