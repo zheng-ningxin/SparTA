@@ -280,7 +280,8 @@ __global__ void SPARSE_SOFTMAX_32_64_32(
         if (C_val_mask[index] != 0) {
             regC = expf(C_val[index]);
         }
-        C_val[index] = regC / regSum;
+        if(regSum>0)
+            C_val[index] = regC / regSum;
 
     }
 }
