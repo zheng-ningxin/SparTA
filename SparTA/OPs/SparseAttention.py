@@ -146,9 +146,17 @@ class SparseAttention(SparseOPBase):
                 for _pos in range(_start, _end):
                     col_id = self.col_index[_pos].item()
                     self.csr_index[row_id][col_id] = _pos
-            self.m_index, self.n_index, self.block_index, self.col_range_index = self._build_forward_index()
+            self._m_index, self._n_index, self._block_index, self._col_range_index = self._build_forward_index()
             # following indexes are for backward function
-            self.gradv_row_idx, self.gradv_col_idx, self.gradv_subblock_idx = self._build_backward_index()
+            self._gradv_row_idx, self._gradv_col_idx, self._gradv_subblock_idx = self._build_backward_index()
+            self.register_buffer('m_index', self._m_index)
+            self.register_buffer('n_index', self._n_index)
+            self.register_buffer('block_index', self._block_index)
+            self.register_buffer('col_range_index', self._col_range_index)
+            self.register_buffer('gradv_row_idx', self._gradv_row_idx)
+            self.register_buffer('gradv_col_idx', self._gradv_col_idx)
+            self.register_buffer('gradv_subblock_idx', self._gradv_subblock_idx)
+
         self.load_kernel_library()
 
 
