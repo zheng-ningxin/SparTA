@@ -8,9 +8,9 @@ import torch
 import types
 import logging
 from torch.utils.cpp_extension import load as module_load
-from .SparseOPBase import SparseOPBase
+from .sparse_opbase import SparseOPBase
 from .Template.SparseAttention import *
-from SparTA.Common.Utils import *
+from sparta.common.utils import *
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
