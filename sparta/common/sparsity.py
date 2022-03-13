@@ -17,10 +17,12 @@ class SparseModuleInfo:
     ...
     """
     def __init__(self, module_name: str,
+                 module_type: str,
                  weight_tesa: torch.Tensor,
                  input_tesa: torch.Tensor,
                  output_tesa: torch.Tensor):
         self.module_name = module_name
+        self.module_type = module_type
         self.weight_tesa = weight_tesa
         self.input_tesa = input_tesa
         self.output_tesa = output_tesa
