@@ -11,7 +11,7 @@ version = "0.0.1"
 ext_modules = []
 
 setup(
-    name='SparTA',
+    name='sparta',
     version=version,
     description='Deployment tool',
     author='MSRA',
