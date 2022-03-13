@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
-from SparTA.Common.Utils import convert_bcsr
+from sparta.common.utils import convert_bcsr
 
 class SparseLayout:
     def __init__(self):
