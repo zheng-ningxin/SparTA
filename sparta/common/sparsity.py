@@ -1,6 +1,7 @@
 import torch
+import torch.nn as nn
 
-__all__ = ['SparseModuleInfo', 'ModelSparsityInfo']
+__all__ = ['TeSA', 'SparseModuleInfo', 'ModelSparsityInfo']
 
 TesaAttr = {-1: 'constant',
             0: 'pruned',
@@ -10,6 +11,18 @@ TesaAttr = {-1: 'constant',
             32: 'float32',
             33: 'nonpruned'}
 
+class TeSA:
+    def __init__(self, tesaattr_tensor: torch.Tensor):
+        self.tesa: torch.Tensor = tesaattr_tensor
+        # NOTE: can be refactored here to support balanced sparsity pattern
+        self.block_size: tuple = None
+        self.n_bits: int = None
+
+    def set_transform_meta(self, block_size: tuple, n_bits: int):
+        # this meta information is for guiding kernel specialization
+        self.block_size = block_size
+        self.n_bits = n_bits
+
 class SparseModuleInfo:
     """
     Attributes
@@ -17,13 +30,15 @@ class SparseModuleInfo:
     ...
     """
     def __init__(self, module_name: str,
-                 weight_tesa: torch.Tensor,
-                 input_tesa: torch.Tensor,
-                 output_tesa: torch.Tensor):
+                 module_obj: nn.Module,
+                 weight_tesa: torch.Tensor = None,
+                 input_tesa: torch.Tensor = None,
+                 output_tesa: torch.Tensor = None):
         self.module_name = module_name
-        self.weight_tesa = weight_tesa
-        self.input_tesa = input_tesa
-        self.output_tesa = output_tesa
+        self.module_obj = module_obj
+        self.weight_tesa = TeSA(weight_tesa)
+        self.input_tesa = TeSA(input_tesa)
+        self.output_tesa = TeSA(output_tesa)
 
 class ModelSparsityInfo:
     """
@@ -40,6 +55,9 @@ class ModelSparsityInfo:
             ...
         else:
             self.modules_info[info.module_name] = info
+    
+    def items(self):
+        return self.modules_info.items()
 
 class ModelDataLayouts:
     def __init__(self):
