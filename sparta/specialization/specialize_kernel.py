@@ -1,3 +1,4 @@
+import itertools
 import math
 from sqlite3 import paramstyle
 from pytest import param
@@ -69,11 +70,12 @@ def matmul_kernel_tune(kernel, params):
     """
     Kernel tuning process
     """
-    search_space = generate_grid_search_space(params)
+    iters_list, dict_keys = generate_grid_search_space(params)
+    # search_space = generate_grid_search_space(params)
     least_exec_time = math.inf
     best_kernel = None
-    for param_dict in search_space:
-        kernel, exec_time = kernel_execution(kernel, param_dict)
+    for iters in iters_list:
+        kernel, exec_time = kernel_execution(kernel, iters, dict_keys)
         if exec_time < least_exec_time:
             best_kernel = kernel
             least_exec_time = exec_time
@@ -172,3 +174,22 @@ def blocksparse_matmul_template(shape, n_bits, block_size, bias):
             kernel = kernel.replace(key, str(value))
     
     return kernel, tuning_param
+
+def get_matmul_shape(i_tesa, w_tesa, o_tesa):
+    assert(len(i_tesa.shape()) == 2 and len(w_tesa.shape()) == 2 and len(o_tesa.shape()) == 2)
+    m = i_tesa.shape()[0]
+    k = i_tesa.shape()[1]
+    n = w_tesa.shape()[1]
+
+    shape = [m, k, n]
+    return shape
+
+def generate_grid_search_space(params: dict):
+    val_list = [val for _, val in params.items()]
+    iters = itertools.product(*val_list)
+    iters_list = list(iters)
+    return params.keys(), iters_list
+
+def kernel_execution(kernel: str, iters: list, dict_keys: list) -> Tuple[str, float]:
+    # kernel execution process
+    ...
