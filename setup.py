@@ -1,4 +1,9 @@
+"""
+use the following command to dev install
 
+python3 setup.py develop
+
+"""
 import os
 import torch
 from setuptools import setup, find_packages
