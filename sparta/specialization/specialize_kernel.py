@@ -7,6 +7,7 @@ from numpy import array
 from sqlite3 import paramstyle
 from pytest import param
 from sparta.common.sparsity import TeSA, TesaAttr
+# from ..common.sparsity import TeSA, TesaAttr
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
@@ -30,9 +31,9 @@ def specialize_matmul(in_tesa: tuple, weight_tesa: tuple, out_t_tesa: tuple):
             kernel, kernel_test, params = matmul_kernel_init(i_tesa, w_tesa, o_tesa)
         else:
             kernel, kernel_test, params = matmul_kernel_init(i_tesa, w_tesa, o_tesa, bias=True)
-        _, exec_time, best_param_dict = matmul_kernel_tune(kernel_test, params, weight_tesa)
+        _, exec_time, best_param_dict = matmul_kernel_tune(kernel_test, params, w_tesa)
         for key, val in best_param_dict.items():
-            kernel = kernel.replace(key, val)
+            kernel = kernel.replace(key, str(int(val)))
         kernels.append(kernel)
         latency += exec_time
 
@@ -59,7 +60,7 @@ def matmul_kernel_init(i_tesa: TeSA, w_tesa: TeSA, o_tesa: TeSA, bias=False) -> 
     block sparse: dismantle = 2, it will be applied to k0.
 
     """
-    matmul_shape = get_matmul_shape(i_tesa, w_tesa, o_tesa)
+    matmul_shape = get_matmul_shape(i_tesa.tesa, w_tesa.tesa, o_tesa.tesa)
     block_size = w_tesa.block_size
     n_bits = w_tesa.n_bits
     if block_size == None:
@@ -88,9 +89,11 @@ def bcsr_clean():
 
 def bcsr_generate(weight_tesa: TeSA):
     config = {}
+    if weight_tesa.block_size is None:
+        return config
 
     block_size_n, block_size_k = weight_tesa.block_size[0], weight_tesa.block_size[1]
-    rows, cols, vals = convert_to_block_csr(weight_tesa, weight_tesa, block_size_n, block_size_k)
+    rows, cols, vals = convert_to_block_csr(weight_tesa.tesa, weight_tesa.tesa, block_size_n, block_size_k)
     rows_path = f"bcsr_row.bin"
     cols_path = f"bcsr_col.bin"
     vals_path = f"bcsr_val.bin"
@@ -117,7 +120,8 @@ def matmul_kernel_tune(kernel, params, weight_tesa):
     bcsr_config = bcsr_generate(weight_tesa)
     # embed bcsr path into code
     for key, val in bcsr_config.items():
-        kernel = kernel.replace(key, val)
+        kernel = kernel.replace(key, str(val))
+
     for iters in iters_list:
         kernel, exec_time = kernel_execution(kernel, iters, dict_keys)
         if exec_time < least_exec_time:
@@ -144,16 +148,17 @@ def dense_matmul_template(shape, n_bits, bias):
         sub_param = {"M_GLOBAL_VALUE": m, "K_GLOBAL_VALUE": k, "N_GLOBAL_VALUE": n}
         tuning_param = {"CHUNK_K_VALUE": [1, 2, 4, 6, 8], "BLOCK_ROW_WARPS_VALUE": [1, 2, 3, 4], "BLOCK_COL_WARPS_VALUE": [1, 2, 3, 4], "WARP_ROW_TILES_VALUE": [1, 2, 3, 4], "WARP_COL_TILES_VALUE": [1, 2, 3, 4]}
         for key, value in sub_param.items():
-            kernel = kernel.replace(key, str(value))
+            kernel = kernel.replace(key, str(int(value)))
         
         ## add kernel for testing
         test_template_name = "Template_test/quantize_dot_template_bias.cu"
         f = open(test_template_name)
         kernel_test = f.read()
         for key, value in sub_param.items():
-            kernel_test = kernel_test.replace(key, str(value))
+            kernel_test = kernel_test.replace(key, str(int(value)))
     else:
         # n_bits == 32, should use cublas directly
+        NotImplementedError("Shouldn't get through the fp32 dense specialization pass.")
         pass
     return kernel, kernel_test, tuning_param
 
@@ -217,14 +222,14 @@ def blocksparse_matmul_template(shape, n_bits, block_size, bias):
         tuning_param = {"BLOCK_SIZE_M_VALUE": [32, 64, 128], "THREAD_SIZE_M_VALUE": [2, 4, 8, 16],\
             "THREAD_SIZE_K_VALUE": [1, 2, 4, 8], "THREAD_SIZE_N_VALUE": [2, 4, 8, 16]}
         for key, value in sub_param.items():
-            kernel = kernel.replace(key, str(value))
+            kernel = kernel.replace(key, str(int(value)))
         
         # add test template
         test_template_name = "Template_test/block_sparse_template_bias_row.cu"
         f = open(test_template_name)
         kernel_test = f.read()
         for key, value in sub_param.items():
-            kernel_test = kernel_test.replace(key, str(value))
+            kernel_test = kernel_test.replace(key, str(int(value)))
     else:
         template_name = "Template/block_quantize_template_bias.cu"
         f = open(template_name)
@@ -238,22 +243,22 @@ def blocksparse_matmul_template(shape, n_bits, block_size, bias):
                 "WARP_ROW_TILES_VALUE": warp_row_tiles}
         tuning_param = {"BLOCK_COL_WARPS_VALUE": [1, 2, 3, 4], "WARP_COL_TILES_VALUE": [1, 2, 3, 4]}
         for key, value in sub_param.items():
-            kernel = kernel.replace(key, str(value))
+            kernel = kernel.replace(key, str(int(value)))
         
         # add test template
         test_template_name = "Template_test/block_quantize_template_bias.cu"
         f = open(test_template_name)
         kernel_test = f.read()
         for key, value in sub_param.items():
-            kernel_test = kernel_test.replace(key, str(value))
+            kernel_test = kernel_test.replace(key, str(int(value)))
     
     return kernel, kernel_test, tuning_param
 
 def get_matmul_shape(i_tesa, w_tesa, o_tesa):
-    assert(len(i_tesa.shape()) == 2 and len(w_tesa.shape()) == 2 and len(o_tesa.shape()) == 2)
-    m = i_tesa.shape()[0]
-    k = i_tesa.shape()[1]
-    n = w_tesa.shape()[1]
+    assert(len(i_tesa.shape) == 2 and len(w_tesa.shape) == 2 and len(o_tesa.shape) == 2)
+    m = i_tesa.shape[0]
+    k = i_tesa.shape[1]
+    n = w_tesa.shape[1]
 
     shape = [m, k, n]
     return shape
@@ -262,7 +267,7 @@ def generate_grid_search_space(params: dict):
     val_list = [val for _, val in params.items()]
     iters = itertools.product(*val_list)
     iters_list = list(iters)
-    return params.keys(), iters_list
+    return iters_list, list(params.keys())
 
 def convert_to_block_csr(m_tensor, v_tensor, block_h, block_w):
     assert len(m_tensor.size()) == 2
@@ -291,7 +296,7 @@ def kernel_execution(kernel: str, iters: list, dict_keys: list) -> Tuple[str, fl
     file_name_new = "kernel_generate_code.cu"
     for i, val in enumerate(iters):
         key = dict_keys[i]
-        kernel = kernel.replace(key, str(val))
+        kernel = kernel.replace(key, str((val)))
     with open(file_name_new, 'w') as f:
         f.write(kernel)
     avg_latency, success = run_gpu_kernel(file_name_new)
@@ -337,6 +342,6 @@ def run_gpu_kernel(file_name):
         latencys.append(get_kernel_run_time('{}'.format(output_file_name)))
     success = verify_successful(output_file_name)
     avg_latency = sum(latencys) / len(latencys)
-    print(latencys)
-    print(avg_latency)
+    print(f"avg_latency is {avg_latency}")
+    print(f"success or not: {success}")
     return avg_latency, success

@@ -5,8 +5,163 @@
 // CUDA runtime
 #include <cuda.h>
 
-#include "bcsr.hpp"
-#include "utils.hpp"
+#ifndef BCSR_H
+#define BCSR_H
+
+#include <fstream>
+#include <iostream>
+
+using namespace std;
+
+class bcsr {
+public:
+    float* val;
+    int* is_block_present;
+    int* col_idx;
+    int* row_ptr;
+    int m, n, m_block_sz, n_block_sz, m_block, n_block, nnz_block_num;
+
+    bcsr(int m, int n, int m_block_sz, int n_block_sz): m(m), n(n), m_block_sz(m_block_sz), n_block_sz(n_block_sz) {
+        m_block = m / m_block_sz;       // number of K axis block
+        n_block = n / n_block_sz;       // number of N axis block
+        nnz_block_num = 0;
+        is_block_present = (int*) malloc(sizeof(int) * m_block * n_block);
+        val = NULL;
+        col_idx = NULL;
+        row_ptr = NULL;
+    }
+    
+    ~bcsr() {
+        free(is_block_present);
+        if (val != NULL) free(val);
+        if (col_idx != NULL) free(col_idx);
+        if (row_ptr != NULL) free(row_ptr);
+    }
+
+    void print() {
+        printf("is block present: \n");
+        for ( int i = 0 ; i < m_block ; i ++ ) {
+            for ( int j = 0 ; j < n_block ; j ++ ) {
+                printf("%d ", is_block_present[i * n_block + j]);
+            }
+            printf("\n");
+        }
+
+        printf("row_ptr: \n");
+        for ( int i = 0 ; i < m_block + 1 ; i ++ ) {
+            printf("%d ", row_ptr[i]);
+        }
+        printf("\n");
+        printf("col_idx: \n");
+        for ( int i = 0 ; i < nnz_block_num ; i ++ ) {
+            printf("%d ", col_idx[i]);
+        }
+    }
+
+    void load_val(){
+        size_t size_val = nnz_block_num * m_block_sz * n_block_sz;
+        size_t size_row = m_block + 1;
+        size_t size_col = nnz_block_num;
+        ifstream f_val("val.bin", ios::out | ios::binary);
+        ifstream f_row("row.bin", ios::out | ios::binary);
+        ifstream f_col("col.bin", ios::out | ios::binary);
+        f_val.read((char *)val, sizeof(float) * size_val);
+        f_row.read((char *)row_ptr, sizeof(int) * size_row);
+        f_col.read((char *)col_idx, sizeof(int) * size_col);
+        f_val.close();
+        f_row.close();
+        f_col.close();
+    }
+
+    void export_val(){
+        size_t size_val = nnz_block_num * m_block_sz * n_block_sz;
+        size_t size_row = m_block + 1;
+        size_t size_col = nnz_block_num;
+        ofstream f_val("val.bin", ios::out | ios::binary);
+        ofstream f_row("row.bin", ios::out | ios::binary);
+        ofstream f_col("col.bin", ios::out | ios::binary);
+        f_val.write((char *)val, sizeof(float) * size_val);
+        f_row.write((char *)row_ptr, sizeof(int) * size_row);
+        f_col.write((char *)col_idx, sizeof(int) * size_col);
+        f_val.close();
+        f_row.close();
+        f_col.close();
+    }
+};
+#endif
+
+#ifndef UTILS_H
+#define UTILS_H
+
+#include <stdio.h>
+#include <stdint.h>
+
+void cal_block(bcsr*, float* );
+void generate_bcsr(bcsr*, float* );
+
+void cal_block(bcsr* mat, float* data) {
+    // m_block : number of K axis block
+    // n_block : number of N axis block
+    for ( int i = 0 ; i < mat->m_block * mat->n_block ; i ++ ) {
+        mat->is_block_present[i] = 0;
+    }
+    for ( int i = 0 ; i < mat->m * mat->n ; i ++ ) {
+        if (data[i] != 0) {
+            // 计算属于哪一个block
+            int m_block_idx = i / mat->n / mat->m_block_sz;     // block index of K axis
+            int n_block_idx = i % mat->n / mat->n_block_sz;     // block index of N axis
+            /*
+            if (mat->is_block_present[m_block_idx * mat->n_block + n_block_idx] == 0) {
+                mat->is_block_present[m_block_idx * mat->n_block + n_block_idx] = 1;
+                mat->nnz_block_num += 1;
+            }
+            */
+            if (mat->is_block_present[n_block_idx * mat->m_block + m_block_idx] == 0) {
+                mat->is_block_present[n_block_idx * mat->m_block + m_block_idx] = 1;
+                mat->nnz_block_num += 1;
+            }
+        }
+    }
+}
+
+void generate_bcsr(bcsr* mat, float* data) {
+    int ptr = 0;
+    int block_ptr = 0;
+    int row_ptr = 0;
+    mat->row_ptr[row_ptr ++ ] = block_ptr;
+    for( int i = 0; i < mat->n_block; i += 1){
+        for( int j = 0; j < mat->m_block; j += 1){
+            if(mat->is_block_present[i * mat->m_block + j] == 1){
+                mat->col_idx[block_ptr ++] = j;
+                for (int i_block = 0; i_block < mat->m_block_sz; i_block += 1){
+                    for(int j_block = 0; j_block < mat->n_block_sz; j_block += 1){
+                        mat->val[ptr++] = data[(j * mat->m_block_sz+i_block) * mat->n + (i * mat->n_block_sz + j_block)];
+                    }
+                }
+            }
+        }
+        mat->row_ptr[row_ptr ++] = block_ptr;
+    }
+    /*
+    for ( int i = 0 ; i < mat->m_block ; i += 1) {
+        for ( int j = 0 ; j < mat->n_block ; j += 1) {
+            if ( mat->is_block_present[i * mat->n_block + j] == 1) {
+                mat->col_idx[block_ptr ++ ] = j;
+                // copy whole block into val
+                for (int i_block = 0 ; i_block < mat->m_block_sz ; i_block ++ ) {
+                    for ( int j_block = 0 ; j_block < mat->n_block_sz ; j_block ++) {
+                        mat->val[ptr ++ ] = data[ (i * mat->m_block_sz + i_block) * mat->n + (j * mat->n_block_sz + j_block)];
+                    }
+                }
+            }
+        }
+        // 记录row_ptr
+        mat->row_ptr[row_ptr ++ ] = block_ptr;
+    }
+    */
+}
+
+#endif
 
 #define OFFSET(row, col, ld) ((row) * ld + col)
 
@@ -232,9 +387,9 @@ int matrixMultiply(int M, int N, int K){
     float* h_val = (float*)malloc(mem_size_val);
 
     // load data
-    std::string row_path = ROW_PATH_SUB;
-    std::string col_path = COL_PATH_SUB;
-    std::string val_path = VAL_PATH_SUB;
+    std::string row_path = ROW_PATH_VALUE;
+    std::string col_path = COL_PATH_VALUE;
+    std::string val_path = VAL_PATH_VALUE;
 
     load_from_file((char*)h_row, mem_size_row, row_path);
     load_from_file((char*)h_col, mem_size_col, col_path);
