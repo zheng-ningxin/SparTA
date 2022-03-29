@@ -45,7 +45,7 @@ config = torch.load('Coarse_bert_config')
 dummy_input = torch.load('dummy_input.pth', map_location=device)
 data = (dummy_input['input_ids'].to(device), dummy_input['attention_mask'].to(device), dummy_input['token_type_ids'].to(device))
 norm_model = BertForSequenceClassification(config=config).to(device)
-
+import ipdb; ipdb.set_trace()
 mlp_prune_cfg = torch.load('checkpoints/coarsegrained/mlp_coarseprune_cfg')
 bert_head_size = 64
 token = BertTokenizer.from_pretrained('checkpoints/finegrained/checkpoint-220000')
