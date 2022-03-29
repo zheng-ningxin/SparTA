@@ -45,3 +45,21 @@ def inherit_weight(model, ori_model):
             if hasattr(module, 'bias') and module.bias is not None:
                 copy_tensor(module.bias, ori_module.bias)
 
+
+
+def apply_mask(model, mask, device=torch.device('cuda')):
+    cfglist = []
+    for layer in mask:
+        # here the sparsity ratio doesn't matter, because we will
+        # assign the mask manually
+        cfglist.append({'sparsity':0.9, 'op_types':['Linear'], 'op_names':[layer]})
+    tmp_pruner = LevelPruner(model, cfglist)
+    tmp_pruner.compress()
+    
+    for name in mask:
+        _, module = get_module_by_name(model, name)
+        for key in mask[name]:
+            # print(module)
+            # import ipdb; ipdb.set_trace()
+            assert(hasattr(module,key + '_mask'))
+            setattr(module, key+'_mask', mask[name][key].to(device))
