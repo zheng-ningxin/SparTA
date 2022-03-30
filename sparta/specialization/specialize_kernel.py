@@ -11,6 +11,8 @@ from sparta.common.sparsity import TeSA, TesaAttr
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
+current_path = Path(__file__).parent
+
 __all__ = ['specialize_matmul']
 
 def specialize_matmul(in_tesa: tuple, weight_tesa: tuple, out_t_tesa: tuple):
@@ -122,8 +124,9 @@ def matmul_kernel_tune(kernel, params, weight_tesa):
     for key, val in bcsr_config.items():
         kernel = kernel.replace(key, str(val))
 
+    original_kernel = kernel
     for iters in iters_list:
-        kernel, exec_time = kernel_execution(kernel, iters, dict_keys)
+        kernel, exec_time = kernel_execution(original_kernel, iters, dict_keys)
         if exec_time < least_exec_time:
             best_kernel = kernel
             least_exec_time = exec_time
@@ -142,7 +145,7 @@ def dense_matmul_template(shape, n_bits, bias):
     assert(len(shape) == 3, "shape should contain m, k, n")
     m, k, n = shape[0], shape[1], shape[2]
     if n_bits == 8:
-        template_name = "Template/quantize_dot_template_bias.cu"
+        template_name = os.path.join(current_path, "Template/quantize_dot_template_bias.cu")
         f = open(template_name)
         kernel = f.read()
         sub_param = {"M_GLOBAL_VALUE": m, "K_GLOBAL_VALUE": k, "N_GLOBAL_VALUE": n}
@@ -151,7 +154,7 @@ def dense_matmul_template(shape, n_bits, bias):
             kernel = kernel.replace(key, str(int(value)))
         
         ## add kernel for testing
-        test_template_name = "Template_test/quantize_dot_template_bias.cu"
+        test_template_name = os.path.join(current_path, "Template_test/quantize_dot_template_bias.cu")
         f = open(test_template_name)
         kernel_test = f.read()
         for key, value in sub_param.items():
@@ -214,7 +217,7 @@ def blocksparse_matmul_template(shape, n_bits, block_size, bias):
     block_size_n = block_size[1]
 
     if n_bits == 32:
-        template_name = "Template/block_sparse_template_bias_row.cu"
+        template_name = os.path.join(current_path, "Template/block_sparse_template_bias_row.cu")
         f = open(template_name)
         kernel = f.read()
         sub_param = {"M_GLOBAL_VALUE": m , "K_GLOBAL_VALUE": k, "N_GLOBAL_VALUE": n, \
@@ -225,13 +228,13 @@ def blocksparse_matmul_template(shape, n_bits, block_size, bias):
             kernel = kernel.replace(key, str(int(value)))
         
         # add test template
-        test_template_name = "Template_test/block_sparse_template_bias_row.cu"
+        test_template_name = os.path.join(current_path, "Template_test/block_sparse_template_bias_row.cu")
         f = open(test_template_name)
         kernel_test = f.read()
         for key, value in sub_param.items():
             kernel_test = kernel_test.replace(key, str(int(value)))
     else:
-        template_name = "Template/block_quantize_template_bias.cu"
+        template_name = os.path.join(current_path, "Template/block_quantize_template_bias.cu")
         f = open(template_name)
         kernel = f.read()
         chunk_k = block_size_k / 16
@@ -246,7 +249,7 @@ def blocksparse_matmul_template(shape, n_bits, block_size, bias):
             kernel = kernel.replace(key, str(int(value)))
         
         # add test template
-        test_template_name = "Template_test/block_quantize_template_bias.cu"
+        test_template_name = os.path.join(current_path, "Template_test/block_quantize_template_bias.cu")
         f = open(test_template_name)
         kernel_test = f.read()
         for key, value in sub_param.items():

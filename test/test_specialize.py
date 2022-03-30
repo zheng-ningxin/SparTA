@@ -1,5 +1,5 @@
 import torch
-from specialize_kernel import specialize_matmul
+from sparta.specialization.specialize_kernel import specialize_matmul
 from sparta.common.sparsity import TeSA, TesaAttr
 
 def test_block_sparse_fp32():
