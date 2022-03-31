@@ -192,6 +192,7 @@ def apply_mask(model, mask):
             # import ipdb; ipdb.set_trace()
             assert(hasattr(module,key + '_mask'))
             setattr(module, key+'_mask', mask[name][key].cuda())
+    return tmp_pruner
 
 def train(train_dataset, model, tokenizer, teacher=None, num_train_epochs=10):
     """ Train the model """

@@ -37,15 +37,16 @@ import os
 from nni.algorithms.compression.pytorch.pruning import LevelPruner
 from nni.compression.pytorch.speedup import ModelSpeedup
 from nni.compression.pytorch.utils.bert_compression_utils import BertCompressModule
-from bert_utils import *
+from bert_utils_quant import *
 from nni.algorithms.compression.pytorch.pruning import TransformerHeadPruner
+from nni.algorithms.compression.pytorch.quantization import QAT_Quantizer
 
 device = torch.device('cpu')
 config = torch.load('Coarse_bert_config')
 dummy_input = torch.load('dummy_input.pth', map_location=device)
 data = (dummy_input['input_ids'].to(device), dummy_input['attention_mask'].to(device), dummy_input['token_type_ids'].to(device))
 norm_model = BertForSequenceClassification(config=config).to(device)
-import ipdb; ipdb.set_trace()
+# import ipdb; ipdb.set_trace()
 mlp_prune_cfg = torch.load('checkpoints/coarsegrained/mlp_coarseprune_cfg')
 bert_head_size = 64
 token = BertTokenizer.from_pretrained('checkpoints/finegrained/checkpoint-220000')
@@ -82,6 +83,7 @@ ms = ModelSpeedup(norm_model, data, mask_file, break_points=[], confidence=32)
 
 # get the propagated mask
 propagated_mask = ms.propagate_mask()
+import pdb; pdb.set_trace()
 ori_mask =  torch.load(mask_file)
 for name in propagated_mask:
     print('New Sparsity ', name, 1-torch.sum(propagated_mask[name]['weight'])/propagated_mask[name]['weight'].numel(), 1-torch.sum(ori_mask[name]['weight'])/ori_mask[name]['weight'].numel())
@@ -89,10 +91,22 @@ for name in propagated_mask:
 
 BertCompressModule(norm_model, propagated_mask, mlp_prune_cfg)
 norm_model.load_state_dict(torch.load('checkpoints/coarsegrained/nni_weights.pth'))
-import ipdb; ipdb.set_trace()
+# import ipdb; ipdb.set_trace()
 apply_mask(norm_model, propagated_mask)
 acc = evaluate(norm_model.cuda(), token)
 train_dataset = load_and_cache_examples("qqp", token, evaluate=False)
 train(train_dataset, norm_model, token, num_train_epochs=100)
 print('Propagate done')
 
+model = norm_model.cuda()
+
+for name, module in model.named_modules():
+    if name in propagated_mask.keys():
+        module.mask_weight = propagated_mask[name]['weight']
+        module.mask_bias = propagated_mask[name]['bias']
+
+dummy_input = torch.rand(1,3,224,224).to(device)
+optimizer = torch.optim.SGD(model.parameters(), lr=1e-6, momentum=0.5)
+
+quantizer = QAT_Quantizer(model, configure_list, optimizer)
+quantizer.compress()
