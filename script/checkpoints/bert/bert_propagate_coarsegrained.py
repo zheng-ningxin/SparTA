@@ -39,7 +39,7 @@ from nni.compression.pytorch.speedup import ModelSpeedup
 from nni.compression.pytorch.utils.bert_compression_utils import BertCompressModule
 from bert_utils import *
 from nni.algorithms.compression.pytorch.pruning import TransformerHeadPruner
-from sparta.common.utils import export_tesa
+from sparta.common.utils import export_tesa, export_tesa_debug
 device = torch.device('cpu')
 config = torch.load('Coarse_bert_config')
 dummy_input = torch.load('dummy_input.pth', map_location=device)
@@ -65,13 +65,13 @@ BertCompressModule(norm_model, propagated_mask, mlp_prune_cfg)
 norm_model.load_state_dict(torch.load('checkpoints/coarsegrained/nni_weights.pth'))
 
 
-import ipdb; ipdb.set_trace()
+# import ipdb; ipdb.set_trace()
 pruner= apply_mask(norm_model, propagated_mask)
 acc = evaluate(norm_model.cuda(), token)
 # train_dataset = load_and_cache_examples("qqp", token, evaluate=False)
 # train(train_dataset, norm_model, token, num_train_epochs=100)
 print('Propagate done')
 
-import ipdb; ipdb.set_trace()
+# import ipdb; ipdb.set_trace()
 pruner._unwrap_model()
 export_tesa(norm_model.cpu(), data, 'artifact_bert_coarse_onnx_with_tesa', propagated_mask)

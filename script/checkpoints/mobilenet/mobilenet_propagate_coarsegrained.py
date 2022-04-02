@@ -1,6 +1,6 @@
 
 from mobilenet_utils import *
-
+from sparta.common.utils import export_tesa
 def get_mobile_coarse():
     import torch
     from nni.compression.pytorch.speedup import ModelSpeedup
@@ -18,3 +18,4 @@ test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 import ipdb; ipdb.set_trace()
 print(run_eval(m.cuda(), test_dataloader, device))
 print('Propagation done')
+export_tesa(m.cuda(), torch.rand(32,3,224,224).cuda(), 'mobilenet_coarse_onnx')

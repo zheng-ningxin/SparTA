@@ -1,3 +1,4 @@
+from multiprocessing.sharedctypes import Value
 import os
 import copy
 import json
@@ -7,6 +8,7 @@ from shutil import copy
 import torch
 from torch._C import HalfStorageBase, dtype
 import numpy as np
+import time
 import onnx
 import onnx.numpy_helper
 from nni.compression.pytorch.utils import get_module_by_name
@@ -33,6 +35,21 @@ class LayernameModuleWrapper(torch.nn.Module):
         return inputs
 
 
+def measure_time(model, dummy_input, runtimes=200):
+    times = []
+    with torch.no_grad():
+        for runtime in range(runtimes):
+            torch.cuda.synchronize()
+            start = time.time()
+            out=model(*dummy_input)
+            torch.cuda.synchronize()
+            end = time.time()
+            times.append(end-start)
+    _drop = int(runtimes * 0.1)
+    mean = np.mean(times[_drop:-1*_drop])
+    std = np.std(times[_drop:-1*_drop])
+    return mean*1000, std*1000
+
 def unwrapper(model_onnx):
     """
     Fill onnx config and remove wrapper node in onnx
@@ -51,17 +68,20 @@ def unwrapper(model_onnx):
     """
     # Support Gemm, Conv, Relu, Clip(Relu6) and Maxpool
     # support_op = ['Gemm', 'Conv', 'MatM']
-    support_op = ['Gemm', 'MatM']
+    support_op = ['Gemm', 'Conv', 'MatM']
     op_names = []
     idx = 0
     onnx_config = {}
-    import ipdb; ipdb.set_trace()
+    valid_count = 0
+    const_output_list = []
+    mul_input_list = []
+    mul_output_list = []
+    nd_input_list = []
     while idx < len(model_onnx.graph.node):
         nd = model_onnx.graph.node[idx]
         op_names.append(nd.name)
         if nd.name[0:4] in support_op and  idx > 1:
             # Grad constant node and multiply node
-            import ipdb; ipdb.set_trace()
             const_nd = model_onnx.graph.node[idx-2]
             mul_nd = model_onnx.graph.node[idx-1]
 
@@ -69,16 +89,30 @@ def unwrapper(model_onnx):
                 idx += 1
                 continue
 
+            valid_count += 1
             # Get index number which is transferred by constant node
             index = int(onnx.numpy_helper.to_array(const_nd.attribute[0].t))
             if index != -1:
                 onnx_config[nd.name] = index
-            nd.input[0] = mul_nd.input[0]
+        
+            const_output_list.append(const_nd.output[0])
+            mul_input_list.append(mul_nd.input[1])
+            nd_input_list.append(nd.input[0])
+            mul_output_list.append(mul_nd.output[0])
+            
+            mul_output_name = mul_nd.output[0]
+            for input_idx in range(len(nd.input)):
+                input_name = nd.input[input_idx]
+                if input_name == mul_output_name:
+                    nd.input[input_idx] = mul_nd.input[0]
+            # nd.input[0] = mul_nd.input[0]
             # Remove constant node and multiply node
+            
             model_onnx.graph.node.remove(const_nd)
             model_onnx.graph.node.remove(mul_nd)
             idx = idx-2
         idx = idx+1
+    # import ipdb; ipdb.set_trace()
     return model_onnx, onnx_config
 
 
@@ -134,6 +168,8 @@ def export_tesa(model, dummy_input, export_dir, tesa=None):
                 continue
             # apply the mask for the onnx values
             _tensor.data = _tensor.data * tesa[name][key].data.to(_tensor.device)
+    ori_onnx_path = os.path.join(export_dir, 'model_no_tesa.onnx')
+    torch.onnx.export(model, dummy_input, ori_onnx_path, opset_version=10)
 
     uid = 1
     name2uid = {}
@@ -146,17 +182,19 @@ def export_tesa(model, dummy_input, export_dir, tesa=None):
             father_m, leaf_m = get_module_by_name(model, name)
             setattr(father_m, name.split('.')[-1], wrapper_module)
             uid += 1
-    onnx_path = os.path.join(export_dir, 'model.onnx')
+    
+    onnx_path = os.path.join(export_dir, 'tmp.onnx')
     torch.onnx.export(model, dummy_input, onnx_path, opset_version=10)
     model_onnx = onnx.load(onnx_path)
     model_onnx, tesa_onnx_map = unwrapper(model_onnx)
+    
     for node in model_onnx.graph.node:
         node_name = node.name
         if node_name in tesa_onnx_map:
             new_attr = onnx.helper.make_attribute("tesa_id", tesa_onnx_map[node_name])
             node.attribute.append(new_attr)
 
-    onnx.save(model_onnx, onnx_path)
+    onnx.save(model_onnx, os.path.join(export_dir, 'model_tesa.onnx'))
     # onnx.checker.check_model(model_onnx)
     torch.save(exported_tesa, os.path.join(export_dir, 'tesa'))
     json_tesa = serialize_tesa(exported_tesa)
@@ -170,6 +208,8 @@ def export_tesa(model, dummy_input, export_dir, tesa=None):
         tesaid2name[tesaid].append(onnx_node)
 
     torch.save(tesaid2name, os.path.join(export_dir, 'tesaid_2_names'))
+    if os.path.exists(onnx_path):
+        os.remove(onnx_path)
 
 def _setattr(model, name, module):
     """
@@ -228,6 +268,7 @@ def export_tesa_debug(model, dummy_input, export_dir, tesa=None):
             # apply the mask for the onnx values
             _tensor.data = _tensor.data * tesa[name][key].data.to(_tensor.device)
 
+    torch.onnx.export(model, dummy_input, os.path.join(export_dir, "before_wrap_model.onnx"), opset_version=10)
     uid = 1
     name2uid = {}
     exported_tesa = {}
@@ -240,7 +281,6 @@ def export_tesa_debug(model, dummy_input, export_dir, tesa=None):
             #setattr(father_m, name.split('.')[-1], wrapper_module)
             _setattr(model, name, wrapper_module)
             uid += 1
-    import ipdb; ipdb.set_trace()
     onnx_path = os.path.join(export_dir, 'model.onnx')
     torch.onnx.export(model, dummy_input, onnx_path, opset_version=10)
     model_onnx = onnx.load(onnx_path)
@@ -250,8 +290,8 @@ def export_tesa_debug(model, dummy_input, export_dir, tesa=None):
     #     if node_name in tesa_onnx_map:
     #         new_attr = onnx.helper.make_attribute("tesa_id", tesa_onnx_map[node_name])
     #         node.attribute.append(new_attr)
-
-    onnx.save(model_onnx, onnx_path)
+    onnx.save(model_onnx, os.path.join(export_dir, "model_resave.onnx"))
+    # onnx.save(model_onnx, onnx_path)
     # onnx.checker.check_model(model_onnx)
     # torch.save(exported_tesa, os.path.join(export_dir, 'tesa'))
     # json_tesa = serialize_tesa(exported_tesa)
@@ -266,7 +306,29 @@ def export_tesa_debug(model, dummy_input, export_dir, tesa=None):
 
     # torch.save(tesaid2name, os.path.join(export_dir, 'tesaid_2_names'))
 
+def convert_to_block_csr_bin(m_tensor, v_tensor, block_h, block_w):
+    assert len(m_tensor.size()) == 2
+    size_h, size_w = m_tensor.size()
+    if size_h % block_h != 0 or size_w % block_w != 0:
+        return None, None, None
+    rows = []
+    cols = []
+    values = []
+    for _i in range(size_w//block_w):
+        rows.append(len(cols))
+        for _j in range(size_h//block_h):
+            i_start = _i * block_w
+            i_end = (_i+1) * block_w
+            j_start = _j * block_h
+            j_end = (_j+1) * block_h
+            if torch.sum(m_tensor[j_start:j_end, i_start:i_end]) > 0:
+                cols.append(_j)
+                values.extend(v_tensor[j_start:j_end, i_start:i_end].flatten().tolist())
+    rows.append(len(cols))
+    return rows, cols, values
+
 def convert_to_block_csr(m_tensor, v_tensor, block_h, block_w):
+    raise NotImplementedError
     assert len(m_tensor.size()) == 2
     size_h, size_w = m_tensor.size()
     if size_h % block_h != 0 or size_w % block_w != 0:
@@ -335,7 +397,7 @@ def generate_block_sparse_cfg(tesa_path, state_path, id_map_path, out_dir, block
             else:
                 _block_h, _block_w = block_h, block_w
             print(f"Tesa-{tesaid} Convering with block size: ", _block_h, _block_w)
-            row_d, col_d, value_d = convert_to_block_csr(tesa[tesaid]['weight'].t(), state_dict[torch_name+'.weight'].t(), block_h=_block_h, block_w=_block_w)
+            row_d, col_d, value_d = convert_to_block_csr_bin(tesa[tesaid]['weight'].t(), state_dict[torch_name+'.weight'].t(), block_h=_block_h, block_w=_block_w)
             bias_d, bias_f = None, ""
             if torch_name + '.bias' in state_dict:
                 # matmul has bias
