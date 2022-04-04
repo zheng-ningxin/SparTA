@@ -19,3 +19,4 @@ import ipdb; ipdb.set_trace()
 print(run_eval(m.cuda(), test_dataloader, device))
 print('Propagation done')
 export_tesa(m.cuda(), torch.rand(32,3,224,224).cuda(), 'mobilenet_coarse_onnx')
+from shape_hook import S

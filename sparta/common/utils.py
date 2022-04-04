@@ -205,7 +205,8 @@ def export_tesa(model, dummy_input, export_dir, tesa=None):
         tesaid2name[tesaid] = [name]
     # import pdb; pdb.set_trace()
     for onnx_node, tesaid in tesa_onnx_map.items():
-        tesaid2name[tesaid].append(onnx_node)
+        if tesaid in tesaid2name:
+            tesaid2name[tesaid].append(onnx_node)
 
     torch.save(tesaid2name, os.path.join(export_dir, 'tesaid_2_names'))
     if os.path.exists(onnx_path):
@@ -496,6 +497,8 @@ def generate_block_quantize_cfg(tesa_path, state_path, id_map_path,out_dir, bloc
             # assert hasattr(tesa[tesaid], 'weight')
             torch_name = id_maps[tesaid][0]
             sparse_ratio = torch.sum(tesa[tesaid]['weight']) / tesa[tesaid]['weight'].numel()
+            if tesa[tesaid]['weight'].size(0) % 16 !=0 or tesa[tesaid]['weight'].size(1) %16!=0:
+                continue
             if sparse_ratio > sparsity_threshold:
                 # too few sparsity
 
@@ -526,8 +529,8 @@ def generate_block_quantize_cfg(tesa_path, state_path, id_map_path,out_dir, bloc
                 print(f'{tesaid} Covering with block: {_block_h}x{_block_w} Weight Shape: {_tmp_weight_shape}')
                 if tesa[tesaid]['weight'].size(0) % _block_h !=0 or tesa[tesaid]['weight'].size(1) % _block_w !=0:
                     continue
-                # import pdb; pdb.set_trace()
-                row_d, col_d, value_d = convert_to_block_csr(tesa[tesaid]['weight'], state_dict[torch_name+'.weight'], block_h=_block_h, block_w=_block_w)
+                
+                row_d, col_d, value_d = convert_to_block_csr_bin(tesa[tesaid]['weight'], state_dict[torch_name+'.weight'], block_h=_block_h, block_w=_block_w)
                 value_d = fake_quantize(value_d)
                 bias_d, bias_f = None, ""
                 if torch_name + '.bias' in state_dict:
@@ -543,7 +546,7 @@ def generate_block_quantize_cfg(tesa_path, state_path, id_map_path,out_dir, bloc
                 write_array(row_d, os.path.join(out_dir, row_f))
                 write_array(col_d, os.path.join(out_dir, col_f))
                 write_array(value_d, os.path.join(out_dir, value_f), 'b')
-                # TODO : use the write value
+                # TODO : use the right value
                 # write a temp scale int value
                 write_array([1], os.path.join(out_dir, scale_integer_f))
                 write_array([1], os.path.join(out_dir, scale_shift_f))
@@ -569,6 +572,13 @@ def generate_sputnik_sparse_cfg(tesa_path, state_path, id_map_path, out_dir):
     id_maps = torch.load(id_map_path, map_location='cpu')
     with open(cfg_path, 'w') as f:
         for tesaid in tesa:
+            module_name = id_maps[tesaid][0]
+            # import ipdb; ipdb.set_trace()
+            sparsity_ratio = 1-torch.sum(tesa[tesaid]['weight'])/tesa[tesaid]['weight'].numel()
+            print('tesa: {} name:{} sparsity:{}'.format(tesaid, module_name, sparsity_ratio))
+            if sparsity_ratio==0:
+                # if almost dense then use dense kernel
+                continue
             f.write(f"{tesaid} Sputnik\n")
             continue
             print(f"Dump the {tesaid}-th block index")
@@ -613,6 +623,8 @@ def generate_hipsparse_sparse_cfg(tesa_path, state_path, id_map_path, out_dir):
         for tesaid in tesa:
             f.write(f"{tesaid} HipSparse\n")
             continue
+
+
 
 def inject_kernel(template_path, kernel_json, op_type, id_map_path, out_dir):
     nnfusion_home = os.getenv('NNFUSION_HOME')
