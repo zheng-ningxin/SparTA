@@ -307,6 +307,31 @@ def export_tesa_debug(model, dummy_input, export_dir, tesa=None):
 
     # torch.save(tesaid2name, os.path.join(export_dir, 'tesaid_2_names'))
 
+def convert_to_block_csr_int8(m_tensor, v_tensor, block_h, block_w):
+    m_tensor = m_tensor.t()
+    v_tensor = v_tensor.t()
+    block_size_k = block_h
+    block_size_n = block_w
+    size_n, size_k = m_tensor.size()
+    if size_n % block_size_n != 0 or size_k % block_size_k != 0:
+        print(f"size_n: {size_n}, block_size_n: {block_size_n}, size_k: {size_k}, block_size_k: {block_size_k}")
+        return None, None, None
+    rows = []
+    cols = []
+    values = []
+    for _i in range(size_n//block_size_n):
+        rows.append(len(cols))
+        for _j in range(size_k//block_size_k):
+            i_start = _i * block_size_n
+            i_end = (_i+1) * block_size_n
+            j_start = _j * block_size_k
+            j_end = (_j+1) * block_size_k
+            if torch.sum(m_tensor[i_start:i_end, j_start:j_end]) > 0:
+                cols.append(_j)
+                values.extend(v_tensor[i_start:i_end, j_start:j_end].flatten().tolist())
+    rows.append(len(cols))
+    return rows, cols, values
+
 def convert_to_block_csr_bin(m_tensor, v_tensor, block_h, block_w):
     assert len(m_tensor.size()) == 2
     size_h, size_w = m_tensor.size()
@@ -530,7 +555,7 @@ def generate_block_quantize_cfg(tesa_path, state_path, id_map_path,out_dir, bloc
                 if tesa[tesaid]['weight'].size(0) % _block_h !=0 or tesa[tesaid]['weight'].size(1) % _block_w !=0:
                     continue
                 
-                row_d, col_d, value_d = convert_to_block_csr_bin(tesa[tesaid]['weight'], state_dict[torch_name+'.weight'], block_h=_block_h, block_w=_block_w)
+                row_d, col_d, value_d = convert_to_block_csr_int8(tesa[tesaid]['weight'], state_dict[torch_name+'.weight'], block_h=_block_h, block_w=_block_w)
                 value_d = fake_quantize(value_d)
                 bias_d, bias_f = None, ""
                 if torch_name + '.bias' in state_dict:
@@ -639,9 +664,11 @@ def inject_kernel(template_path, kernel_json, op_type, id_map_path, out_dir):
     for tid, names in id_maps.items():
         id_2_name[tid] = names[0]
         name_2_tid[names[0]] =tid
-    
-    with open(kernel_json, 'r') as f:
-        kernels = json.load(f)
+    if isinstance(kernel_json, dict):
+        kernels = kernel_json
+    else:
+        with open(kernel_json, 'r') as f:
+            kernels = json.load(f)
     for kernel_name in kernels:
         tesa_id = name_2_tid[kernel_name]
         code = kernels[kernel_name]['code']
@@ -649,6 +676,8 @@ def inject_kernel(template_path, kernel_json, op_type, id_map_path, out_dir):
         template['code'] = code + tesa_id * ' '
         template['kernel_identifier'] = 'kernel_{}'.format(tesa_id)
         template['op_type'] = op_type
+        print('gridDim', kernels[kernel_name]['launch_config']['dimGrid'])
+        print('blockDim', kernels[kernel_name]['launch_config']['dimBlock'])
         grid_dim = kernels[kernel_name]['launch_config']['dimGrid']+ [1]
         template['gridDim'] = grid_dim
         block_dim = kernels[kernel_name]['launch_config']['dimBlock'] + [1]

@@ -30,6 +30,7 @@ import argparse
 from nni.compression.pytorch.speedup import ModelSpeedup
 from nni.compression.pytorch.utils.hubert_compression_utils import HubertCompressModule
 from hubert_utils import *
+from sparta.common.utils import export_tesa
 
 def measure_time(model, dummy_input, runtimes=200):
     times = []
@@ -347,7 +348,7 @@ if __name__ == '__main__':
     model.load_state_dict(torch.load('checkpoints/coarsegrained/hubert_coarse_state_dict.pth'))
 
     import ipdb; ipdb.set_trace()
-
+    export_tesa(model, data[:1], 'artifact_hubert_coarse_onnx_with_tesa')
 
     if training_args.do_eval:
         if data_args.max_eval_samples is not None:
@@ -389,4 +390,4 @@ if __name__ == '__main__':
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
-    import ipdb; ipdb.set_trace
+    # import ipdb; ipdb.set_trace

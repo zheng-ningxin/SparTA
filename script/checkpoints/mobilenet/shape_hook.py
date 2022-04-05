@@ -62,6 +62,9 @@ class ShapeHook:
         for name, module in self.model.named_modules():
             if hasattr(module, 'weight') and isinstance(module.weight, torch.Tensor):
                 self.shapes[name]['weight_shape'].append(module.weight.size())
+            if isinstance(module, torch.nn.Conv2d):
+                self.shapes[name]['stride'] = module.stride
+                self.shapes[name]['padding'] = module.padding
             self.shapes[name]['type'] = str(type(module))
             setattr(module, 'forward', self.__get_decorator(module.forward, name, name in self.trace_points))
 
