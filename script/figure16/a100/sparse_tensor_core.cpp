@@ -123,8 +123,8 @@ int main(void) {
     auto          order = CUSPARSE_ORDER_ROW;
     auto          opA   = CUSPARSE_OPERATION_NON_TRANSPOSE;
     auto          opB   = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    auto          type  = CUDA_R_16F;
-    auto          compute_type = CUSPARSE_COMPUTE_16F;
+    auto          type  = CUDA_R_32F;
+    auto          compute_type = CUSPARSE_COMPUTE_32F;
 
     bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
     bool     isA_transposed = (opA != CUSPARSE_OPERATION_NON_TRANSPOSE);
@@ -142,21 +142,21 @@ int main(void) {
     auto     A_height       = (is_rowmajor) ? num_A_rows : num_A_cols;
     auto     B_height       = (is_rowmajor) ? num_B_rows : num_B_cols;
     auto     C_height       = (is_rowmajor) ? num_C_rows : num_C_cols;
-    auto     A_size         = A_height * lda * sizeof(__half);
-    auto     B_size         = B_height * ldb * sizeof(__half);
-    auto     C_size         = C_height * ldc * sizeof(__half);
-    __half hA[m * k];
-    __half hB[k * n];
-    __half hC[m * n] = {};
+    auto     A_size         = A_height * lda * sizeof(float);
+    auto     B_size         = B_height * ldb * sizeof(float);
+    auto     C_size         = C_height * ldc * sizeof(float);
+    float hA[m * k];
+     hB[k * n];
+    float hC[m * n] = {};
     for (int i = 0; i < m * k; i++)
-        hA[i] = static_cast<__half>(static_cast<float>(std::rand() % 10));
+        hA[i] = static_cast<float>(static_cast<float>(std::rand() % 10));
     for (int i = 0; i < k * n; i++)
-        hB[i] = static_cast<__half>(static_cast<float>(std::rand() % 10));
+        hB[i] = static_cast<float>(static_cast<float>(std::rand() % 10));
     float alpha = 1.0f;
     float beta  = 0.0f;
     //--------------------------------------------------------------------------
     // Device memory management
-    __half *dA, *dB, *dC, *dD, *dA_compressed;
+    float *dA, *dB, *dC, *dD, *dA_compressed;
     int    *d_valid;
     CHECK_CUDA( cudaMalloc((void**) &dA, A_size) )
     CHECK_CUDA( cudaMalloc((void**) &dB, B_size) )
