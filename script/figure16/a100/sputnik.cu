@@ -184,7 +184,7 @@ int main(int argc, char*argv[]) {
     SortedRowSwizzle(m, row_idx, row_swizzle);
     CHECK_CUDA(cudaMemcpy(d_row_swizzle, row_swizzle, sizeof(int)*m, cudaMemcpyHostToDevice));
     int fine_nnz = values_size / sizeof(float);
-
+    printf("fine_nnz: %d\n", fine_nnz);
     float alpha = 1.0f;
     float beta  = 1.0f;
     //--------------------------------------------------------------------------
@@ -258,10 +258,8 @@ int main(int argc, char*argv[]) {
         std::printf("spmma_example test FAILED: wrong result\n");
     //--------------------------------------------------------------------------
     // device memory deallocation
-    CHECK_CUDA( cudaFree(dA_compressed) )
     CHECK_CUDA( cudaFree(dA) )
     CHECK_CUDA( cudaFree(dB) )
     CHECK_CUDA( cudaFree(dC) )
-    CHECK_CUDA( cudaFree(d_valid) )
     return EXIT_SUCCESS;
 }
