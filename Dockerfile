@@ -17,7 +17,7 @@ RUN apt-get install -y software-properties-common && \
 
 # Set the working directory.
 WORKDIR /root
-RUN git clone https://github.com/zheng-ningxin/sputnik.git && \
+RUN git clone --recurse-submodules https://github.com/zheng-ningxin/sputnik.git && \
     cd sputnik && mkdir build && cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TEST=ON -DBUILD_BENCHMARK=ON -DCUDA_ARCHS="70;75" && \
     make -j
