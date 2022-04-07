@@ -143,7 +143,12 @@ class ModelArguments:
             "help": "The sparsity ratio"
         }
     )
-
+    iterations: Optional[int] = field(
+        default=200,
+        metadata={
+            "help": "The sparsity iterations to measure the runing time and memory"
+        }
+    )
 if __name__ == '__main__':
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
@@ -292,5 +297,5 @@ if __name__ == '__main__':
     
     data = (dummy_input['input_values'].to(device), dummy_input['attention_mask'].to(device))
     jit_model = torch.jit.trace(model, data)
-    time_mean, time_std = measure_time(jit_model, data)
+    time_mean, time_std = measure_time(jit_model, data, model_args.iterations)
     print(time_mean)

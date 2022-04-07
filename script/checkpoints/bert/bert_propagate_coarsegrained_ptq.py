@@ -44,8 +44,12 @@ from nni.algorithms.compression.pytorch.quantization import ObserverQuantizer
 def calibration(model, device, test_loader):
     model.eval()
     # import ipdb; ipdb.set_trace()
+    idx = 0
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="Calibrating"):
+            idx += 1
+            if idx > 126:
+                break
             batch = tuple(t.to(device) for t in batch)
             
             inputs = {

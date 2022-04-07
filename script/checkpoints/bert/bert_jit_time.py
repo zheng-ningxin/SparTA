@@ -40,6 +40,12 @@ from nni.compression.pytorch.utils.bert_compression_utils import BertCompressMod
 from bert_utils import *
 from nni.algorithms.compression.pytorch.pruning import TransformerHeadPruner
 from sparta.common.utils import export_tesa, measure_time
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--iterations', type=int, default=200)
+args = parser.parse_args()
+
 device = torch.device('cuda')
 config = torch.load('Coarse_bert_config')
 dummy_input = torch.load('dummy_input.pth', map_location=device)
@@ -47,5 +53,7 @@ data = (dummy_input['input_ids'].to(device), dummy_input['attention_mask'].to(de
 norm_model = BertForSequenceClassification(config=config).to(device)
 
 jit_model = torch.jit.trace(norm_model, data)
-time_mean, time_std = measure_time(jit_model, data)
+del norm_model
+time_mean, time_std = measure_time(jit_model, data, args.iterations)
+
 print(time_mean)
