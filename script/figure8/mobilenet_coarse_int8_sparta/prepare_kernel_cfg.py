@@ -44,6 +44,6 @@ if __name__ == '__main__':
             
         elif tesa[name_2_tid[name]]['weight'].size(2) == 1:
             conv1x1_kernels[name] = kernels[name]
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     inject_kernel(template_path, conv1x1_kernels, 'QuantizeConvolution', id_map_path, os.path.join(args.out_dir, 'kernel'))
     inject_kernel(template_path, depth_kernels, 'QuantizeDepthwiseConv2dNative', id_map_path, os.path.join(args.out_dir, 'kernel'))
