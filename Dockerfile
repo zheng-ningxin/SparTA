@@ -6,8 +6,7 @@ RUN apt-get install -y \
   emacs \
   git \
   wget \
-  libgoogle-glog-dev \
-  vim
+  libgoogle-glog-dev 
 
 # Setup to install the latest version of cmake.
 RUN apt-get install -y software-properties-common && \
