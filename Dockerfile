@@ -6,7 +6,8 @@ RUN apt-get install -y \
   emacs \
   git \
   wget \
-  libgoogle-glog-dev
+  libgoogle-glog-dev \
+  vim
 
 # Setup to install the latest version of cmake.
 RUN apt-get install -y software-properties-common && \
@@ -17,8 +18,18 @@ RUN apt-get install -y software-properties-common && \
 
 # Set the working directory.
 WORKDIR /root
+#install sputnik
 RUN git clone --recurse-submodules https://github.com/zheng-ningxin/sputnik.git && \
     cd sputnik && mkdir build && cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TEST=ON -DBUILD_BENCHMARK=ON -DCUDA_ARCHS="70;75" && \
-    make -j
+    make -j && cp sputnik/libspmm.so /usr/local/lib/ && cp -r /root/sputnik/third_party/abseil-cpp/absl /usr/local/include/
 
+# install nnfusion
+RUN git clone https://github.com/zheng-ningxin/nnfusion.git && cd nnfusion && git checkout hubert_antares && \
+    ./maint/script/install_dependency.sh && mkdir build && cd build && cmake .. && make -j
+
+RUN wget https://repo.anaconda.com/archive/Anaconda3-2021.11-Linux-x86_64.sh && \
+    eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda create -n artifact python=3.8 &&
+    conda activate artifact && pip install torch==1.7.0 torchvision==0.8.0
+
+RUN git clone https://github.com/zheng-ningxin/nni.git && cd nni && git checkout artifact
