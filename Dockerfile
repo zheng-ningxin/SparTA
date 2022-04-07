@@ -29,7 +29,7 @@ RUN git clone https://github.com/zheng-ningxin/nnfusion.git && cd nnfusion && gi
     ./maint/script/install_dependency.sh && mkdir build && cd build && cmake .. && make -j
 
 RUN wget https://repo.anaconda.com/archive/Anaconda3-2021.11-Linux-x86_64.sh && \
-    eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda create -n artifact python=3.8 &&
+    eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda create -n artifact python=3.8 && \
     conda activate artifact && pip install torch==1.7.0 torchvision==0.8.0
 
 RUN git clone https://github.com/zheng-ningxin/nni.git && cd nni && git checkout artifact
