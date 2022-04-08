@@ -48,6 +48,15 @@ RUN  eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifa
     python3 -m pip install nvidia-pyindex && python3 -m pip install --upgrade nvidia-tensorrt==8.4.0.6 && \
     pip install six
 
+# install tvm
+RUN wget https://github.com/llvm/llvm-project/releases/download/llvmorg-13.0.0/clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz && \
+    tar -xvf clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+RUN eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifact && \
+    git clone --recursive https://github.com/linbinskn/tvm.git tvm && cd tvm && git checkout cuda && \
+    apt-get update && apt-get install -y python3 python3-dev python3-setuptools gcc libtinfo-dev zlib1g-dev build-essential cmake libedit-dev libxml2-dev && \
+    cd build && cmake .. && make -j4 && echo "export PYTHONPATH=/root/tvm/python:${PYTHONPATH}" >> /root/.bashrc && \
+    pip install decorator
+
 # configure the bashrc
 RUN echo 'export NNFUSION_HOME=/root/nnfusion \n\
 export PATH=$NNFUSION_HOME/build/src/tools/nnfusion:$PATH \n\
