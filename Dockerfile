@@ -6,7 +6,8 @@ RUN apt-get install -y \
   emacs \
   git \
   wget \
-  libgoogle-glog-dev 
+  libgoogle-glog-dev \
+  libsndfile1
 
 # Setup to install the latest version of cmake.
 RUN apt-get install -y software-properties-common && \
@@ -36,7 +37,7 @@ RUN wget https://repo.anaconda.com/archive/Anaconda3-2021.11-Linux-x86_64.sh && 
 # install nni
 RUN git clone https://github.com/zheng-ningxin/nni.git && cd nni && git checkout artifact && \
     eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifact && pip install -U -r dependencies/setup.txt && \
-    pip install -r dependencies/develop.txt && python setup.py develop && pip install tensorboard transformers==3.5.0 onnxruntime graphviz onnx
+    pip install -r dependencies/develop.txt && python setup.py develop && pip install tensorboard transformers==3.5.0 onnxruntime graphviz onnx sndfile soundfile
 
 # install antares
 RUN eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifact && \

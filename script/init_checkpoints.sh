@@ -2,6 +2,7 @@ source /root/anaconda/etc/profile.d/conda.sh
 conda activate artifact
 
 pushd checkpoints/bert
+bash prepare_data.sh
 pip install transformers==3.5.0
 python bert_propagate_finegrained.py
 python bert_propagate_coarsegrained.py
@@ -12,6 +13,7 @@ popd
 
 pushd checkpoints/mobilenet
 # prepare the data
+echo "Prepare the Imagenet-Dot Dataset"
 bash prepare_data.sh
 python mobilenet_propagate_coarsegrained.py
 python mobilenet_propagate_finegrained.py
