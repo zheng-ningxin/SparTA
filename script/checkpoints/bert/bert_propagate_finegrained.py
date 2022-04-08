@@ -1,12 +1,5 @@
-import argparse
-import glob
-import json
-import logging
 
-import os
-import random
-import math
-
+import copy
 import numpy as np
 import torch
 # from torch.functional import norm
@@ -30,14 +23,12 @@ from transformers import glue_convert_examples_to_features as convert_examples_t
 from transformers import glue_output_modes as output_modes
 from transformers import glue_processors as processors
 from emmental.modules.masked_nn import MaskedLinear
-import nni
 import torch
-import sys
-import os
 from nni.algorithms.compression.pytorch.pruning import LevelPruner
 from nni.compression.pytorch.speedup import ModelSpeedup
 from bert_utils import *
-
+from sparta.common.utils import export_tesa
+from shape_hook import ShapeHook
 device = torch.device('cpu')
 config = torch.load('Coarse_bert_config')
 dummy_input = torch.load('dummy_input.pth', map_location=device)
@@ -70,11 +61,17 @@ for name in propagated_mask:
         # import ipdb; ipdb.set_trace()
         assert(hasattr(module,key + '_mask'))
         setattr(module, key+'_mask', propagated_mask[name][key].cuda())
-# norm_model.load_state_dict(torch.load('checkpoints/finegrained/propagated_withmask.pth'))
+norm_model.load_state_dict(torch.load('checkpoints/finegrained/propagated_withmask.pth'))
 print(evaluate(norm_model, token))
-import ipdb; ipdb.set_trace()
+pruner._unwrap_model()
+# import ipdb; ipdb.set_trace()
+tmp_model = copy.deepcopy(norm_model.cpu())
+export_tesa(norm_model.cpu(), data, 'artifact_bert_finegrained_onnx_with_tesa', propagated_mask)
+sh = ShapeHook(tmp_model, data)
+sh.export('artifact_bert_finegrained_onnx_with_tesa/shape.json')
+# import ipdb; ipdb.set_trace()
 # for layer in propagated_mask:
 #     print('New sparsity ratio of', layer, ' :', 1-torch.sum(propagated_mask[layer]['weight'])/propagated_mask[layer]['weight'].numel())
-train_dataset = load_and_cache_examples("qqp", token, evaluate=False)
-train(train_dataset, norm_model, token, num_train_epochs=100)
-import ipdb; ipdb.set_trace()
+# train_dataset = load_and_cache_examples("qqp", token, evaluate=False)
+# train(train_dataset, norm_model, token, num_train_epochs=100)
+# import ipdb; ipdb.set_trace()

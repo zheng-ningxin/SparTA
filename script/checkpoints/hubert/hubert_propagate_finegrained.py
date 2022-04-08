@@ -1,3 +1,4 @@
+from copy import copy
 import logging
 import os
 import sys
@@ -30,6 +31,9 @@ import argparse
 from nni.compression.pytorch.speedup import ModelSpeedup
 from nni.compression.pytorch.utils.hubert_compression_utils import HubertCompressModule
 from hubert_utils import *
+from sparta.common.utils import export_tesa
+import copy
+from shape_hook import ShapeHook
 
 def measure_time(model, dummy_input, runtimes=200):
     times = []
@@ -345,7 +349,7 @@ if __name__ == '__main__':
     model(data[0])
     model.load_state_dict(torch.load('checkpoints/finegrained/hubert_finegrained_state_dict.pth',  map_location=torch.device('cpu')))
     
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
 
 
     if training_args.do_eval:
@@ -366,16 +370,7 @@ if __name__ == '__main__':
         tokenizer=feature_extractor,
     )
     
-    configure_list = [{
-        'quant_types': ['weight', 'input', 'output'],
-        'quant_bits': {
-            'weight': 8,
-            'input': 8,
-            'output': 8
-        }, # you can just use `int` here because all `quan_types` share same bits length, see config for `ReLu6` below.
-        'op_types':['Conv2d', 'Linear'],
-        'quant_start_step': 0
-    }]
+
     optimizer = trainer.create_optimizer()
     #dummy_input = torch.load('dummy_input.pth')
     device = torch.device('cpu')
@@ -384,10 +379,16 @@ if __name__ == '__main__':
     model.eval().to(device)
     # apply_mask(model, propagated_mask, device)
     # Evaluation
-    import ipdb; ipdb.set_trace()
-    if training_args.do_eval:
-        metrics = trainer.evaluate()
-        trainer.log_metrics("eval", metrics)
-        trainer.save_metrics("eval", metrics)
-    print(acc)
-    import ipdb; ipdb.set_trace
+    # import ipdb; ipdb.set_trace()
+    # if training_args.do_eval:
+    #     metrics = trainer.evaluate()
+    #     trainer.log_metrics("eval", metrics)
+    #     trainer.save_metrics("eval", metrics)
+    
+    # tmp_model = copy.deepcopy(model)
+    os.makedirs('artifact_hubert_finegrained_onnx_with_tesa', exist_ok=True)
+    sh = ShapeHook(model, data[:1])
+    sh.export('artifact_hubert_finegrained_onnx_with_tesa/shape.json')
+    export_tesa(model, data[:1], 'artifact_hubert_finegrained_onnx_with_tesa', propagated_mask)
+    
+    # import ipdb; ipdb.set_trace

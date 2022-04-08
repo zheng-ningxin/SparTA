@@ -347,7 +347,7 @@ if __name__ == '__main__':
     model(data[0])
     model.load_state_dict(torch.load('checkpoints/coarsegrained/hubert_coarse_state_dict.pth'))
 
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     export_tesa(model, data[:1], 'artifact_hubert_coarse_onnx_with_tesa')
 
     if training_args.do_eval:
