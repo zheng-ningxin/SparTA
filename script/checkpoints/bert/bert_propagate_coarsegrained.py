@@ -57,8 +57,8 @@ ms = ModelSpeedup(norm_model, data, mask_file, break_points=[], confidence=32)
 # get the propagated mask
 propagated_mask = ms.propagate_mask()
 ori_mask =  torch.load(mask_file)
-for name in propagated_mask:
-    print('New Sparsity ', name, 1-torch.sum(propagated_mask[name]['weight'])/propagated_mask[name]['weight'].numel(), 1-torch.sum(ori_mask[name]['weight'])/ori_mask[name]['weight'].numel())
+# for name in propagated_mask:
+#     print('New Sparsity ', name, 1-torch.sum(propagated_mask[name]['weight'])/propagated_mask[name]['weight'].numel(), 1-torch.sum(ori_mask[name]['weight'])/ori_mask[name]['weight'].numel())
 
 
 BertCompressModule(norm_model, propagated_mask, mlp_prune_cfg)
@@ -75,4 +75,4 @@ print('Propagate done')
 
 # import ipdb; ipdb.set_trace()
 pruner._unwrap_model()
-# export_tesa(norm_model.cpu(), data, 'artifact_bert_coarse_onnx_with_tesa', propagated_mask)
+export_tesa(norm_model.cpu(), data, 'artifact_bert_coarse_onnx_with_tesa', propagated_mask)
