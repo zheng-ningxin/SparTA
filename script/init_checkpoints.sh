@@ -5,7 +5,7 @@ pushd checkpoints/bert
 python bert_propagate_finegrained.py
 python bert_propagate_coarsegrained.py
 python bert_sota_coarse_onnx.py
-python bert_sota_finegrained.py
+python bert_sota_finegrained_onnx.py
 python bert_original_onnx.py
 popd
 
