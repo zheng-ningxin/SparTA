@@ -309,5 +309,5 @@ if __name__ == '__main__':
     mask_file = 'checkpoints/coarsegrained/hubert_coarse_mask.pth'
 
     mask = torch.load(mask_file)
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     export_tesa(model, data[:1], 'artifact_hubert_coarse_no_propagation_onnx_with_tesa', mask)

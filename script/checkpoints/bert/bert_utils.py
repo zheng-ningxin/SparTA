@@ -194,6 +194,7 @@ def apply_mask(model, mask):
             setattr(module, key+'_mask', mask[name][key].cuda())
     return tmp_pruner
 
+
 def train(train_dataset, model, tokenizer, teacher=None, num_train_epochs=10):
     """ Train the model """
     train_sampler = RandomSampler(
@@ -370,197 +371,13 @@ def train(train_dataset, model, tokenizer, teacher=None, num_train_epochs=10):
                 model.zero_grad()
                 global_step += 1
 
-    
+
+
         results = evaluate(model, tokenizer)
         print("Evaluate Accuracy", results)    
-        if(results['qqp']>0.8848):
-            import ipdb; ipdb.set_trace()       
-            break
-    return global_step, tr_loss / global_step
-
-# def train(train_dataset, model, tokenizer, teacher=None, num_train_epochs=10):
-#     """ Train the model """
-#     train_sampler = RandomSampler(
-#         train_dataset) 
-#     train_dataloader = DataLoader(
-#         train_dataset,
-#         sampler=train_sampler,
-#         batch_size=32)
-
-#     t_total = len(train_dataloader) * num_train_epochs
-#     learning_rate = 5e-5
-#     adam_epsilon = 1e-8
-#     weight_decay = 0.0
-#     warmup_steps=100
-#     temperature = 2.0
-#     alpha_distil = 0.9
-#     alpha_ce =0.1
-#     max_grad_norm = 1.0
-#     # Prepare optimizer and schedule (linear warmup and decay)
-#     no_decay = ["bias", "LayerNorm.weight"]
-
-#     optimizer_grouped_parameters = [
-#         {
-#             "params": [
-#                 p
-#                 for n, p in model.named_parameters()
-#                 if "mask_score" not in n and "threshold" not in n and p.requires_grad and not any(nd in n for nd in no_decay)
-#             ],
-#             "lr": learning_rate,
-#             "weight_decay": weight_decay,
-#         },
-#         {
-#             "params": [
-#                 p
-#                 for n, p in model.named_parameters()
-#                 if "mask_score" not in n and "threshold" not in n and p.requires_grad and any(nd in n for nd in no_decay)
-#             ],
-#             "lr": learning_rate,
-#             "weight_decay": 0.0,
-#         },
-#     ]
-
-#     optimizer = AdamW(
-#         optimizer_grouped_parameters,
-#         lr=learning_rate,
-#         eps=adam_epsilon)
-#     scheduler = get_linear_schedule_with_warmup(
-#         optimizer,
-#         num_warmup_steps=warmup_steps,
-#         num_training_steps=t_total)
-
-#     # Train!
-#     print("***** Running training *****")
-#     print(f"  Num examples = {len(train_dataset)}")
-#     print(f"  Num Epochs = {num_train_epochs}")
-
-#     print(f"  Total optimization steps = {t_total}")
-#     # Distillation
-#     if teacher is not None:
-#         print("  Training with distillation")
-
-#     global_step = 0
-
-#     epochs_trained = 0
-#     steps_trained_in_current_epoch = 0
-#     # Check if continuing training from a checkpoint
-
-#     tr_loss, logging_loss = 0.0, 0.0
-#     model.zero_grad()
-#     # train_iterator = trange(
-#     #     epochs_trained,
-#     #     int(num_train_epochs),
-#     #     desc="Epoch",
-
-#     # )
-#     # Added here for reproducibility
-
-#     for _ in range(num_train_epochs):
-#         epoch_iterator = tqdm(train_dataloader, desc="Iteration")
-#         for step, batch in enumerate(epoch_iterator):
-
-#             # Skip past any already trained steps if resuming training
-#             if steps_trained_in_current_epoch > 0:
-#                 steps_trained_in_current_epoch -= 1
-#                 continue
-
-#             model.train()
-#             batch = tuple(t.to(device) for t in batch)
-
-#             inputs = {
-#                 "input_ids": batch[0],
-#                 "attention_mask": batch[1],
-#                 "labels": batch[3]}
-            
-#             inputs["token_type_ids"] = batch[2] # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-
-#             with torch.cuda.amp.autocast(enabled=False):
-#                 outputs = model(**inputs)
-#                 # print(outputs)
-
-#                 loss, logits_stu, reps_stu, attentions_stu = outputs[0], outputs[1], outputs[2], outputs[3]
-#                 # import pdb; pdb.set_trace()
-#                 # Distillation loss
-#                 if teacher is not None:
-#                     if "token_type_ids" not in inputs:
-#                         inputs["token_type_ids"] = batch[2]
-#                     with torch.no_grad():
-#                         outputs_tea = teacher(
-#                             input_ids=inputs["input_ids"],
-#                             token_type_ids=inputs["token_type_ids"],
-#                             attention_mask=inputs["attention_mask"],
-#                         )
-#                         logits_tea = outputs_tea.logits
-#                         reps_tea, attentions_tea = outputs_tea.hidden_states, outputs_tea.attentions
-
-#                     teacher_layer_num = len(attentions_tea)
-#                     student_layer_num = len(attentions_stu)
-#                     assert teacher_layer_num % student_layer_num == 0
-#                     layers_per_block = int(
-#                         teacher_layer_num / student_layer_num)
-#                     new_attentions_tea = [attentions_tea[i *
-#                                                          layers_per_block +
-#                                                          layers_per_block -
-#                                                          1] for i in range(student_layer_num)]
-
-#                     att_loss, rep_loss = 0, 0
-#                     for student_att, teacher_att in zip(
-#                             attentions_stu, new_attentions_tea):
-#                         student_att = torch.where(
-#                             student_att <= -1e2,
-#                             torch.zeros_like(student_att).to(device),
-#                             student_att)
-#                         teacher_att = torch.where(
-#                             teacher_att <= -1e2,
-#                             torch.zeros_like(teacher_att).to(device),
-#                             teacher_att)
-
-#                         tmp_loss = F.mse_loss(
-#                             student_att, teacher_att, reduction="mean",)
-#                         att_loss += tmp_loss
-
-#                     new_reps_tea = [reps_tea[i * layers_per_block]
-#                                     for i in range(student_layer_num + 1)]
-#                     new_reps_stu = reps_stu
-#                     for i_threp, (student_rep, teacher_rep) in enumerate(
-#                             zip(new_reps_stu, new_reps_tea)):
-#                         tmp_loss = F.mse_loss(
-#                             student_rep, teacher_rep, reduction="mean",)
-#                         rep_loss += tmp_loss
-
-#                     loss_logits = F.kl_div(
-#                         input=F.log_softmax(logits_stu / temperature, dim=-1),
-#                         target=F.softmax(logits_tea / temperature, dim=-1),
-#                         reduction="batchmean",
-#                     ) * (temperature ** 2)
-
-#                     loss_distill = loss_logits + rep_loss + att_loss
-#                     loss = alpha_distil * loss_distill + alpha_ce * loss
-
-
-
-
-         
-#             loss.backward()
-
-#             tr_loss += loss.item()
-#             if True:
-#                 torch.nn.utils.clip_grad_norm_(
-#                     model.parameters(), max_grad_norm)
-
-       
-#                 optimizer.step()
-#                 scheduler.step()  # Update learning rate schedule
-#                 model.zero_grad()
-#                 global_step += 1
-
-
-
-#         results = evaluate(model, tokenizer)
-#         print("Evaluate Accuracy", results)    
                   
 
-#     return global_step, tr_loss / global_step
+    return global_step, tr_loss / global_step
 
 
 
