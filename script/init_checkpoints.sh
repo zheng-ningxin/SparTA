@@ -2,6 +2,7 @@ source /root/anaconda/etc/profile.d/conda.sh
 conda activate artifact
 
 pushd checkpoints/bert
+pip install transformers==3.5.0
 python bert_propagate_finegrained.py
 python bert_propagate_coarsegrained.py
 python bert_sota_coarse_onnx.py
