@@ -42,6 +42,12 @@ RUN git clone https://github.com/zheng-ningxin/nni.git && cd nni && git checkout
 RUN eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifact && \
     pip install antares==0.3.12.1
 
+# install tensorrt
+RUN  eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifact && \
+    pip install pycuda==2020.1 && python3 -m pip install --upgrade setuptools pip && \
+    python3 -m pip install nvidia-pyindex && python3 -m pip install --upgrade nvidia-tensorrt==8.4.0.6 && \
+    pip install six
+
 # configure the bashrc
 RUN echo 'export NNFUSION_HOME=/root/nnfusion \n\
 export PATH=$NNFUSION_HOME/build/src/tools/nnfusion:$PATH \n\
