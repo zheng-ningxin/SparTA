@@ -10,6 +10,8 @@ python bert_original_onnx.py
 popd
 
 pushd checkpoints/mobilenet
+# prepare the data
+bash prepare_data.sh
 python mobilenet_propagate_coarsegrained.py
 python mobilenet_propagate_finegrained.py
 python mobilenet_sota_finegrained_onnx.py
