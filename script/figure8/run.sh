@@ -130,7 +130,40 @@ popd
 
 ########################SPARTA###########################
 
-# bert coarse sparta
 pushd bert_coarse_sparta
-# /bin/bash 
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_sparta.log
 popd
+
+pushd bert_coarse_int8_sparta
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_int8_sparta.log
+popd
+
+# pushd bert_finegrained_sparta
+# /bin/bash run.sh > ${cur_dir}/log/bert_finegrained_sparta.log
+# popd
+
+
+pushd mobilenet_coarse_sparta
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_sparta.log
+popd
+
+pushd mobilenet_coarse_int8_sparta
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_int8_sparta.log
+popd
+
+pushd mobilenet_finegrained_sparta
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_finegrained_sparta.log
+popd
+
+pushd hubert_coarse_sparta
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_sparta.log
+popd
+
+# pushd hubert_coarse_int8_sparta
+# /bin/bash run.sh > ${cur_dir}/log/hubert_coarse_int8_sparta.log
+# popd
+
+# pushd hubert_finegrained_sparta
+# /bin/bash run.sh > ${cur_dir}/log/hubert_finegrained_sparta.log
+# popd
+
