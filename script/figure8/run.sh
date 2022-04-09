@@ -90,6 +90,42 @@ popd
 
 
 ########################RAMMER-S#########################
+pushd bert_coarse_rammer-s
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_rammer-s.log
+popd
+
+pushd bert_coarse_int8_rammer-s
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_int8_rammer-s.log
+popd
+
+pushd bert_finegrained_rammer-s
+/bin/bash run.sh > ${cur_dir}/log/bert_finegrained_rammer-s.log
+popd
+
+
+pushd mobilenet_coarse_rammer-s
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_rammer-s.log
+popd
+
+pushd mobilenet_coarse_int8_rammer-s
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_int8_rammer-s.log
+popd
+
+pushd mobilenet_finegrained_rammer-s
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_finegrained_rammer-s.log
+popd
+
+pushd hubert_coarse_rammer-s
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_rammer-s.log
+popd
+
+pushd hubert_coarse_int8_rammer-s
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_int8_rammer-s.log
+popd
+
+pushd hubert_finegrained_rammer-s
+/bin/bash run.sh > ${cur_dir}/log/hubert_finegrained_rammer-s.log
+popd
 
 
 ########################SPARTA###########################

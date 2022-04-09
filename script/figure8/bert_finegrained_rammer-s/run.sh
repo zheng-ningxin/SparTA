@@ -5,4 +5,13 @@ pushd nnfusion_cfg
 
 nnfusion model_tesa.onnx -f onnx -fspargen_cfg config -flayernorm_fusion=1 -fgelu_fusion=1
 cp CMakeLists.txt nnfusion_rt/cuda_codegen
+pushd nnfusion_rt/cuda_codegen
+mkdir build
+pushd build
+cmake ..
+make
+ln -s ../Constant
+./main_test
+popd
+popd
 popd
