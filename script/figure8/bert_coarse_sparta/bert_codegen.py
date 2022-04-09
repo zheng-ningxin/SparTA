@@ -3,7 +3,7 @@ import torch
 import json
 from sparta.artifact_specialization import generate_code
 
-tesaid_2_names_file = "tesaid_2_names"
+tesaid_2_names_file = "artifact_bert_coarse_onnx_with_tesa/tesaid_2_names"
 tesaid_2_names = torch.load(tesaid_2_names_file)
 config = {}
 
