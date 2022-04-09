@@ -6,7 +6,7 @@ RUN apt-get install -y \
   emacs \
   git \
   wget \
-  libgoogle-glog-dev \
+  libgoogle-glog-dev
 
 RUN apt-get update -y && \
     apt-get install -y libsndfile1
