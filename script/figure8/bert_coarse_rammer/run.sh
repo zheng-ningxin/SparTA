@@ -5,6 +5,7 @@ mkdir build
 pushd build
 cmake ..
 make
+ln -s ../Constant
 ./main_test
 popd
 popd

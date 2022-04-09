@@ -4,7 +4,8 @@ pushd nnfusion_rt/cuda_codegen
 mkdir build
 pushd build
 cmake ..
-make 
+make
+ln -s ../Constant
 ./main_test
 popd
 popd
