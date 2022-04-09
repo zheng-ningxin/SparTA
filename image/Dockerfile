@@ -7,7 +7,9 @@ RUN apt-get install -y \
   git \
   wget \
   libgoogle-glog-dev \
-  libsndfile1
+
+RUN apt-get update -y && \
+    apt-get install -y libsndfile1
 
 # Setup to install the latest version of cmake.
 RUN apt-get install -y software-properties-common && \
