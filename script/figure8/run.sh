@@ -4,7 +4,7 @@ source ~/.bashrc
 echo "Curret directory ${cur_dir}"
 mkdir ${cur_dir}/log
 
-source ~/anaconda3/etc/profile.d/conda.sh
+source ~/anaconda/etc/profile.d/conda.sh
 conda activate artifact
 
 
