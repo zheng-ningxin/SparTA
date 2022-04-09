@@ -9,6 +9,7 @@ python bert_propagate_coarsegrained.py
 python bert_sota_coarse_onnx.py
 python bert_sota_finegrained_onnx.py
 python bert_original_onnx.py
+python bert_mix_onnx.py
 popd
 
 pushd checkpoints/mobilenet
