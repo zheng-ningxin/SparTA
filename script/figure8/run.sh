@@ -7,6 +7,9 @@ mkdir ${cur_dir}/log
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate artifact
 
+
+########################JIT###############################
+pip install transformers==3.5.0
 # bert coarse jit
 pushd bert_coarse_jit
 /bin/bash run.sh > ${cur_dir}/log/bert_coarse_jit.log
@@ -32,8 +35,8 @@ pushd mobilenet_coarse_int8_jit
 /bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_int8_jit.log
 popd
 # change the python environment for hubert (which is only available in transformers 4.12)
-conda activate hubert
 
+pip install transformers==4.12.3
 pushd hubert_coarse_jit
 /bin/bash run.sh > ${cur_dir}/log/hubert_coarse_jit.log
 popd
@@ -45,6 +48,51 @@ popd
 pushd hubert_coarse_int8_jit
 /bin/bash run.sh > ${cur_dir}/log/hubert_coarse_int8_jit.log
 popd
+
+
+########################RAMMER###########################
+pushd bert_coarse_rammer
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_rammer.log
+popd
+
+pushd bert_coarse_int8_rammer
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_int8_rammer.log
+popd
+
+pushd bert_finegrained_rammer
+/bin/bash run.sh > ${cur_dir}/log/bert_finegrained_rammer.log
+popd
+
+
+pushd mobilenet_coarse_rammer
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_rammer.log
+popd
+
+pushd mobilenet_coarse_int8_rammer
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_int8_rammer.log
+popd
+
+pushd mobilenet_finegrained_rammer
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_finegrained_rammer.log
+popd
+
+pushd hubert_coarse_rammer
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_rammer.log
+popd
+
+pushd hubert_coarse_int8_rammer
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_int8_rammer.log
+popd
+
+pushd hubert_finegrained_rammer
+/bin/bash run.sh > ${cur_dir}/log/hubert_finegrained_rammer.log
+popd
+
+
+########################RAMMER-S#########################
+
+
+########################SPARTA###########################
 
 # bert coarse sparta
 pushd bert_coarse_sparta
