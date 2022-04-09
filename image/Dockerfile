@@ -39,7 +39,7 @@ RUN wget https://repo.anaconda.com/archive/Anaconda3-2021.11-Linux-x86_64.sh && 
 # install nni
 RUN git clone https://github.com/zheng-ningxin/nni.git && cd nni && git checkout artifact && \
     eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifact && pip install -U -r dependencies/setup.txt && \
-    pip install -r dependencies/develop.txt && python setup.py develop && pip install tensorboard transformers==3.5.0 onnxruntime graphviz onnx soundfile datasets=2.0.0
+    pip install -r dependencies/develop.txt && python setup.py develop && pip install tensorboard transformers==3.5.0 onnxruntime graphviz onnx soundfile datasets=2.0.0 ply
 
 # install antares
 RUN eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifact && \
