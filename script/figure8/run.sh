@@ -49,6 +49,43 @@ pushd hubert_coarse_int8_jit
 /bin/bash run.sh > ${cur_dir}/log/hubert_coarse_int8_jit.log
 popd
 
+########################TensorRT###########################
+pushd bert_coarse_trt
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_trt.log
+popd
+
+pushd bert_coarse_int8_trt
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_int8_trt.log
+popd
+
+pushd bert_finegrained_trt
+/bin/bash run.sh > ${cur_dir}/log/bert_finegrained_trt.log
+popd
+
+
+pushd mobilenet_coarse_trt
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_trt.log
+popd
+
+pushd mobilenet_coarse_int8_trt
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_int8_trt.log
+popd
+
+pushd mobilenet_finegrained_trt
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_finegrained_trt.log
+popd
+
+pushd hubert_coarse_trt
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_trt.log
+popd
+
+pushd hubert_coarse_int8_trt
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_int8_trt.log
+popd
+
+pushd hubert_finegrained_trt
+/bin/bash run.sh > ${cur_dir}/log/hubert_finegrained_trt.log
+popd
 
 ########################RAMMER###########################
 pushd bert_coarse_rammer
