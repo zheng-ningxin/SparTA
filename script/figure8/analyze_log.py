@@ -7,7 +7,16 @@ import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def trt_parse_log(fpath):
-    return 
+    f = open(fpath)
+    lines = f.readlines()
+    key_str = "average"
+    latency = None
+    for line in lines:
+        if line.find(key_str) == True:
+            latency = float(line.split()[-2])
+            break
+    assert(latency is not None, "invalid tensorrt log")
+    return latency
 
 def rammer_parse_log(fpath):
     with open(fpath, 'r') as f:
@@ -26,7 +35,29 @@ def jit_parse_log(fpath):
         return float(tmp[5][1:-1])
         
 def tvm_parse_log(fpath):
-    return 0
+    f = open(fpath)
+    lines = f.readlines()
+    key_str = "mean"
+    latency = None
+    for idx, line in enumerate(lines):
+        if line.find(key_str) == True:
+            latency_line = lines[idx+1]
+            latency = latency_line.split()[0]
+            break
+    assert(latency is not None, "invalid tvm log")
+    return latency
+
+def tvm_sparse_parse_log(fpath):
+    f = open(fpath)
+    lines = f.readlines()
+    key_str = "batch"
+    latency = None
+    for line in lines:
+        if line.find(key_str) == True:
+            latency = float(line.split()[-2])
+            break
+    assert(latency is not None, "invalid tvm-s log")
+    return latency
 
 func_map = {
     'rammer': rammer_parse_log,
