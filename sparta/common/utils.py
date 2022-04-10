@@ -505,7 +505,7 @@ def generate_quantize_dot_cfg(tesa_path, state_path, id_map_path, out_dir):
             # torch_name = id_maps[tesaid][0]
             weight_d = generate_random(tesa[tesaid]['weight'].numel(), 'b', 0, 10)
             weight_f =  f"weight_{tesaid}.bin"
-            write_array(weight_d, os.path.join(out_dir,weight_f))
+            write_array(weight_d, os.path.join(out_dir,weight_f), 'b')
             scale_integer_d = generate_random(1, 'i', 0, 10)
             scale_integer_f = f"scale_integer_{tesaid}.bin"
             write_array(scale_integer_d, os.path.join(out_dir, scale_integer_f))

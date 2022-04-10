@@ -90,7 +90,7 @@ def random_sparse_bert_params(func, params, BS_R, BS_C, density):
     return new_params
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_path', type=str, default='/Data/nizhen/SparTA/script/checkpoints/bert/artifact_bert_ori/bert_ori_no_tesa.onnx', help='The file name of the frozen graph.')
+parser.add_argument('--model_path', type=str, default='../../checkpoints/bert/artifact_bert_coarse_no_propagation_onnx_with_tesa/model_no_tesa.onnx', help='The file name of the frozen graph.')
 # parser.add_argument('--model_path', type=str, default='/data/znx/SpargenCks/bert_finegrained_0.95_onnx/bert_finegrained.onnx', help='The file name of the frozen graph.')
 parser.add_argument('--warmup', type=int, default=5, help='The number of warmup iterations.')
 parser.add_argument('--num_iter', type=int, default=100, help='The number of execution iterations.')
