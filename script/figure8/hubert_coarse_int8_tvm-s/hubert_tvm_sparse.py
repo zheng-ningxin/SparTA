@@ -126,9 +126,9 @@ print("ONNX imported to relay frontend.")
 #   params: final params after compilation.
 #   lib: target library which can be deployed on target with TVM runtime.
 
-print("Begin to quantize model")
-with relay.quantize.qconfig(calibrate_mode="global_scale", global_scale=8.0):
-    mod = relay.quantize.quantize(mod, params)
+#print("Begin to quantize model")
+#with relay.quantize.qconfig(calibrate_mode="global_scale", global_scale=8.0):
+#    mod = relay.quantize.quantize(mod, params)
 
 mod, params = ddo.simplify_fc_transpose.convert(mod["main"], params)
 
