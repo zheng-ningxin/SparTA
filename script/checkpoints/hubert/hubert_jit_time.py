@@ -298,4 +298,4 @@ if __name__ == '__main__':
     data = (dummy_input['input_values'].to(device), dummy_input['attention_mask'].to(device))
     jit_model = torch.jit.trace(model, data)
     time_mean, time_std = measure_time(jit_model, data, model_args.iterations)
-    print(time_mean)
+    print('RunningTime = {}'.format(time_mean))

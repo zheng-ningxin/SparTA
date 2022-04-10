@@ -56,4 +56,4 @@ jit_model = torch.jit.trace(norm_model, data)
 del norm_model
 time_mean, time_std = measure_time(jit_model, data, args.iterations)
 
-print(time_mean)
+print('RunningTime = {}'.format(time_mean))

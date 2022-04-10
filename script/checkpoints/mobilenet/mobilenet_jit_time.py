@@ -15,4 +15,4 @@ data = torch.rand(32, 3, 224, 224).to(device)
 jit_model = torch.jit.trace(model, data)
 del model
 time_mean, time_std = measure_time(jit_model, [data], args.iterations)
-print(time_mean)
+print('RunningTime = {}'.format(time_mean))
