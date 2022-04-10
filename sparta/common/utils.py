@@ -12,6 +12,8 @@ import time
 import onnx
 import onnx.numpy_helper
 from nni.compression.pytorch.utils import get_module_by_name
+import onnxruntime as ort
+import numpy as np
 
 
 
@@ -704,3 +706,122 @@ def inject_kernel(template_path, kernel_json, op_type, id_map_path, out_dir):
         with open(f_path, 'w') as f:
             json.dump(template, f)
         os.system(f"python {nnfusion_home}/src/tools/nnfusion/kernel_db/convert_external_spargen.py {f_path} CUDA_GPU")
+
+def constant_fold(file, optimized_model_filepath):
+    try:
+        from yaml import safe_load as load_func
+    except ImportError:
+        from json import loads as load_func
+
+    graph_optimization_level = 'ORT_ENABLE_BASIC '
+    warmup = 1
+    iters = 0
+    provider = 'CPUExecutionProvider'
+    logger_severity=2
+    symbolic_dims = {}
+    if not os.path.exists(file):
+        parser.exit(1, 'The specified file does not exist: {}'.format(file))
+
+    onnx.checker.check_model(file)
+    print("ONNX model check passed!")
+
+    def get_numpy(tensor):
+        # ONNX Data Types Doc: https://github.com/onnx/onnx/blob/master/docs/IR.md#standard-data-types
+        # ONNX Data Types Code: https://github.com/onnx/onnx/blob/master/onnx/defs/data_type_utils.h
+        # NumPy Data Types: https://numpy.org/doc/stable/user/basics.types.html
+        def get_numpy_dtype(onnx_dtype):
+            if 'float16' in onnx_dtype:
+                return np.float16
+            elif 'float' in onnx_dtype:
+                return np.float32
+            elif 'double' in onnx_dtype:
+                return np.float64
+            elif 'uint8' in onnx_dtype:
+                return np.uint8
+            elif 'uint16' in onnx_dtype:
+                return np.uint16
+            elif 'int8' in onnx_dtype:
+                return np.int8
+            elif 'int16' in onnx_dtype:
+                return np.int16
+            elif 'int32' in onnx_dtype:
+                return np.int32
+            elif 'int64' in onnx_dtype:
+                return np.int64
+            elif 'bool' in onnx_dtype:
+                return np.bool_
+            else:
+                raise NotImplementedError(onnx_dtype + " is not supported in this script yet.")
+            return np.float32
+
+        def check_shape(shape):
+            for dim in shape:
+                if isinstance(dim, int):
+                    continue
+                elif isinstance(dim, str):
+                    raise Exception(f"Unknown symbilic dimension: {dim}")
+                else:
+                    raise Exception(f"Unknown dimension type: {type(dim)}")
+
+        dtype = get_numpy_dtype(tensor.type)
+        shape = tensor.shape
+        check_shape(shape)
+        return np.ones(shape, dtype=dtype)
+
+    # print("Execution Device:", ort.get_device())
+
+    print("Importing ONNX model into ONNX Runtime...")
+    ort.set_default_logger_severity(logger_severity)
+
+    sess_options = ort.SessionOptions()
+    sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    if graph_optimization_level == 'ORT_DISABLE_ALL':
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+    elif graph_optimization_level == 'ORT_ENABLE_BASIC':
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    elif graph_optimization_level == 'ORT_ENABLE_EXTENDED':
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    if optimized_model_filepath != '':
+        sess_options.optimized_model_filepath = optimized_model_filepath
+
+    for k, v in symbolic_dims.items():
+        sess_options.add_free_dimension_override_by_name(k, int(v))
+
+    providers = provider.split(",")
+    if "CPUExecutionProvider" not in providers:
+        providers.append("CPUExecutionProvider")
+    if 'CUDAExecutionProvider' in ort.get_available_providers() and 'CUDAExecutionProvider' not in providers:
+        providers = ['CUDAExecutionProvider'] + providers
+
+    ort_session = ort.InferenceSession(file, sess_options, providers=providers)
+
+    print("Execution Providers:", ort_session.get_providers())
+
+    inputs = ort_session.get_inputs()
+    inputs_name = [item.name for item in inputs]
+    ort_inputs = {}
+    for tensor in inputs:
+        ort_inputs.update({tensor.name: get_numpy(tensor)})
+
+    outputs = ort_session.get_outputs()
+    outputs_name = [item.name for item in outputs]
+
+    for warmup in range(warmup):
+        outputs = ort_session.run(outputs_name, ort_inputs)
+        for i in range(len(outputs)):
+            out_flat = outputs[i].flat
+            if (len(out_flat) > 0):
+                max_len = min(10, len(out_flat))
+                print(outputs_name[i])
+                print(out_flat[:max_len], "...(size=", len(out_flat), "end with", out_flat[-1], ")")
+                # print_offset = int(len(out_flat) / 3)
+                # max_len = min(10, len(out_flat) - print_offset)
+                # print(out_flat[print_offset:max_len + print_offset], "offset=", print_offset)
+
+    if iters > 0:
+        print('>> Evalutating Benchmark ...')
+        t_start = time.time()
+        for step in range(iters):
+            ort_session.run(outputs_name, ort_inputs)
+        t_end = time.time()
+        print('>> Average time for each run: %.4f ms;' % ((t_end - t_start) * 1e3 / iters))
