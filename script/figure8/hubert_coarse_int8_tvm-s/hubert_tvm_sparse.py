@@ -144,7 +144,7 @@ with relay.quantize.qconfig(calibrate_mode="global_scale", global_scale=8.0):
 """
 
 # log_file = f'autotvm_tuned_block_hubert_{args.tuning_step}.log'
-log_file = "autotvm_tuned_fine_hubert_5000.log"
+log_file = "autotvm_tuned_block_hubert_5000.log"
 
 tuning_option = {
     'log_filename': log_file,
