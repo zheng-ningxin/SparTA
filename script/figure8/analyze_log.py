@@ -492,7 +492,9 @@ if __name__ == '__main__':
                 file_name = f'{model}_{pattern}_{framework}.log'
                 time = 0.0
                 try:
-                    time = func_map[framework](os.path.join('log', file_name))
+                    tmp = func_map[framework](os.path.join('log', file_name))
+                    if tmp is not None:
+                        time = tmp
                 except Exception as err:
                     print(file_name, err)
                 data[f'{model}_{pattern}_{framework}'] = time
