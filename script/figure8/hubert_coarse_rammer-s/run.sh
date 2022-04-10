@@ -3,7 +3,7 @@ python prepare_kernel_cfg.py --in_dir artifact_hubert_coarse_no_propagation_onnx
 cp CMakeLists.txt nnfusion_cfg
 pushd nnfusion_cfg
 
-nnfusion model_tesa.onnx -f onnx -fspargen_cfg config -flayernorm_fusion=1 -fgelu_fusion=1
+nnfusion model_tesa.onnx -f onnx -fspargen_cfg config -flayernorm_fusion=1 -fgelu_fusion=1 -frun_step 500
 cp CMakeLists.txt nnfusion_rt/cuda_codegen
 pushd nnfusion_rt/cuda_codegen
 mkdir build
