@@ -22,7 +22,7 @@ def rammer_parse_log(fpath):
     with open(fpath, 'r') as f:
         lines = f.readlines()
         result = list(filter(lambda x: 'Summary: [min, max, mean] =' in x, lines))
-        assert len(result) == 0
+        assert len(result) == 1
         tmp = re.split(' ', result[0])
         return float(tmp[5][1:-1])
 
@@ -30,7 +30,7 @@ def jit_parse_log(fpath):
     with open(fpath, 'r') as f:
         lines = f.readlines()
         result = list(filter(lambda x: 'RunningTime =' in x, lines))
-        assert len(result) == 0
+        assert len(result) == 1
         tmp = re.split(' ', result[0])
         return float(tmp[5][1:-1])
         
