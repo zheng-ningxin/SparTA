@@ -31,7 +31,7 @@ from nni.compression.pytorch.speedup import ModelSpeedup
 from nni.compression.pytorch.utils.hubert_compression_utils import HubertCompressModule
 from hubert_utils import *
 from sparta.common.utils import export_tesa
-
+from shape_hook import ShapeHook
 def measure_time(model, dummy_input, runtimes=200):
     times = []
     with torch.no_grad():
@@ -346,7 +346,9 @@ if __name__ == '__main__':
 
     model(data[0])
     model.load_state_dict(torch.load('checkpoints/coarsegrained/hubert_coarse_state_dict.pth'))
-
+    # sh = ShapeHook(model, data[:1])
+    # os.makedirs('artifact_hubert_coarse_onnx_with_tesa', exist_ok=True)
+    # sh.export('artifact_hubert_coarse_onnx_with_tesa/shape.json')
     # import ipdb; ipdb.set_trace()
     export_tesa(model, data[:1], 'artifact_hubert_coarse_onnx_with_tesa')
 

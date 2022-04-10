@@ -8,5 +8,5 @@ python hubert_jit_time.py \
         --remove_unused_columns False \
         --do_eval --eval_split_name test --learning_rate 1e-3 \
         --max_length_seconds 1 \
-        --seed 0 --iterations 5000
+        --seed 0 --iterations 1000
 popd
