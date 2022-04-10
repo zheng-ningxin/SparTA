@@ -495,5 +495,5 @@ if __name__ == '__main__':
                     time = func_map[framework](os.path.join('log', file_name))
                 except Exception as err:
                     print(file_name, err)
-                data[file_name] = time
+                data[f'{model}_{pattern}_{framework}'] = time
     draw_figure8(data)
