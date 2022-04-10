@@ -1,4 +1,4 @@
-from sparta.common.utils import generate_block_quantize_cfg, inject_kernel
+from sparta.common.utils import generate_quantize_dot_cfg, inject_kernel
 import argparse
 import os
 import json
@@ -24,14 +24,11 @@ if __name__ == '__main__':
         id_2_name[tid] = names[0]
         name_2_tid[names[0]] =tid
 
-    for name in kernels:
-        tid = name_2_tid[name]
-        sparse_block_cfg[tid] = (kernels[name]['block_size_k'], kernels[name]['block_size_n'])
-    generate_block_quantize_cfg(tesa_path, state_path, id_map, args.out_dir, sparse_block_cfg=sparse_block_cfg, sparsity_threshold=2)
+    generate_quantize_dot_cfg(tesa_path, state_path, id_map, args.out_dir)
     onnx_path = os.path.join(args.in_dir, 'model_tesa.onnx')
     os.system('cp {} {}'.format(onnx_path, args.out_dir))
     kernel_path = 'kernel_dict.json'
-    template_path = 'block_sparse_template_bias_row.json'
+    template_path = 'quantize_dot_template_bias.json'
 
     
-    inject_kernel(template_path, kernel_path, 'BlockQuantizeDotAdd', id_map_path, os.path.join(args.out_dir, 'kernel'))
+    inject_kernel(template_path, kernel_path, 'QuantizeDotAdd', id_map_path, os.path.join(args.out_dir, 'kernel'))

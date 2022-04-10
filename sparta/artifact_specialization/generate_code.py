@@ -381,7 +381,7 @@ def hubert_coarse_fp32_codegen(config: dict) -> dict:
 def hubert_coarse_int8_codegen(config: dict) -> dict:
     result = {}
     log_name = os.path.join(current_path, "Log/hubert_coarse_int8.json")
-    template_name = os.path.join(current_path, "Template/block_quantize_template_bias.cu")
+    template_name = os.path.join(current_path, "Template/quantize_dot_template_bias.cu")
     f = open(log_name)
     log_dict = json.load(f)
     f_template = open(template_name)

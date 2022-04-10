@@ -1,5 +1,4 @@
 import tensorrt as trt
-import calibrator
 import common
 import time
 import pycuda.driver as cuda

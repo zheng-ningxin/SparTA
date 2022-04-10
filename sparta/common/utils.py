@@ -519,6 +519,7 @@ def generate_quantize_dot_cfg(tesa_path, state_path, id_map_path, out_dir):
 
 
 def fake_quantize(value):
+    #just measure the speed
     count = len(value)
     return generate_random(count, 'b', 0, 32)
 

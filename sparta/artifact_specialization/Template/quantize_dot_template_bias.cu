@@ -48,11 +48,16 @@ extern "C" __global__ void MatrixMulCUDA_8bit_bias(float *input0, float *input1,
 
     const unsigned int SKEW_UINT8=32;
 
+    const unsigned int OUTPUT_LINE_BYTES = (BLOCK_ROW_TILES * N);
+    const unsigned int OUTPUT_LANE_PER_LINE = OUTPUT_LINE_BYTES / 4;
+    const unsigned int OUTPUT_LINES_PER_BLOCK = THREADS_PER_BLOCK / OUTPUT_LANE_PER_LINE;
+    const unsigned int OUTPUT_ITERS = (BLOCK_COL_WARPS * WARP_COL_TILES * M) / OUTPUT_LINES_PER_BLOCK;
+
 
     // Convert the input pointers
     const uint8_t * A = reinterpret_cast<uint8_t*>(input0); // activation
     const uint8_t * B =  reinterpret_cast<uint8_t*>(input1); // weight
-    const int * C = reinterpret_cast< int *>(input7);
+    const int * bias = reinterpret_cast< int *>(input7);
     uint8_t * D = reinterpret_cast<uint8_t*>(output0);
     const int alpha = (int)(*input5);
     const int integer = (int)(*input6);
@@ -71,11 +76,6 @@ extern "C" __global__ void MatrixMulCUDA_8bit_bias(float *input0, float *input1,
   // Offset in shared memory from which the B matrix is stored.
   const size_t shmem_idx_b_off = BLOCK_COL_TILES * M;       // BLOCK_COL_TILES is shared_A row numbers in one block
 
-  // This pointer is used to access the C and D matrix tiles this warp computes.
-  int *shmem_warp_tile_ptr = (int *)&shmem[0][0] +
-                             (warpId / BLOCK_ROW_WARPS) * SHMEM_STRIDE * M * WARP_COL_TILES +    // original K * 2 is because one warp calculate k * 2 rows.
-                             (warpId % BLOCK_ROW_WARPS) * SHMEM_OFFSET;
-
 
   // Each CTA slides along the 128 x 128 tiles from the top left corner of the
   // matrix to the right and down, and selects the next tile to compute. Once
@@ -85,32 +85,47 @@ extern "C" __global__ void MatrixMulCUDA_8bit_bias(float *input0, float *input1,
         ((block_pos * BLOCK_ROW_TILES) / N_TILES) * (BLOCK_COL_TILES);
     const unsigned int block_tile_j = (block_pos * BLOCK_ROW_TILES) % N_TILES;
 
+    /////////////////// bias ///////////////////
+    int *shmem_load_output = ((int *)&shmem[0][0] + threadIdx.x / OUTPUT_LANE_PER_LINE * (BLOCK_ROW_TILES * N));
+    const size_t gmem_load_output = block_tile_j * N;
+    const int *src_gmem_output = (int *)(&bias[gmem_load_output]);
+
+    // Stream multiple C tiles to shared memory.
+#pragma unroll
+    for (int i = 0; i < OUTPUT_ITERS; i++) {
+      *((int4 *)(shmem_load_output) + threadIdx.x % OUTPUT_LANE_PER_LINE) =
+        *((int4 *)(src_gmem_output) + threadIdx.x % OUTPUT_LANE_PER_LINE);
+      shmem_load_output += OUTPUT_LINES_PER_BLOCK * (BLOCK_ROW_TILES * N);   
+    }
+
+    __syncthreads();
+    
+    // This pointer is used to access the C and D matrix tiles this warp computes.
+    int *shmem_warp_tile_ptr = (int *)&shmem[0][0] +
+    (warpId / BLOCK_ROW_WARPS) * M * WARP_COL_TILES * SHMEM_STRIDE  +    // K * 2 is because one warp calculate k * 2 rows.
+    (warpId % BLOCK_ROW_WARPS) * SHMEM_OFFSET;
     // Stop when there are no more D matrix tiles to compute in this CTA.
 
 
     // This warp's pointer to the C matrix data to copy memory from to shared
     // memory.
 
-    // Stream multiple C tiles to shared memory.
-
-    __syncthreads();
-
+    //__syncthreads();
     // These fragments will accumulate the result of A and B matrix fragment
     // multiplications along the K_GLOBAL dimension.
     wmma::fragment<wmma::accumulator, M, N, K, int> c[WARP_COL_TILES]
                                                      [WARP_ROW_TILES];
 
-#pragma unroll
+
+    // Load the C matrix tiles into fragments from shared memory.
+    #pragma unroll
     for (int i = 0; i < WARP_COL_TILES; i++) {
 #pragma unroll
       for (int j = 0; j < WARP_ROW_TILES; j++) {
-#pragma unroll
-        // Uniform, point-wise transformations of ALL fragment elements by ALL
-        // threads in the warp are well-defined even though element indices
-        // within fragment storage are not defined.
-        for (int t = 0; t < c[i][j].num_elements; t++) {
-          c[i][j].x[t] = 0;
-        }
+        const int *tile_ptr =
+            shmem_warp_tile_ptr + i * SHMEM_STRIDE * K + j * N;
+
+        wmma::load_matrix_sync(c[i][j], tile_ptr, SHMEM_STRIDE, wmma::mem_row_major);
       }
     }
 
