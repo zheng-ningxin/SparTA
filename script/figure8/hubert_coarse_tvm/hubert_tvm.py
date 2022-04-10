@@ -153,4 +153,4 @@ data_tvm1 = tvm.nd.array(x1.astype('int32'))
 
 m.set_input("0", data_tvm1)
 
-print(m.benchmark(dev, repeat=100, min_repeat_ms=500))
+print(m.benchmark(dev, repeat=3, min_repeat_ms=500))
