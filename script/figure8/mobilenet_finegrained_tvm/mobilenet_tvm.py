@@ -245,7 +245,7 @@ def quantize(mod, params, data_aware):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_path', type=str, default='/Data/nizhen/SparTA/script/checkpoints/mobilenet/artifact_mobilenet_ori/mobilenet_ori_no_tesa.onnx', help='The file name of the frozen graph.')
+parser.add_argument('--model_path', type=str, default='../../checkpoints/mobilenet/artifact_mobilenet_finegrained_no_propagation/model_no_tesa.onnx', help='The file name of the frozen graph.')
 #parser.add_argument('--model_path', type=str, default='/data/znx/SpargenCks/mobilenet_sota_finegrained_no_tesa.onnx', help='The file name of the frozen graph.')
 parser.add_argument('--warmup', type=int, default=5, help='The number of warmup iterations.')
 parser.add_argument('--num_iter', type=int, default=100, help='The number of execution iterations.')

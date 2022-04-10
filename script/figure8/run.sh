@@ -87,6 +87,44 @@ pushd hubert_finegrained_trt
 /bin/bash run.sh > ${cur_dir}/log/hubert_finegrained_trt.log
 popd
 
+########################TVM###########################
+pushd bert_coarse_tvm
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_tvm.log
+popd
+
+pushd bert_coarse_int8_tvm
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_int8_tvm.log
+popd
+
+pushd bert_finegrained_tvm
+/bin/bash run.sh > ${cur_dir}/log/bert_finegrained_tvm.log
+popd
+
+
+pushd mobilenet_coarse_tvm
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_tvm.log
+popd
+
+pushd mobilenet_coarse_int8_tvm
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_int8_tvm.log
+popd
+
+pushd mobilenet_finegrained_tvm
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_finegrained_tvm.log
+popd
+
+pushd hubert_coarse_tvm
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_tvm.log
+popd
+
+pushd hubert_coarse_int8_tvm
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_int8_tvm.log
+popd
+
+pushd hubert_finegrained_tvm
+/bin/bash run.sh > ${cur_dir}/log/hubert_finegrained_tvm.log
+popd
+
 ########################RAMMER###########################
 pushd bert_coarse_rammer
 /bin/bash run.sh > ${cur_dir}/log/bert_coarse_rammer.log
