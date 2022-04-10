@@ -503,7 +503,7 @@ def generate_quantize_dot_cfg(tesa_path, state_path, id_map_path, out_dir):
             print(f"Dump the {tesaid}-th block index")
             # assert hasattr(tesa[tesaid], 'weight')
             # torch_name = id_maps[tesaid][0]
-            weight_d = generate_random(tesa[tesaid]['weight'].numel(), 'i', 0, 10)
+            weight_d = generate_random(tesa[tesaid]['weight'].numel(), 'b', 0, 10)
             weight_f =  f"weight_{tesaid}.bin"
             write_array(weight_d, os.path.join(out_dir,weight_f))
             scale_integer_d = generate_random(1, 'i', 0, 10)
@@ -512,7 +512,7 @@ def generate_quantize_dot_cfg(tesa_path, state_path, id_map_path, out_dir):
             scale_shift_d = generate_random(1, 'i', 0, 10)
             scale_shift_f = f"scale_shift_{tesaid}.bin"
             write_array(scale_shift_d, os.path.join(out_dir, scale_shift_f))
-            bias_data_d = generate_random(tesa[tesaid]['weight'].numel(), 'i', 0, 10)
+            bias_data_d = generate_random(tesa[tesaid]['weight'].size(0), 'i', 0, 10)
             bias_data_f = f"bias_{tesaid}.bin"
             write_array(bias_data_d, os.path.join(out_dir, bias_data_f))
             f.write(f"{tesaid} Quantize kernel_{tesaid} 8 8 {weight_f} {scale_integer_f} {scale_shift_f} {bias_data_f}\n")
