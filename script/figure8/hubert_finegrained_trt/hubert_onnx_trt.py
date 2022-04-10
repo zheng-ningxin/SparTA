@@ -119,7 +119,7 @@ def build_engine(model_file, calib, batch_size=32):
 
 #onnx_path = "/data/znx/hubert/transformers/examples/pytorch/audio-classification/hubert_new.onnx"
 #onnx_path = "/data/znx/hubert/transformers/examples/pytorch/audio-classification/hubert_ori_onnx/hubert_ori.onnx"
-onnx_path = "/Data/nizhen/SparTA/script/checkpoints/hubert/artifact_hubert_ori/hubert_ori_no_tesa.onnx"
+onnx_path = "../../checkpoints/hubert/artifact_hubert_finegrained_no_propagation_onnx_with_tesa/model_no_tesa.onnx"
 dummy_input = (torch.rand(32, 16000).numpy())
 
 calib = BertCalibrator(dummy_input)

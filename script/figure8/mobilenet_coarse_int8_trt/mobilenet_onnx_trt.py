@@ -115,7 +115,7 @@ def build_engine(model_file, calib, batch_size=32):
         engine = builder.build_engine(network, trt_config)
         return engine
 
-onnx_path = "/Data/nizhen/SparTA/script/checkpoints/mobilenet/artifact_mobilenet_ori/mobilenet_ori_no_tesa.onnx"
+onnx_path = "../../checkpoints/mobilenet/artifact_mobilenet_coarsegrained_no_propagation_onnx_with_tesa/model_no_tesa.onnx"
 dummy_input = torch.rand(32, 3, 224, 224).numpy()
 
 calib = BertCalibrator(dummy_input)
