@@ -217,13 +217,15 @@ def load_tesa(in_dir):
     tesa_path = os.path.join(in_dir, 'tesa')
     name_map_path = os.path.join(in_dir, 'tesaid_2_names')
     shape_path = os.path.join(in_dir, 'shape.json')
+    state =torch.load(os.path.join(in_dir, 'state_dict.pth'))
     tesa = torch.load(tesa_path)
     name_map = torch.load(name_map_path)
     with open(shape_path, 'r') as f:
         shape = json.load(f)
     for tesaid in tesa:
         name = name_map[tesaid][0]
-        data[tesaid] = {'tesa': tesa[tesaid], 'shape':shape[name]}
+        # import ipdb; ipdb.set_trace()
+        data[tesaid] = {'tesa': tesa[tesaid], 'shape':shape[name], 'state':{'weight':state[name+'.weight'], 'bias':state[name+'.bias']}}
     return data
 
 def _setattr(model, name, module):
