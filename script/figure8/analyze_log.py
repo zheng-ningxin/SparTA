@@ -12,7 +12,7 @@ def trt_parse_log(fpath):
     key_str = "average"
     latency = None
     for line in lines:
-        if line.find(key_str) == True:
+        if line.find(key_str) != -1:
             latency = float(line.split()[-2])
             break
     assert(latency is not None, "invalid tensorrt log")
@@ -40,7 +40,7 @@ def tvm_parse_log(fpath):
     key_str = "mean"
     latency = None
     for idx, line in enumerate(lines):
-        if line.find(key_str) == True:
+        if line.find(key_str) != -1:
             latency_line = lines[idx+1]
             latency = float(latency_line.split()[0])
             break
@@ -53,7 +53,7 @@ def tvm_sparse_parse_log(fpath):
     key_str = "batch"
     latency = None
     for line in lines:
-        if line.find(key_str) == True:
+        if line.find(key_str) != -1:
             latency = float(line.split()[-2])
             break
     assert(latency is not None, "invalid tvm-s log")
@@ -66,7 +66,7 @@ func_map = {
     'tvm': tvm_parse_log,
     'jit': jit_parse_log,
     'trt': trt_parse_log,
-    'tvm-s': tvm_parse_log
+    'tvm-s': tvm_sparse_parse_log
 }
 
 def draw_figure8(data):
@@ -481,7 +481,7 @@ def draw_figure8(data):
 
 if __name__ == '__main__':
 
-    models = ['bert', 'mobilenet']
+    models = ['bert', 'mobilenet', 'hubert']
     patterns = ['coarse', 'coarse_int8', 'finegrained']
     # frameworks = ['jit']
     frameworks = ['jit', 'tvm', 'tvm-s', 'rammer', 'rammer-s', 'sparta', 'trt']
