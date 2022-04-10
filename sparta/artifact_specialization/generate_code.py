@@ -379,7 +379,43 @@ def hubert_coarse_fp32_codegen(config: dict) -> dict:
     ...
 
 def hubert_coarse_int8_codegen(config: dict) -> dict:
-    ...
+    result = {}
+    log_name = os.path.join(current_path, "Log/hubert_coarse_int8.json")
+    template_name = os.path.join(current_path, "Template/block_quantize_template_bias.cu")
+    f = open(log_name)
+    log_dict = json.load(f)
+    f_template = open(template_name)
+    template_str = f_template.read()
+    for name, val_dict in config.items():
+        tesa_id = val_dict['tesa_id']
+        m, k, n = val_dict['m'], val_dict['k'], val_dict['n']
+        if tesa_id in log_dict:
+            template_config = log_dict[tesa_id]
+        else:
+            template_config = log_dict["other"]
+        template_config['M_VALUE'] = m
+        template_config['K_VALUE'] = k
+        template_config['N_VALUE'] = n
+        block_col_warps = template_config['BLOCK_COL_WARPS_VALUE']
+        block_row_warps = template_config['BLOCK_ROW_WARPS_VALUE']
+        warp_col_tiles = template_config['WARP_COL_TILES_VALUE']
+        warp_row_tiles = template_config['WARP_ROW_TILES_VALUE']
+        block_size_col = block_col_warps * warp_col_tiles * 16
+        block_size_row = block_row_warps * warp_row_tiles * 16
+        block_size_k = template_config['CHUNK_K_VALUE'] * 16
+        if block_size_k > k:
+            template_config['CHUNK_K_VALUE'] = int(template_config['CHUNK_K_VALUE'] / 2)
+            block_size_k = template_config['CHUNK_K_VALUE'] * 16
+        block_num = int((m * n) / (block_size_col * block_size_row))
+        thread_num = block_row_warps * block_col_warps * 32
+        kernel_code = template_str
+        for k, v in template_config.items():
+            kernel_code = kernel_code.replace(k, str(v))
+        launch_config = {}
+        launch_config['dimBlock'] = [thread_num, 1]
+        launch_config['dimGrid'] = [block_num,1]
+        result[name] = {'code': kernel_code, 'launch_config': launch_config, 'block_size_n': block_size_row, 'block_size_k': block_size_k}
+    return result
 
 def kernel_execution(kernel: str) -> Tuple[str, float, bool]:
     # kernel execution process
