@@ -57,11 +57,12 @@ RUN wget https://github.com/llvm/llvm-project/releases/download/llvmorg-13.0.0/c
 RUN eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifact && \
     git clone --recursive https://github.com/linbinskn/tvm.git tvm && cd tvm && git checkout cuda && \
     apt-get update && apt-get install -y python3 python3-dev python3-setuptools gcc libtinfo-dev zlib1g-dev build-essential cmake libedit-dev libxml2-dev && \
-    cd build && cmake .. && make -j4 && echo "export PYTHONPATH=/root/tvm/python:${PYTHONPATH}" >> /root/.bashrc && \
+    cd build && cmake .. && make -j4 &&  \
     pip install decorator
 
 # configure the bashrc
 RUN echo 'export NNFUSION_HOME=/root/nnfusion \n\
+export PYTHONPATH=/root/tvm/python:${PYTHONPATH} \n\
 export PATH=$NNFUSION_HOME/build/src/tools/nnfusion:$PATH \n\
 export CUDA_HOME=/usr/local/cuda \n\
 source ~/anaconda/etc/profile.d/conda.sh \n\
