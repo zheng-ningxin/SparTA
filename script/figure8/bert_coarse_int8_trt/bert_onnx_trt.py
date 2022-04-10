@@ -122,7 +122,7 @@ def build_engine(model_file, calib, batch_size=32):
         return engine
 
 # onnx_path = "bert_ori.onnx"
-onnx_path = "../../SparTA/script/checkpoints/bert/artifact_bert_ori"
+onnx_path = "../../checkpoints/bert/artifact_bert_ori/bert_ori_no_tesa.onnx"
 dummy_input = (torch.rand(32, 128).numpy(), torch.rand(32, 128).numpy(), torch.rand(32, 128).numpy())
 batch_size = 32
 calib = BertCalibrator(dummy_input)
