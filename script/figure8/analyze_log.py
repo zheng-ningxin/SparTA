@@ -32,7 +32,7 @@ def jit_parse_log(fpath):
         result = list(filter(lambda x: 'RunningTime =' in x, lines))
         assert len(result) == 1
         tmp = re.split(' ', result[0])
-        return float(tmp[5][1:-1])
+        return float(tmp[2])
 
 def tvm_parse_log(fpath):
     f = open(fpath)
