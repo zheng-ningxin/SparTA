@@ -62,7 +62,7 @@ RUN eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifac
 
 # configure the bashrc
 RUN echo 'export NNFUSION_HOME=/root/nnfusion \n\
-export PYTHONPATH=/root/tvm/python:${PYTHONPATH} \n\
+export PYTHONPATH=/root/tvm/python:$PYTHONPATH \n\
 export PATH=$NNFUSION_HOME/build/src/tools/nnfusion:$PATH \n\
 export CUDA_HOME=/usr/local/cuda \n\
 source ~/anaconda/etc/profile.d/conda.sh \n\
