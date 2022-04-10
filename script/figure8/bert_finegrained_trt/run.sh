@@ -1,1 +1,1 @@
-python bert_onnx_trt.sh
+python bert_onnx_trt.py
