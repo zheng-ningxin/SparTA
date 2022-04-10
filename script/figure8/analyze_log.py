@@ -33,7 +33,7 @@ def jit_parse_log(fpath):
         assert len(result) == 1
         tmp = re.split(' ', result[0])
         return float(tmp[5][1:-1])
-        
+
 def tvm_parse_log(fpath):
     f = open(fpath)
     lines = f.readlines()
@@ -42,10 +42,10 @@ def tvm_parse_log(fpath):
     for idx, line in enumerate(lines):
         if line.find(key_str) == True:
             latency_line = lines[idx+1]
-            latency = latency_line.split()[0]
+            latency = float(latency_line.split()[0])
             break
     assert(latency is not None, "invalid tvm log")
-    return latency
+    return latency 
 
 def tvm_sparse_parse_log(fpath):
     f = open(fpath)
@@ -494,5 +494,5 @@ if __name__ == '__main__':
                 try:
                     time = func_map[framework](os.path.join('log', file_name))
                 except Exception as err:
-                    print(f'{file_name} failed due to unkown reason, set to zero')
+                    print(file_name, err)
     draw_figure8(data)
