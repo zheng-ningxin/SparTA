@@ -68,7 +68,7 @@ def random_sparse_bert_params(func, params, BS_R, BS_C, density):
 parser = argparse.ArgumentParser()
 # /data/znx/SpargenCks/hubert_sota_finegrained_no_tesa.onnx
 #parser.add_argument('--model_path', type=str, default='/data/znx/SpargenCks/hubert_sota_coarse_onnx_no_tesa.onnx', help='The file name of the frozen graph.')
-parser.add_argument('--model_path', type=str, default='/Data/nizhen/SparTA/script/checkpoints/hubert/artifact_hubert_finegrained_no_propagation_onnx_with_tesa/model_no_tesa.onnx', help='The file name of the frozen graph.')
+parser.add_argument('--model_path', type=str, default='../../checkpoints/hubert/artifact_hubert_finegrained_no_propagation_onnx_with_tesa/model_no_tesa.onnx', help='The file name of the frozen graph.')
 parser.add_argument('--warmup', type=int, default=5, help='The number of warmup iterations.')
 parser.add_argument('--num_iter', type=int, default=100, help='The number of execution iterations.')
 # parser.add_argument('--autotvm_log', type=str, default='', help='autotvm kernel tuning log')

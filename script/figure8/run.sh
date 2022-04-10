@@ -125,6 +125,44 @@ pushd hubert_finegrained_tvm
 /bin/bash run.sh > ${cur_dir}/log/hubert_finegrained_tvm.log
 popd
 
+########################TVM-SPARSE###########################
+pushd bert_coarse_tvm-s
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_tvm-s.log
+popd
+
+pushd bert_coarse_int8_tvm-s
+/bin/bash run.sh > ${cur_dir}/log/bert_coarse_int8_tvm-s.log
+popd
+
+pushd bert_finegrained_tvm-s
+/bin/bash run.sh > ${cur_dir}/log/bert_finegrained_tvm-s.log
+popd
+
+
+pushd mobilenet_coarse_tvm-s
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_tvm-s.log
+popd
+
+pushd mobilenet_coarse_int8_tvm-s
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_coarse_int8_tvm-s.log
+popd
+
+pushd mobilenet_finegrained_tvm-s
+/bin/bash run.sh > ${cur_dir}/log/mobilenet_finegrained_tvm-s.log
+popd
+
+pushd hubert_coarse_tvm-s
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_tvm-s.log
+popd
+
+pushd hubert_coarse_int8_tvm-s
+/bin/bash run.sh > ${cur_dir}/log/hubert_coarse_int8_tvm-s.log
+popd
+
+pushd hubert_finegrained_tvm-s
+/bin/bash run.sh > ${cur_dir}/log/hubert_finegrained_tvm-s.log
+popd
+
 ########################RAMMER###########################
 pushd bert_coarse_rammer
 /bin/bash run.sh > ${cur_dir}/log/bert_coarse_rammer.log

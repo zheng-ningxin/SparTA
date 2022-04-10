@@ -91,7 +91,7 @@ def random_sparse_bert_params(func, params, BS_R, BS_C, density):
 parser = argparse.ArgumentParser()
 # parser.add_argument('--model_path', type=str, default='/data/znx/nnfusion/models/pytorch2onnx/bert_coarse_sota_no_propagation_folded.onnx', help='The file name of the frozen graph.')
 #parser.add_argument('--model_path', type=str, default='/data/znx/SpargenCks/bert_coarse_sota_baseline/bert_coarse_sota_kernel.onnx', help='The file name of the frozen graph.')
-parser.add_argument('--model_path', type=str, default='/Data/nizhen/SparTA/script/checkpoints/bert/artifact_bert_finegrained_no_propagation_onnx_with_tesa/model_tesa.onnx', help='The file name of the frozen graph.')
+parser.add_argument('--model_path', type=str, default='../../checkpoints/bert/artifact_bert_finegrained_no_propagation_onnx_with_tesa/model_tesa.onnx', help='The file name of the frozen graph.')
 parser.add_argument('--warmup', type=int, default=5, help='The number of warmup iterations.')
 parser.add_argument('--num_iter', type=int, default=100, help='The number of execution iterations.')
 # parser.add_argument('--autotvm_log', type=str, default='', help='autotvm kernel tuning log')
