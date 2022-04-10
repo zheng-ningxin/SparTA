@@ -9,7 +9,7 @@ import json
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', type=str, require=True)
+parser.add_argument('--model', type=str, required=True)
 args = parser.parse_args()
 
 
