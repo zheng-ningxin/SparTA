@@ -6,7 +6,11 @@ import subprocess
 import time
 import re
 import json
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--model', type=str, require=True)
+args = parser.parse_args()
 
 
 def analyze_log(log_path):
@@ -33,29 +37,28 @@ def pushd(new_dir):
     finally:
         os.chdir(previous_dir)
 
-models = ['bert', 'mobilenet']
+
 patterns = ['coarse', 'coarse_int8', 'finegrained']
-frameworks = ['jit']
-# frameworks = ['jit', 'tvm', 'tvm-s', 'rammer', 'rammer-s', 'sparta', 'trt']
+frameworks = ['jit', 'tvm', 'tvm-s', 'rammer', 'rammer-s', 'sparta', 'trt']
 data = {}
-for model in models:
-    for pattern in patterns:
-        for framework in frameworks:
-            path = '../figure8/{}_{}_{}'.format(model, pattern, framework)
-            if os.path.exists(path):
-                with pushd(path):
-                    print('Measure the memory for {} {} under {}'.format(model, pattern, framework))
-                    if os.path.exists('prepare_mem.sh'):
-                        os.system('bash prepare_mem.sh')
-                    # here start the inference process at the same time and
-                    # measure the memory at the same time
-                    target_process = subprocess.Popen('bash run_mem.sh', shell=True)
-                sleep(3) # wait the memory to be steady
-                monitor_process = subprocess.Popen('bash 2080_mem.sh 0 > run.log', shell=True)
-                target_process.wait()
-                monitor_process.terminate()
-                memory_usage = analyze_log('run.log')
-                data['{}_{}_{}'.format(model, pattern, framework)] = memory_usage
+model = args.model
+for pattern in patterns:
+    for framework in frameworks:
+        path = '../figure8/{}_{}_{}'.format(model, pattern, framework)
+        if os.path.exists(path):
+            with pushd(path):
+                print('Measure the memory for {} {} under {}'.format(model, pattern, framework))
+                if os.path.exists('prepare_mem.sh'):
+                    os.system('bash prepare_mem.sh')
+                # here start the inference process at the same time and
+                # measure the memory at the same time
+                target_process = subprocess.Popen('bash run_mem.sh', shell=True)
+            sleep(3) # wait the memory to be steady
+            monitor_process = subprocess.Popen('bash 2080_mem.sh 0 > run.log', shell=True)
+            target_process.wait()
+            monitor_process.terminate()
+            memory_usage = analyze_log('run.log')
+            data['{}_{}_{}'.format(model, pattern, framework)] = memory_usage
 print(data)
-with open('raw_data.json', 'w') as f:
-    json.dump(data)
+with open(f'{args.model}_data.json', 'w') as f:
+    json.dump(data, f)
