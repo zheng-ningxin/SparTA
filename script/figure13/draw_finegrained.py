@@ -50,7 +50,7 @@ pattern=['--.', 'v-', 'x-', 'o-', '^-', 'x-']
 colors = ['black','black','black','black','black','black','black']
 sizes= [7,7,8]
 data = {}
-with open('mobilenet_finegrained_propagate.csv') as f:
+with open('finegrained_propagate.csv') as f:
     reader = csv.reader(f, delimiter=',')
     next(iter(reader))
     for row in reader:
