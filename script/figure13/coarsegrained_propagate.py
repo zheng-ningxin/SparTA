@@ -29,7 +29,7 @@ for name, module in ori_model.named_modules():
         names.append(name)
 ref = open('coarsegrained_propagate.csv', 'w')
 ref.write(f"Sparsity,{','.join(names)}\n")
-for sparsity_ratio in [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]:
+for sparsity_ratio in [0.5, 0.6, 0.7, 0.8, 0.9]:
     print(sparsity_ratio)
     cfg_list = [{'sparsity': sparsity_ratio, 'op_types':['Conv2d']}]
     model = copy.deepcopy(ori_model)
@@ -38,7 +38,7 @@ for sparsity_ratio in [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]:
     pruner.export_model('./weight.pth', './mask.pth')
     pruner._unwrap_model()
     ms = ModelSpeedup(model, dummy_input, './mask.pth')
-    new_mask = ms.propagate()
+    new_mask = ms.propagate_mask()
     ref.write(str(sparsity_ratio))
     # sparsities = {}
     for _n in names:
@@ -47,4 +47,3 @@ for sparsity_ratio in [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]:
         ref.write(f',%.4f' % new_sparsity)
     ref.write('\n')
 ref.close()
-# print(model)
