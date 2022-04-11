@@ -42,6 +42,8 @@ for sparsity_ratio in [0.5, 0.6, 0.7, 0.8, 0.9]:
     ref.write(str(sparsity_ratio))
     # sparsities = {}
     for _n in names:
+        if _n not in new_mask:
+            continue
         new_sparsity = 1 - torch.sum(new_mask[_n]['weight'])/new_mask[_n]['weight'].numel()
         new_sparsity = max(sparsity_ratio, new_sparsity)
         ref.write(f',%.4f' % new_sparsity)
