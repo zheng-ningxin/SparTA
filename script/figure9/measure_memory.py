@@ -45,6 +45,7 @@ model = args.model
 for pattern in patterns:
     for framework in frameworks:
         path = '../figure8/{}_{}_{}'.format(model, pattern, framework)
+        memory_usage = 0
         if os.path.exists(path):
             with pushd(path):
                 print('Measure the memory for {} {} under {}'.format(model, pattern, framework))
@@ -58,7 +59,7 @@ for pattern in patterns:
             target_process.wait()
             monitor_process.terminate()
             memory_usage = analyze_log('run.log')
-            data['{}_{}_{}'.format(model, pattern, framework)] = memory_usage
+        data['{}_{}_{}'.format(model, pattern, framework)] = memory_usage
 print(data)
 with open(f'{args.model}_data.json', 'w') as f:
     json.dump(data, f)
