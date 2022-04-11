@@ -267,7 +267,7 @@ if __name__ == '__main__':
     data = {}
     for framework in ['jit', 'rammer', 'rammer-s', 'tvm', 'trt', 'tvm-s', 'sparta']:
         time = 0
-        fpath = os.path.join('log', framework)
+        fpath = os.path.join('log', '{}.log'.format(framework))
         try:
             time = func_map[framework](fpath)
         except Exception as err:
