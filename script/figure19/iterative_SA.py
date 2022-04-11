@@ -224,9 +224,9 @@ def main(args):
     # used to save the performance of the original & pruned & finetuned models
     result = {'flops': {}, 'params': {}, 'performance':{}, 'time_mean':{}, 'time_std':{}}
 
-    flops, params = count_flops_params(model, get_input_size(args.dataset))
-    result['flops']['original'] = flops
-    result['params']['original'] = params
+    # flops, params = count_flops_params(model, get_input_size(args.dataset))
+    # result['flops']['original'] = flops
+    # result['params']['original'] = params
     evaluation_result = evaluator(model)
     print('Evaluation result (original model): %s' % evaluation_result)
     result['performance']['original'] = evaluation_result
@@ -252,7 +252,7 @@ def main(args):
         print(config_list)
         pruner = SimulatedAnnealingPruner(
             model, config_list, evaluator=evaluator, cool_down_rate=args.cool_down_rate, 
-            experiment_data_dir='./result', dependency_aware=args.constrained, dummy_input=dummy_input, aligned=args.aligned)
+            experiment_data_dir='./result', dummy_input=dummy_input, dependency_aware=args.constrained)
         model = pruner.compress()
         evaluation_result = evaluator(model)
         print('Evaluation result (masked model): %s' % evaluation_result)
@@ -335,11 +335,11 @@ if __name__ == '__main__':
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', type=str2bool, default=True,
                         help='For Saving the current Model')
-    parser.add_argument('--constrained', type=str2bool, default=False, help='if enable the constraint-aware pruner')
+    parser.add_argument('--constrained', type=str2bool, default=True, help='if enable the constraint-aware pruner')
     parser.add_argument('--lr', type=float, default=0.01, help='The learning rate for the finetuning')
     parser.add_argument('--lr_decay', type=str, default='multistep', help='lr_decay type')
     parser.add_argument('--parallel', default=False, type=str2bool, help='If use multiple gpu to finetune the model')
-    parser.add_argument('--aligned', default=8, type=int, help='The number of the pruned filter should be aligned with')
+    parser.add_argument('--aligned', default=1, type=int, help='The number of the pruned filter should be aligned with')
     parser.add_argument('--seed', default=2020, type=int, help='The random seed for torch and random module.')
     parser.add_argument('--n_iter', default=3, type=int, help='The number of pruning iteration')
     args = parser.parse_args()
