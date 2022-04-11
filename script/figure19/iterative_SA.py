@@ -17,12 +17,11 @@ from cifar_models.vgg import VGG
 from cifar_models.mobilenetv2 import MobileNetV2
 from cifar_models.resnet import ResNet18, ResNet50
 import nni
-from nni.compression.torch import L1FilterPruner, L2FilterPruner, FPGMPruner
 
-
-from nni.compression.torch import ModelSpeedup
-from nni.compression.torch.utils.counter import count_flops_params
-from nni.compression.torch.utils.shape_dependency import ChannelDependency
+from nni.algorithms.compression.pytorch.pruning import SimulatedAnnealingPruner, L1FilterPruner, L2FilterPruner, FPGMPruner
+from nni.compression.pytorch import ModelSpeedup
+from nni.compression.pytorch.utils.counter import count_flops_params
+from nni.compression.pytorch.utils.shape_dependency import ChannelDependency
 import random
 import time
 import numpy as np
@@ -349,7 +348,6 @@ if __name__ == '__main__':
 
     # hack the orignal L1FilterPruner
     dummy_input = get_dummy_input(args, 'cuda')
-    from nni.compression.torch import SimulatedAnnealingPruner, ADMMPruner, NetAdaptPruner, AutoCompressPruner, AMCPruner
     _main_start = time.time()
     main(args)
     _main_end = time.time()
