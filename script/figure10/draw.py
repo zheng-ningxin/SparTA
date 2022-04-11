@@ -265,7 +265,7 @@ def draw_figure10(data):
 
 if __name__ == '__main__':
     data = {}
-    for framework in ['jit', 'rammer', 'rammer-s', 'tvm', 'trt', 'tvm-s']:
+    for framework in ['jit', 'rammer', 'rammer-s', 'tvm', 'trt', 'tvm-s', 'sparta']:
         time = 0
         fpath = os.path.join('log', framework)
         try:
