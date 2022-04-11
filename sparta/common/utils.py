@@ -491,7 +491,7 @@ def generate_mobilenet_quantize_cfg(tesa_path, state_path, id_map_path, out_dir)
             scale_shift_d = generate_random(1, 'i', 0, 10)
             scale_shift_f = f"scale_shift_{tesaid}.bin"
             write_array(scale_shift_d, os.path.join(out_dir, scale_shift_f))
-            bias_data_d = generate_random(tesa[tesaid]['bias'].numel(), 'i', 0, 10)
+            bias_data_d = generate_random(tesa[tesaid]['weight'].size(0), 'i', 0, 10)
             bias_data_f = f"bias_{tesaid}.bin"
             write_array(bias_data_d, os.path.join(out_dir, bias_data_f))
             f.write(f"{tesaid} Quantize kernel_{tesaid} 8 8 {weight_f} {scale_integer_f} {scale_shift_f} {bias_data_f}\n")
