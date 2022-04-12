@@ -29,11 +29,19 @@
      }                                                                          \
  }
  
- constexpr int EXIT_UNSUPPORTED = 2;
- // for finegrained kernels
- int32_t * row_idx, *col_idx, *d_row_idx, *d_col_idx, *row_swizzle, *d_row_swizzle;
- int32_t row_idx_size, col_idx_size, values_size;
- float * values, *d_values;
+constexpr int EXIT_UNSUPPORTED = 2;
+// for finegrained kernels
+int32_t * row_idx, *col_idx, *d_row_idx, *d_col_idx, *row_swizzle, *d_row_swizzle;
+int32_t row_idx_size, col_idx_size, values_size;
+float * values, *d_values;
+constexpr int m     = 1024; // bigger sizes may require dynamic allocations
+constexpr int n     = 1024; // bigger sizes may require dynamic allocations
+constexpr int k     = 1024; // bigger sizes may require dynamic allocations
+float hA[m * k];
+float hA1[m * k];
+float hA2[m * k];
+float hB[k * n];
+float hC[m * n];
  void init(float * ptr, size_t length, float sparsity)
  {
      // lock the random seed for
@@ -136,9 +144,7 @@
      printf("Sparsity Ratio=%f\n", sparsity_ratio);
      int major_cc, minor_cc;
      // Host problem definition, row-major order
-     constexpr int m     = 1024; // bigger sizes may require dynamic allocations
-     constexpr int n     = 1024; // bigger sizes may require dynamic allocations
-     constexpr int k     = 1024; // bigger sizes may require dynamic allocations
+     
      auto          order = CUSPARSE_ORDER_ROW;
      auto          opA   = CUSPARSE_OPERATION_NON_TRANSPOSE;
      auto          opB   = CUSPARSE_OPERATION_NON_TRANSPOSE;
@@ -164,11 +170,7 @@
      auto     A_size         = A_height * lda * sizeof(float);
      auto     B_size         = B_height * ldb * sizeof(float);
      auto     C_size         = C_height * ldc * sizeof(float);
-     float hA[m * k];
-     float hA1[m * k];
-     float hA2[m * k];
-     float hB[k * n];
-     float hC[m * n] = {};
+
  
      init(hA, m*k, sparsity_ratio);
      init(hB, k*n, 0);
