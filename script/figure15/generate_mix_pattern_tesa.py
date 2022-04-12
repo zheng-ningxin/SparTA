@@ -176,7 +176,7 @@ def run_sputnik_kernel(sparsity):
     subprocess.check_output(compile_cmd, shell = True, universal_newlines=True, timeout=6000)
     latencys = []
     for i in range(2):
-        command = f'./sputnik {}> {output_file_name}'.format(sparsity)
+        command = f'./sputnik {sparsity}> {output_file_name}'
         #os.system('nvprof --unified-memory-profiling off ./{} 2> a_{}.txt'.format(Path(file_name).stem, file_name))
         #os.system(command)
         subprocess.check_output(command, shell = True, universal_newlines=True, timeout=6000)
