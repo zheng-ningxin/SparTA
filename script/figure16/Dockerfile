@@ -33,3 +33,8 @@ RUN wget https://repo.anaconda.com/archive/Anaconda3-2021.11-Linux-x86_64.sh && 
     bash Anaconda3-2021.11-Linux-x86_64.sh -b -p /root/anaconda && \
     eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda create -n artifact python=3.8 -y && \
     conda activate artifact && pip install torch==1.7.0 torchvision==0.8.0 matplotlib
+
+RUN echo 'export CUDA_HOME=/usr/local/cuda \n\
+export LD_LIBRARY_PATH=/root/libcusparse_lt/lib64:$LD_LIBRARY_PATH \n\
+source ~/anaconda/etc/profile.d/conda.sh \n\
+' >> /root/.bashrc
