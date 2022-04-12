@@ -1,7 +1,7 @@
 project(main_test)
 cmake_minimum_required(VERSION 3.5)
 
-SET(SRC "sputnik.cu" CACHE STRING "codegen source file")
+SET(SRC "nnfusion_rt.cu" CACHE STRING "codegen source file")
 SET(TARGET_NAME "nnfusion_naive_rt" CACHE STRING "codegen target name")
 SET(CUDA_ARCH "-gencode arch=compute_75,code=sm_75" CACHE STRING "target architecture")
 SET(SPUTNIK_ROOT "/root/sputnik")
@@ -48,13 +48,13 @@ target_link_libraries(${TARGET_NAME}
 cuda_add_executable(main_test main_test.cpp)   
 target_link_libraries(main_test ${TARGET_NAME}) 
 
-if(EXISTS "${CMAKE_BINARY_DIR}/Constant")
-else()
-add_custom_command(
-    TARGET ${TARGET_NAME}
-    POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/Constant ${CMAKE_BINARY_DIR}/Constant
-)
-endif()
+# if(EXISTS "${CMAKE_BINARY_DIR}/Constant")
+# else()
+# add_custom_command(
+#     TARGET ${TARGET_NAME}
+#     POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/Constant ${CMAKE_BINARY_DIR}/Constant
+# )
+# endif()
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 

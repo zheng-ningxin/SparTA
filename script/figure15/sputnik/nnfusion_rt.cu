@@ -32,6 +32,6 @@
         return EXIT_FAILURE;                                                   \
     }                                                                          \
 }
-extern "C" int kernel_entry(int m, int k, int n, int fine_nnz, int*d_row_swizzle, float*d_values, int*d_row_idx, int*d_col_idx, float* dB, float * dC, int beta){
-
+extern "C" int kernel_entry(int m, int k, int n, int nnz, int*d_row_swizzle, float*d_values, int*d_row_idx, int*d_col_idx, float* dB, float * dC, int beta){
+    CHECK_CUDA(sputnik::CudaSpmm(m, k, n, nnz, d_row_swizzle, d_values, d_row_idx, d_col_idx, dB, dC, 0);)
 }
