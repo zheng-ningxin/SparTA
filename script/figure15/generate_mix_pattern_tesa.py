@@ -3,6 +3,7 @@ import torch
 import random
 from numpy import array
 import subprocess
+import json
 
 def write_array(data, file_path, dtype="i"):
     array_data = array(data, dtype)
@@ -171,7 +172,7 @@ def run_sparta_kernel_int8():
     return avg_latency
 
 def run_sputnik_kernel(sparsity):
-    compile_cmd = 'nvcc -forward-unknown-to-host-compiler  -I/usr/local/cuda/include -I/root/sputnik  -L/usr/local/cuda/lib64  -L/usr/local/lib -lcudart -lspmm  --generate-code=arch=compute_75,code=sm_75 -std=c++14  sputnik.cu -o sputnik'
+    compile_cmd = 'nvcc -forward-unknown-to-host-compiler -I/usr/local/cuda/include -I/root/sputnik  -L/usr/local/cuda/lib64  -L/usr/local/lib -lcudart -lspmm  --generate-code=arch=compute_75,code=sm_75 -std=c++14  sputnik.cu -o sputnik'
     output_file_name = f"output_log.txt"
     subprocess.check_output(compile_cmd, shell = True, universal_newlines=True, timeout=6000)
     latencys = []
