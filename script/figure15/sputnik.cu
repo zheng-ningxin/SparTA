@@ -138,31 +138,7 @@ int main(int argc, char*argv[]) {
     constexpr int m     = 1024; // bigger sizes may require dynamic allocations
     constexpr int n     = 1024; // bigger sizes may require dynamic allocations
     constexpr int k     = 1024; // bigger sizes may require dynamic allocations
-    auto          order = CUSPARSE_ORDER_ROW;
-    auto          opA   = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    auto          opB   = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    auto          type  = CUDA_R_32F;
-    auto          compute_type = CUSPARSE_COMPUTE_TF32;
 
-    bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
-    bool     isA_transposed = (opA != CUSPARSE_OPERATION_NON_TRANSPOSE);
-    bool     isB_transposed = (opB != CUSPARSE_OPERATION_NON_TRANSPOSE);
-    auto     num_A_rows     = (isA_transposed) ? k : m;
-    auto     num_A_cols     = (isA_transposed) ? m : k;
-    auto     num_B_rows     = (isB_transposed) ? n : k;
-    auto     num_B_cols     = (isB_transposed) ? k : n;
-    auto     num_C_rows     = m;
-    auto     num_C_cols     = n;
-    unsigned alignment      = 16;
-    auto     lda            = (is_rowmajor) ? num_A_cols : num_A_rows;
-    auto     ldb            = (is_rowmajor) ? num_B_cols : num_B_rows;
-    auto     ldc            = (is_rowmajor) ? num_C_cols : num_C_rows;
-    auto     A_height       = (is_rowmajor) ? num_A_rows : num_A_cols;
-    auto     B_height       = (is_rowmajor) ? num_B_rows : num_B_cols;
-    auto     C_height       = (is_rowmajor) ? num_C_rows : num_C_cols;
-    auto     A_size         = A_height * lda * sizeof(float);
-    auto     B_size         = B_height * ldb * sizeof(float);
-    auto     C_size         = C_height * ldc * sizeof(float);
     float hA[m * k];
     float hB[k * n];
     float hC[m * n] = {};
@@ -218,48 +194,11 @@ int main(int argc, char*argv[]) {
     //CHECK_CUDA( cudaMemcpy(hA, dA, A_size, cudaMemcpyDeviceToHost) )
     CHECK_CUDA( cudaMemcpy(hC, dC, C_size, cudaMemcpyDeviceToHost) )
 
-    bool A_std_layout = (is_rowmajor != isA_transposed);
-    bool B_std_layout = (is_rowmajor != isB_transposed);
-    // host computation
-    float hC_result[m * n];
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            float sum  = 0.0f;
-            for (int k1 = 0; k1 < k; k1++) {
-                auto posA = (A_std_layout) ? i * lda + k1 : i + k1 * lda;
-                auto posB = (B_std_layout) ? k1 * ldb + j : k1 + j * ldb;
-                sum      += static_cast<float>(hA[posA]) *  // [i][k]
-                            static_cast<float>(hB[posB]);   // [k][j]
-            }
-            auto posC       = (is_rowmajor) ? i * ldc + j : i + j * ldc;
-            //printf("sum:%f \n",sum);
-        hC_result[posC] = sum;  // [i][j]
-        }
-    }
-    // host-device comparison
-    int correct = 1;
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            auto pos          = (is_rowmajor) ? i * ldc + j : i + j * ldc;
-            auto device_value = static_cast<float>(hC[pos]);
-            auto host_value   = hC_result[pos];
-            if (fabs(device_value - host_value)/host_value>1e-3) {
-                // direct floating point comparison is not reliable
-                std::printf("(%d, %d):\t%f vs. %f\n",
-                            i, j, host_value, device_value);
-                correct = 0;
-                break;
-            }
-        }
-    }
-    if (correct)
-        std::printf("spmma_example test PASSED\n");
-    else
-        std::printf("spmma_example test FAILED: wrong result\n");
+  
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dA) )
     CHECK_CUDA( cudaFree(dB) )
     CHECK_CUDA( cudaFree(dC) )
-    return EXIT_SUCCESS;
+    return 0;
 }
