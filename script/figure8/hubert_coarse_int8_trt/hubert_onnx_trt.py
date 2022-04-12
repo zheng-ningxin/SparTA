@@ -79,7 +79,7 @@ def build_engine(model_file, calib, batch_size=32):
         # Attention that, builder should be set to 1 because of the implementation of allocate_buffer
         builder.max_batch_size = 1
         # builder.max_workspace_size = common.GiB(1)
-        trt_config.max_workspace_size = common.GiB(1000)
+        trt_config.max_workspace_size = common.GiB(4)
 
 
         #builder.int8_mode = True
