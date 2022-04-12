@@ -201,6 +201,7 @@ def main():
         result['openai'].append(openai_latency)
         result['sparta'].append(sparta_latency)
         result['sparta_int8'].append(sparta_int8_latency)
+        result['sputnik'].append(spunik_latency)
     with open('raw_data.json', 'w') as f:
         json.dump(result, f)
 
