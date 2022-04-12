@@ -60,8 +60,14 @@ RUN eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifac
     cd build && cmake .. && make -j4 &&  \
     pip install decorator
 
+RUN git clone https://github.com/tensor-compiler/taco.git && cd taco && git checkout oopsla2020 && \
+    mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -DCUDA=ON .. && \
+    make -j8 
+
 # configure the bashrc
 RUN echo 'export NNFUSION_HOME=/root/nnfusion \n\
+export TACO_HOME=/root/taco \n\
+export PATH=$PATH:$TACO_HOME/build/bin \n\
 export PYTHONPATH=/root/tvm/python:$PYTHONPATH \n\
 export PATH=$NNFUSION_HOME/build/src/tools/nnfusion:$PATH \n\
 export CUDA_HOME=/usr/local/cuda \n\
