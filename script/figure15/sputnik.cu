@@ -33,6 +33,15 @@ constexpr int EXIT_UNSUPPORTED = 2;
 int32_t * row_idx, *col_idx, *d_row_idx, *d_col_idx, *row_swizzle, *d_row_swizzle;
 int32_t row_idx_size, col_idx_size, values_size;
 float * values, *d_values;
+constexpr int m     = 1024; // bigger sizes may require dynamic allocations
+constexpr int n     = 1024; // bigger sizes may require dynamic allocations
+constexpr int k     = 1024; // bigger sizes may require dynamic allocations
+int A_size = m*k*sizeof(float);
+int B_size = k*n*sizeof(float);
+int C_size = m*n*sizeof(float);
+float hA[m * k];
+float hB[k * n];
+float hC[m * n];
 void init(float * ptr, size_t length, float sparsity)
 {
     // lock the random seed for
@@ -135,15 +144,7 @@ int main(int argc, char*argv[]) {
     printf("Sparsity Ratio=%f\n", sparsity_ratio);
     int major_cc, minor_cc;
     // Host problem definition, row-major order
-    constexpr int m     = 1024; // bigger sizes may require dynamic allocations
-    constexpr int n     = 1024; // bigger sizes may require dynamic allocations
-    constexpr int k     = 1024; // bigger sizes may require dynamic allocations
-    int A_size = m*k*sizeof(float);
-    int B_size = k*n*sizeof(float);
-    int C_size = m*n*sizeof(float);
-    float hA[m * k];
-    float hB[k * n];
-    float hC[m * n] = {};
+
 
     init(hA, m*k, sparsity_ratio);
     init(hB, k*n, 0);
