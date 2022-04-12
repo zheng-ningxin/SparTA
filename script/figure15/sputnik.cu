@@ -138,7 +138,9 @@ int main(int argc, char*argv[]) {
     constexpr int m     = 1024; // bigger sizes may require dynamic allocations
     constexpr int n     = 1024; // bigger sizes may require dynamic allocations
     constexpr int k     = 1024; // bigger sizes may require dynamic allocations
-
+    int A_size = m*k*sizeof(float);
+    int B_size = k*n*sizeof(float);
+    int C_size = m*n*sizeof(float);
     float hA[m * k];
     float hB[k * n];
     float hC[m * n] = {};
