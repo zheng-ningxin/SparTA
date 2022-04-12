@@ -40,6 +40,9 @@ from nni.compression.pytorch.utils.bert_compression_utils import BertCompressMod
 from bert_utils import *
 from nni.algorithms.compression.pytorch.pruning import TransformerHeadPruner
 from sparta.common.utils import export_tesa
+from shape_hook import ShapeHook
+import copy
+
 device = torch.device('cpu')
 config = torch.load('Coarse_bert_config')
 dummy_input = torch.load('dummy_input.pth', map_location=device)
@@ -54,5 +57,7 @@ mask_file = 'checkpoints/coarsegrained/coarse_baseline_mask.pth'
 
 ori_mask =  torch.load(mask_file)
 
-
+tmp_model = copy.deepcopy(norm_model.cpu())
 export_tesa(norm_model.cpu(), data, 'artifact_bert_coarse_no_propagation_onnx_with_tesa', ori_mask)
+sh = ShapeHook(tmp_model, data)
+sh.export('artifact_bert_coarse_no_propagation_onnx_with_tesa/shape.json')
