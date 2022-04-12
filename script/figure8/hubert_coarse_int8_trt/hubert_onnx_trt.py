@@ -21,7 +21,7 @@ Precision_Dict = {
 
 
 class BertCalibrator(trt.IInt8Calibrator):
-    def __init__(self, training_data, cache_file="bert.cache", batch_size=64, algorithm=trt.CalibrationAlgoType.ENTROPY_CALIBRATION_2):
+    def __init__(self, training_data, cache_file="hubert.cache", batch_size=64, algorithm=trt.CalibrationAlgoType.ENTROPY_CALIBRATION_2):
         trt.IInt8Calibrator.__init__(self)
 
         self.algorithm = algorithm
