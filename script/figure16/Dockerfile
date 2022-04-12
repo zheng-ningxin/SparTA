@@ -19,7 +19,7 @@ RUN apt-get install -y software-properties-common && \
 # Set the working directory.
 WORKDIR /root
 # install cusparseLT
-RUN wget https://developer.download.nvidia.com/compute/libcusparse-lt/0.2.0/local_installers/libcusparse_lt-linux-x86_64-0.2.0.1.tar.gz && 
+RUN wget https://developer.download.nvidia.com/compute/libcusparse-lt/0.2.0/local_installers/libcusparse_lt-linux-x86_64-0.2.0.1.tar.gz && \
     tar xzvf libcusparse_lt-linux-x86_64-0.2.0.1.tar.gz
 
 # install sputnik
