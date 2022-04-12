@@ -6,7 +6,7 @@ nvcc openai_blocksparse.cu -o openai_blocksparse
 nvcc -lcublas -o cublas cublas.cu
 sparsity_ratio=(0.5 0.6 0.7 0.8 0.9)
 mkdir -p log
-for sparsity in ${sparsity_ratio[@]}:
+for sparsity in ${sparsity_ratio[@]}
 do
     echo $sparsity
     ./cublas $sparsity > log/cublas_${sparsity}.log
@@ -14,3 +14,4 @@ do
     ./sputnik $sparsity > log/sputnik_${sparsity}.log
     ./sparta $sparsity > log/sparta_${sparsity}.log
 done
+python draw.py
