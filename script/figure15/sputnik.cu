@@ -1,5 +1,4 @@
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
-#include <cusparseLt.h>       // cusparseLt header
 #include <cstdio>             // printf
 #include <cstdlib>            // std::rand
 #include "sputnik/cuda_utils.h"
