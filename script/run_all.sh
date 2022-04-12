@@ -22,7 +22,18 @@ pushd figure10
 bash run.sh
 popd
 
-echo "reproduceing figure13"
+echo "reproducing figure13"
 pushd figure13
+bash run.sh
+popd
+
+echo "reproducing figure15"
+pushd figure15
+bash run.sh
+popd
+
+
+echo "reproducing figure19"
+pushd figure19
 bash run.sh
 popd
