@@ -280,3 +280,4 @@ popd
 # /bin/bash run.sh > ${cur_dir}/log/hubert_finegrained_sparta.log
 # popd
 
+python analyze_log.py
