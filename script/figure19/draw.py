@@ -43,7 +43,7 @@ plt.fill_between(x, baseline, zeros, where=baseline >
 # plt.fill_between(x, marlin, baseline, where=marlin>0, color='g', alpha=0.3)
 plt.xlabel('Training Epoch', fontsize=14)
 plt.ylabel('Training Time\nPer Epoch(s)', fontsize=14)
-plt.ylim(30, 75)
+plt.ylim(min(marlin)-10, max(baseline)+10)
 plt.xlim(0, max(x))
 plt.xticks(list(range(0, max(x), 200)), list(range(0, max(x), 200)), fontsize=14)
 plt.plot((300, 300), (0, 75), linestyle='--', color='black')

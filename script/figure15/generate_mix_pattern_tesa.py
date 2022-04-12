@@ -122,13 +122,13 @@ def get_kernel_run_time(file_name):
 def run_openai_kernel():
     compile_cmd = "nvcc -gencode arch=compute_75,code=sm_75 -o openai_blocksparse openai_blocksparse.cu"
     output_file_name = f"output_log.txt"
-    subprocess.check_output(compile_cmd, shell = True, universal_newlines=True, timeout=600)
+    subprocess.check_output(compile_cmd, shell = True, universal_newlines=True, timeout=6000)
     latencys = []
     for i in range(2):
         command = f'./openai_blocksparse > {output_file_name}'
         #os.system('nvprof --unified-memory-profiling off ./{} 2> a_{}.txt'.format(Path(file_name).stem, file_name))
         #os.system(command)
-        subprocess.check_output(command, shell = True, universal_newlines=True, timeout=600)
+        subprocess.check_output(command, shell = True, universal_newlines=True, timeout=6000)
 
         if i == 0:
             continue
@@ -139,13 +139,13 @@ def run_openai_kernel():
 def run_sparta_kernel():
     compile_cmd = "nvcc -gencode arch=compute_75,code=sm_75 -o sparta_kernel sparta_kernel.cu"
     output_file_name = f"output_log.txt"
-    subprocess.check_output(compile_cmd, shell = True, universal_newlines=True, timeout=600)
+    subprocess.check_output(compile_cmd, shell = True, universal_newlines=True, timeout=6000)
     latencys = []
     for i in range(2):
         command = f'./sparta_kernel > {output_file_name}'
         #os.system('nvprof --unified-memory-profiling off ./{} 2> a_{}.txt'.format(Path(file_name).stem, file_name))
         #os.system(command)
-        subprocess.check_output(command, shell = True, universal_newlines=True, timeout=600)
+        subprocess.check_output(command, shell = True, universal_newlines=True, timeout=6000)
 
         if i == 0:
             continue
@@ -156,13 +156,13 @@ def run_sparta_kernel():
 def run_sparta_kernel_int8():
     compile_cmd = "nvcc -gencode arch=compute_75,code=sm_75 -o sparta_kernel_int8 sparta_kernel_int8.cu"
     output_file_name = f"output_log.txt"
-    subprocess.check_output(compile_cmd, shell = True, universal_newlines=True, timeout=600)
+    subprocess.check_output(compile_cmd, shell = True, universal_newlines=True, timeout=6000)
     latencys = []
     for i in range(2):
         command = f'./sparta_kernel_int8 > {output_file_name}'
         #os.system('nvprof --unified-memory-profiling off ./{} 2> a_{}.txt'.format(Path(file_name).stem, file_name))
         #os.system(command)
-        subprocess.check_output(command, shell = True, universal_newlines=True, timeout=600)
+        subprocess.check_output(command, shell = True, universal_newlines=True, timeout=6000)
 
         if i == 0:
             continue
@@ -170,19 +170,38 @@ def run_sparta_kernel_int8():
     avg_latency = sum(latencys) / len(latencys)
     return avg_latency
 
+def run_sputnik_kernel(sparsity):
+    compile_cmd = 'nvcc -forward-unknown-to-host-compiler  -I/usr/local/cuda/include -I/root/sputnik  -L/usr/local/cuda/lib64  -L/usr/local/lib -lcudart -lspmm  --generate-code=arch=compute_75,code=sm_75 -std=c++14  sputnik.cu -o sputnik'
+    output_file_name = f"output_log.txt"
+    subprocess.check_output(compile_cmd, shell = True, universal_newlines=True, timeout=6000)
+    latencys = []
+    for i in range(2):
+        command = f'./sputnik {}> {output_file_name}'.format(sparsity)
+        #os.system('nvprof --unified-memory-profiling off ./{} 2> a_{}.txt'.format(Path(file_name).stem, file_name))
+        #os.system(command)
+        subprocess.check_output(command, shell = True, universal_newlines=True, timeout=6000)
+
+        if i == 0:
+            # warmup
+            continue
+        latencys.append(get_kernel_run_time('{}'.format(output_file_name)))
+    avg_latency = sum(latencys) / len(latencys)
+    return avg_latency
 def main():
     sparsity_list = [0.7, 0.8, 0.9]
-    result = {'sparta': [], 'openai': [], 'sparta_int8': []}
+    result = {'sparta': [], 'openai': [], 'sparta_int8': [], 'sputnik':[]}
     for sparsity in sparsity_list:
         bcsr_generate(sparsity)
         openai_latency = run_openai_kernel()
         sparta_latency = run_sparta_kernel()
+        spunik_latency = run_sputnik_kernel(sparsity)
         bcsr_generate_int8(sparsity)
         sparta_int8_latency = run_sparta_kernel_int8()
         result['openai'].append(openai_latency)
         result['sparta'].append(sparta_latency)
         result['sparta_int8'].append(sparta_int8_latency)
-    import ipdb; ipdb.set_trace()
+    with open('raw_data.json', 'w') as f:
+        json.dump(result, f)
 
 main()
 #bcsr_generate_int8(0.9)
