@@ -27,3 +27,9 @@ RUN git clone --recurse-submodules https://github.com/zheng-ningxin/sputnik.git 
     cd sputnik && mkdir build && cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TEST=ON -DBUILD_BENCHMARK=ON -DCUDA_ARCHS="70;75" && \
     make -j && cp sputnik/libspmm.so /usr/local/lib/ && cp -r /root/sputnik/third_party/abseil-cpp/absl /usr/local/include/
+
+# install anaconda
+RUN wget https://repo.anaconda.com/archive/Anaconda3-2021.11-Linux-x86_64.sh && \
+    bash Anaconda3-2021.11-Linux-x86_64.sh -b -p /root/anaconda && \
+    eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda create -n artifact python=3.8 -y && \
+    conda activate artifact && pip install torch==1.7.0 torchvision==0.8.0 matplotlib
