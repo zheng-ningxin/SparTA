@@ -1,9 +1,12 @@
 Steps to run
+# Steps to run the experiments of 2080Ti
 
+```
+# install the sparta
 git clone https://github.com/zheng-ningxin/SparTA.git
 conda activate artifact 
 cd SparTA && python setup.py develop
-
+```
 # for all
 bash init_env.sh
 # for table 4
