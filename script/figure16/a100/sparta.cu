@@ -313,7 +313,7 @@ float hC[m * n];
      cudaEventRecord(stop);
      cudaEventSynchronize(stop);
      cudaEventElapsedTime(&ms_total, start, stop);
-     printf("Timecost: %f ms\n",ms_total/n_iter);
+     printf("Time= %f ms\n",ms_total/n_iter);
      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
      // destroy plan and handle
      CHECK_CUSPARSE( cusparseLtMatDescriptorDestroy(&matA) )
