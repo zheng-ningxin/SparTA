@@ -61,7 +61,7 @@ RUN eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda activate artifac
     pip install decorator
 
 # install taco
-RUN export PATH=/usr/local/cuda/bin:$PATH && export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH && export LIBRARY_PATH=/usr/local/cuda/lib64:$LIBRARY_PATH && git clone https://github.com/tensor-compiler/taco.git && cd taco && git checkout oopsla2020 && \
+RUN export PATH=/usr/local/cuda/bin:$PATH && export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH && export LIBRARY_PATH=/usr/local/cuda/lib64:$LIBRARY_PATH && git clone https://github.com/QuanluZhang/taco.git && cd taco && git checkout artifact && \
     mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -DCUDA=ON .. && \
     make -j8
 
