@@ -2,6 +2,10 @@
 # Steps to run the experiments of 2080Ti
 ## Initialization
 ```
+build the docker file
+sudo docker run -it -v /data/znx/:/znx --gpus all --shm-size 16G zhengningxin/artifact9
+```
+```
 # get the checkpoints
 wget xxxxxxxxxxxxxx
 # install the sparta

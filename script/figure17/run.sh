@@ -19,3 +19,5 @@ taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU90"
 taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU50"
 taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU50"
 mv taco_latency.txt log/
+
+python draw.py
