@@ -350,7 +350,6 @@ if __name__ == '__main__':
     # os.makedirs('artifact_hubert_coarse_onnx_with_tesa', exist_ok=True)
     # sh.export('artifact_hubert_coarse_onnx_with_tesa/shape.json')
     # import ipdb; ipdb.set_trace()
-    export_tesa(model, data[:1], 'artifact_hubert_coarse_onnx_with_tesa')
 
     if training_args.do_eval:
         if data_args.max_eval_samples is not None:
@@ -393,3 +392,4 @@ if __name__ == '__main__':
         trainer.save_metrics("eval", metrics)
         print('Accuracy:', metrics)
     # import ipdb; ipdb.set_trace
+    export_tesa(model.cpu(), data[:1], 'artifact_hubert_coarse_onnx_with_tesa')
