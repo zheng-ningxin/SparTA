@@ -391,5 +391,5 @@ if __name__ == '__main__':
         metrics = trainer.evaluate()
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
-
+        print('Accuracy:', metrics)
     # import ipdb; ipdb.set_trace

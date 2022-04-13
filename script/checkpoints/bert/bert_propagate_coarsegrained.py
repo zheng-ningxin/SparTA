@@ -70,7 +70,7 @@ pruner= apply_mask(norm_model, propagated_mask)
 acc = evaluate(norm_model.cuda(), token)
 # train_dataset = load_and_cache_examples("qqp", token, evaluate=False)
 # train(train_dataset, norm_model, token, num_train_epochs=100)
-print(acc)
+print('Accuracy:', acc)
 print('Propagate done')
 
 # import ipdb; ipdb.set_trace()

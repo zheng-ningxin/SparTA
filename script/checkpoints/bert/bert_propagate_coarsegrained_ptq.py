@@ -144,6 +144,10 @@ norm_model.to(device)
 calibration(norm_model, device, test_dataloader)
 quantizer.compress()
 
+for name, module in norm_model.named_modules():
+    if name in propagated_mask:
+        module.module.old_weight.data = module.module.old_weight.data * propagated_mask[name]['weight'].cuda()
+
 acc_quant = evaluate(norm_model, token)
 
 import ipdb; ipdb.set_trace()

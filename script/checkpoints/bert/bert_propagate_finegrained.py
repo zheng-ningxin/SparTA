@@ -62,7 +62,7 @@ for name in propagated_mask:
         assert(hasattr(module,key + '_mask'))
         setattr(module, key+'_mask', propagated_mask[name][key].cuda())
 norm_model.load_state_dict(torch.load('checkpoints/finegrained/propagated_withmask.pth'))
-print(evaluate(norm_model, token))
+print('Accuracy:', evaluate(norm_model, token))
 pruner._unwrap_model()
 # import ipdb; ipdb.set_trace()
 tmp_model = copy.deepcopy(norm_model.cpu())

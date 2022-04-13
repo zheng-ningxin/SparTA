@@ -380,11 +380,11 @@ if __name__ == '__main__':
     # apply_mask(model, propagated_mask, device)
     # Evaluation
     # import ipdb; ipdb.set_trace()
-    # if training_args.do_eval:
-    #     metrics = trainer.evaluate()
-    #     trainer.log_metrics("eval", metrics)
-    #     trainer.save_metrics("eval", metrics)
-    
+    if training_args.do_eval:
+        metrics = trainer.evaluate()
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
+        print('Accuracy:', metrics)
     # tmp_model = copy.deepcopy(model)
     os.makedirs('artifact_hubert_finegrained_onnx_with_tesa', exist_ok=True)
     sh = ShapeHook(model, data[:1])

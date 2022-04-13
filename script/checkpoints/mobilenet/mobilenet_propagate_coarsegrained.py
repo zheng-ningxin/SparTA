@@ -21,7 +21,7 @@ test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 # sh =  ShapeHook(m, torch.rand(32, 3, 224, 224))
 # sh.export('mobilenet_coarse_shape.json')
 # exit(0)
-print(run_eval(m.cuda(), test_dataloader, device))
+print('Accuracy:', run_eval(m.cuda(), test_dataloader, device))
 print('Propagation done')
 
 export_tesa(m.cuda(), torch.rand(32,3,224,224).cuda(), 'artifact_mobilenet_coarse_onnx_with_tesa')
