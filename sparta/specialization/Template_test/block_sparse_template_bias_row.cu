@@ -233,21 +233,18 @@ __global__ void BLOCK_SPARSE_MATMUL(float* A, float* W_val, int* W_row, int* W_c
         int tile_idx = W_col[tile_block_idx] * BLOCK_SIZE_K;
         #pragma unroll
         for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
-            FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
-                FETCH_FLOAT4(A[OFFSET(by*BLOCK_SIZE_M+k+A_BLOCK_ROW_START, tile_idx+A_BLOCK_COL_START, K)]);
+            *((float4 *)(&As[(k+A_BLOCK_ROW_START) * BLOCK_SIZE_K + A_BLOCK_COL_START])) =
+                *((float4 *)(&A[(by*BLOCK_SIZE_M+k+A_BLOCK_ROW_START) * K + tile_idx+A_BLOCK_COL_START]));
+            //FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
+                //FETCH_FLOAT4(A[OFFSET(by*BLOCK_SIZE_M+k+A_BLOCK_ROW_START, tile_idx+A_BLOCK_COL_START, K)]);
         }
-        /*
-        for(int k = 0; k < BLOCK_SIZE_K; k += A_TILE_ROW_STRIDE){
-            FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_M)]) = 
-                FETCH_FLOAT4(A[OFFSET(tile_idx+k+A_BLOCK_ROW_START, by*BLOCK_SIZE_M+A_BLOCK_COL_START, M)]);
-        }
-        */
 
         #pragma unroll
         for(int k = 0; k < BLOCK_SIZE_K; k += B_TILE_ROW_STRIDE){
-            FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BLOCK_SIZE_N)]) = 
-                FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_N + B_BLOCK_COL_START]);
-                // FETCH_FLOAT4(B[OFFSET(tile_idx+k+B_BLOCK_ROW_START, bx*BLOCK_SIZE_N+B_BLOCK_COL_START, N)]);
+            *((float4 *)(&Bs[(k+B_BLOCK_ROW_START) * BLOCK_SIZE_N + B_BLOCK_COL_START])) =
+                *((float4 *)(&W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_N + B_BLOCK_COL_START]));
+            //FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BLOCK_SIZE_N)]) = 
+                //FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_N + B_BLOCK_COL_START]);
         }
 
         __syncthreads();
@@ -258,8 +255,8 @@ __global__ void BLOCK_SPARSE_MATMUL(float* A, float* W_val, int* W_row, int* W_c
             for(int i = 0; i < THREAD_SIZE_K; i++){
                 #pragma unroll
                 for(int j = 0; j < THREAD_SIZE_M; j += 1){
-                    a_frag[j][i] = As[OFFSET(ty + vBLOCK_SIZE_M * j, k+i, BLOCK_SIZE_K)];
-                    //a_frag[j][i] = As[OFFSET(k+i, ty + vBLOCK_SIZE_M * j, BLOCK_SIZE_M)];
+                    a_frag[j][i] = As[(ty + vBLOCK_SIZE_M * j) * BLOCK_SIZE_K + k + i];
+                    //a_frag[j][i] = As[OFFSET(ty + vBLOCK_SIZE_M * j, k+i, BLOCK_SIZE_K)];
                 }
             }
 
@@ -267,7 +264,8 @@ __global__ void BLOCK_SPARSE_MATMUL(float* A, float* W_val, int* W_row, int* W_c
             for(int i = 0; i < THREAD_SIZE_K; i++){
                 #pragma unroll
                 for(int j = 0; j < THREAD_SIZE_N; j += 1){
-                    b_frag[j][i] = Bs[OFFSET(k+i, tx + vBLOCK_SIZE_N * j, BLOCK_SIZE_N)];
+                    b_frag[j][i] = Bs[(k+i) * BLOCK_SIZE_N + tx + vBLOCK_SIZE_N * j];
+                    //b_frag[j][i] = Bs[OFFSET(k+i, tx + vBLOCK_SIZE_N * j, BLOCK_SIZE_N)];
                 }
             }
 
@@ -296,11 +294,14 @@ __global__ void BLOCK_SPARSE_MATMUL(float* A, float* W_val, int* W_row, int* W_c
     for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
         #pragma unroll
         for(int thread_y = 0; thread_y < THREAD_SIZE_M; thread_y+=1){
+            C[(BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M) * N + BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N] = (accum[thread_x][thread_y]) + bias_local[thread_x];
+            /*
             C[OFFSET(
                 BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
                 BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
                 N
             )] = (accum[thread_x][thread_y]) + bias_local[thread_x];
+            */
         }
     }
 }

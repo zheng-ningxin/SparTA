@@ -1,4 +1,21 @@
-
+/*
+fp32 Block sparse Template for gemm
+layout:
+    A:row major
+    B:row major
+    C:row major
+shape parameter(matmul.shape = [m, k, n]):
+    M_VALUE: m
+    K_VALUE: k
+    N_VALUE: n
+tuning parameter:
+    BLOCK_SIZE_M: [32, 64, 128]
+    BLOCK_SIZE_K: [8, 16, 32]
+    BLOCK_SIZE_N: [32, 64, 128]
+    THREAD_SIZE_M: [2, 4, 8]
+    THREAD_SIZE_K: [1, 2, 4]
+    THREAD_SIZE_N: [2, 4, 8]
+*/
 
 
 __global__ void BLOCK_SPARSE_MATMUL(float* input0, float* input1,float* input2, float* input3, float* input4, float *output0){
@@ -9,9 +26,9 @@ __global__ void BLOCK_SPARSE_MATMUL(float* input0, float* input1,float* input2, 
     const int THREAD_SIZE_M=THREAD_SIZE_M_VALUE;
     const int THREAD_SIZE_K=THREAD_SIZE_K_VALUE;
     const int THREAD_SIZE_N=THREAD_SIZE_N_VALUE;
-    const int M=M_VALUE;
-    const int N=N_VALUE;
-    const int K=K_VALUE;
+    const int M=M_GLOBAL_VALUE;
+    const int N=N_GLOBAL_VALUE;
+    const int K=K_GLOBAL_VALUE;
     float * A = reinterpret_cast<float*>(input0);
     float * W_val = reinterpret_cast<float*>(input1);
     int * W_row = reinterpret_cast<int*>(input2);

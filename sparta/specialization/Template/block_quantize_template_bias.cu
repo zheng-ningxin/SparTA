@@ -1,8 +1,26 @@
+/*
+int8 Block sparse Template for gemm
+shape parameter:
+matmul.shape = [m, k, n]
+    M_GLOBAL_VALUE: m
+    K_GLOBAL_VALUE: k
+    N_GLOBAL_VALUE: n
+tuning parameter:
+    CHUNK_K: [1, 2, 4, 6, 8]
+    BLOCK_ROW_WARPS: [1, 2, 3, 4]
+    BLOCK_COL_WARPS: [1, 2, 3, 4]
+    WARP_ROW_TILES: [1, 2, 3, 4]
+    WARP_COL_TILES: [1, 2, 3, 4]
+relationship of tuning parameter and tile size:
+    BLOCK_SIZE_K = CHUNK_K * 16
+    BLOCK_SIZE_M = BLOCK_COL_WARPS * WARP_COL_TILES * 16
+    BLOCK_SIZE_N = BLOCK_ROW_WARPS * WARP_ROW_TILES * 16
+*/
 extern "C" __global__ void MatrixMulCUDA_8bit_bias(float *input0, float *input1, float *input2, float *input3, float *input4, float *input5, float * input6, float *output0) 
 {
-    const unsigned int M_GLOBAL=M_VALUE;
-    const unsigned int K_GLOBAL=K_VALUE;
-    const unsigned int N_GLOBAL=N_VALUE;
+    const unsigned int M_GLOBAL=M_GLOBAL_VALUE;
+    const unsigned int K_GLOBAL=K_GLOBAL_VALUE;
+    const unsigned int N_GLOBAL=N_GLOBAL_VALUE;
     // const parameters
     const unsigned int  WARP_SIZE=32;
     const unsigned int  M=16;
