@@ -31,6 +31,7 @@ for framework in ['cusparse', 'sputnik', 'cublas']:
         log_data[framework][sparsity] = run_time
 with open('log/taco_latency.txt', 'r') as f:
     lines = f.readlines()
+    log_data['taco'] = {}
     for i, sparsity in enumerate(['0.5', '0.7', '0.8', '0.9', '0.95', '0.99']):
         tmp = re.split(' ', lines[i])
         log_data['taco'][sparsity] = float(tmp[1])

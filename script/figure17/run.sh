@@ -12,12 +12,13 @@ do
     ./cublas ${sparsity} > log/cublas_${sparsity}.log
 done
 # taco
+rm taco_latency.txt
 taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU50"
 taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU70"
 taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU80"
 taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU90"
-taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU50"
-taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU50"
+taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU95"
+taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU99"
 mv taco_latency.txt log/
 
 python draw.py
