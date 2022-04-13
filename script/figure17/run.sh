@@ -7,5 +7,13 @@ mkdir log
 for sparsity in 0.5 0.7 0.8 0.9 0.95 0.99
 do
     echo $sparsity
-    
+    ./cusparse ${sparsity} > log/cusparse_${sparsity}.log
+    ./sputnik ${sparsity} > log/sputnik_${sparsity}.log
 done
+# taco
+taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU50"
+taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU70"
+taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU80"
+taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU90"
+taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU50"
+taco-test --gtest_filter="scheduling_eval.spmmDCSRGPU50"
