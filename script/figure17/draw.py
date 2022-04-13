@@ -20,7 +20,7 @@ def get_time_1(fpath):
         else:
             run_time = float(line.split()[-2])
             break
-    return run_time
+    return run_time*1000 # convert to us
 
 log_data = {}
 for framework in ['cusparse', 'sputnik', 'cublas']:
