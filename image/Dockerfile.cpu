@@ -25,7 +25,7 @@ WORKDIR /root
 RUN wget https://repo.anaconda.com/archive/Anaconda3-2021.11-Linux-x86_64.sh && \
     bash Anaconda3-2021.11-Linux-x86_64.sh -b -p /root/anaconda && \
     eval "$(/root/anaconda/bin/conda shell.bash hook)" && conda create -n artifact python=3.8 -y && \
-    conda activate artifact && pip install torch==1.7.0 torchvision==0.8.0 && conda install openvino-ie4py-ubuntu18 -c intel
+    conda activate artifact && pip install torch==1.7.0 torchvision==0.8.0
 
 # install nnfusion
 RUN git clone https://github.com/zheng-ningxin/nnfusion.git && cd nnfusion && git checkout hubert_antares && \
