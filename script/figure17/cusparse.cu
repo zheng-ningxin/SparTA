@@ -214,7 +214,7 @@ int main(int argc, char *argv[]){
     checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
 
     float msecPerMatrixMul = msecTotal / nIter;
-    printf("cusparse spmm Time= %f msec\n", msecPerMatrixMul);
+    printf("Time= %f msec\n", msecPerMatrixMul);
 
 
 
