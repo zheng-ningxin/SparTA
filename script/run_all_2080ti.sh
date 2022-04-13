@@ -1,7 +1,4 @@
 # init the environment
-echo "init_env.sh"
-bash init_env.sh
-sleep 5s
 
 echo "Get the propagated mask/cks"
 bash init_checkpoints.sh

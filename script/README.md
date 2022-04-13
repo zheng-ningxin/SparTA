@@ -3,7 +3,7 @@
 ## Initialization
 ```
 build the docker file
-sudo docker run -it -v /data/znx/:/znx --gpus all --shm-size 16G zhengningxin/artifact9
+sudo docker run -it -v /data/znx/:/data --gpus all --shm-size 16G zhengningxin/artifact10
 ```
 ```
 # get the checkpoints
@@ -12,6 +12,7 @@ wget xxxxxxxxxxxxxx
 git clone https://github.com/zheng-ningxin/SparTA.git
 conda activate artifact
 cd SparTA && python setup.py develop
+cd script && bash init_env.sh
 ```
 
 # for all
