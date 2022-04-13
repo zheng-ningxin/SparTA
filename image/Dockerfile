@@ -65,6 +65,9 @@ RUN export PATH=/usr/local/cuda/bin:$PATH && export LD_LIBRARY_PATH=/usr/local/c
     mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -DCUDA=ON .. && \
     make -j8
 
+# install azcopy
+RUN wget https://aka.ms/downloadazcopy-v10-linux && tar xzvf downloadazcopy-v10-linux && cp azcopy_linux_amd64_10.14.1/azcopy /usr/local/bin
+
 # configure the bashrc
 RUN echo 'export NNFUSION_HOME=/root/nnfusion \n\
 export TACO_HOME=/root/taco \n\
