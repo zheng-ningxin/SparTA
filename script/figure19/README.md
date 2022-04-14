@@ -1,2 +1,3 @@
-This experiment may take days to run. We provides the logs used in the paper.
-To save the time, we can use 
+This experiment may take days to run if we following the setup metioned in the paper(training epochs=300). To save the time, we set a small epoch number here in `run.sh`(epoch=10), to fully reproduce the number in the paper, please set the FINETUNE_EPOCH=300 and rerun the script.
+
+Besides, we also provide the log file we used in the paper `paper_Iterative_SA.log` and `paper_Iterative_SA.log.baseline`.
