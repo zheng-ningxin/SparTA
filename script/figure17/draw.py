@@ -9,7 +9,7 @@ import matplotlib as mpl
 #mpl.style.use('ggplot')
 # mpl.style.use('seaborn-whitegrid')
 #mpl.style.use('grayscale')
-def get_time_1(fpath):
+def get_time_ms(fpath):
     lines = []
     kernel_name = "Time="
     with open(fpath, 'r') as f:
@@ -18,16 +18,35 @@ def get_time_1(fpath):
         if line.find(kernel_name) == -1:
             continue
         else:
-            run_time = float(line.split()[-2])
+            run_time = float(line.split()[1])
             break
     return run_time*1000 # convert to us
+def get_time_us(fpath):
+    lines = []
+    kernel_name = "Time="
+    with open(fpath, 'r') as f:
+        lines = f.readlines()
+    for line in lines:
+        if line.find(kernel_name) == -1:
+            continue
+        else:
+            run_time = float(line.split()[1])
+            break
+    return run_time # convert to us
+
 
 log_data = {}
-for framework in ['cusparse', 'sputnik', 'cublas', 'sparta']:
+for framework in ['cusparse', 'sputnik', 'cublas']:
     log_data[framework] = {}
     for sparsity  in ['0.5', '0.7', '0.8', '0.9', '0.95', '0.99']:
         fpath = f'log/{framework}_{sparsity}.log'
-        run_time = get_time_1(fpath)
+        run_time = get_time_ms(fpath)
+        log_data[framework][sparsity] = run_time
+for framework in ['sparta']:
+    log_data[framework] = {}
+    for sparsity  in ['0.5', '0.7', '0.8', '0.9', '0.95', '0.99']:
+        fpath = f'log/{framework}_{sparsity}.log'
+        run_time = get_time_us(fpath)
         log_data[framework][sparsity] = run_time
 with open('log/taco_latency.txt', 'r') as f:
     lines = f.readlines()
