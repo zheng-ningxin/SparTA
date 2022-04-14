@@ -23,7 +23,7 @@ def get_time_1(fpath):
     return run_time*1000 # convert to us
 
 log_data = {}
-for framework in ['cusparse', 'sputnik', 'cublas']:
+for framework in ['cusparse', 'sputnik', 'cublas', 'sparta']:
     log_data[framework] = {}
     for sparsity  in ['0.5', '0.7', '0.8', '0.9', '0.95', '0.99']:
         fpath = f'log/{framework}_{sparsity}.log'
