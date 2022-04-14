@@ -49,7 +49,7 @@ hatches = ['///', '\\\\\\', '--', 'xxx', 'oo', '|||', None]
 colors = [ 'white', 'whitesmoke', 'lightgray', 'gray', 'black']
 # MobileNet
 jct = {"cu-50": log_data['cusparse']['0.5'], "cu-70":log_data['cusparse']['0.7'], "cu-80": log_data['cusparse']['0.8'], "cu-90": log_data['cusparse']['0.9'], "cu-95": log_data['cusparse']['0.95'], "cu-99": log_data['cusparse']['0.99'],
-       "spgen-50": 352.4566667, "spgen-70":209.95, "spgen-80": 152.64, "spgen-90": 104.03, "spgen-95": 82.944, "spgen-99": 30.197,
+       "spgen-50": log_data['sparta']['0.5'], "spgen-70":log_data['sparta']['0.7'], "spgen-80": log_data['sparta']['0.8'], "spgen-90": log_data['sparta']['0.9'], "spgen-95": log_data['sparta']['0.95'], "spgen-99": log_data['sparta']['0.99'],
         "tc-50": log_data['taco']['0.5'], "tc-70":log_data['taco']['0.7'], "tc-80":log_data['taco']['0.8'], "tc-90":log_data['taco']['0.9'], "tc-95":log_data['taco']['0.95'], "tc-99":log_data['taco']['0.99'], "rt-50":344.99, "rt-70":214.5,
         "rt-80":159.94, "rt-90":105.38, "rt-95":82.144, "rt-99":30.271, "[27]-50":log_data['sputnik']['0.5'] , "[27]-70":log_data['sputnik']['0.7'], "[27]-80":log_data['sputnik']['0.8'], "[27]-90":log_data['sputnik']['0.9'],
         "[27]-95": log_data['sputnik']['0.95'], "[27]-99": log_data['sputnik']['0.99']
