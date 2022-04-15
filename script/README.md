@@ -8,7 +8,7 @@ This branch is for the OSDI'22 artifact evaluation of paper "SparTA: Deep-Learni
 The source code of Sparta is available at: https://github.com/microsoft/nni
 
 * Artifacts Functional:
-Documentation: the following of documents include detailed guidelines on how to build, install, test Sparta and the experiments to compare with other baselines.
+Documentation: the following document includes detailed guidelines on how to build, install, test Sparta and the experiments to compare with other baselines.
 
 * Results Reproduced:
 To reproduce the main results presented in our paper, we provide a Docker image containing all the environments and baseline softwares. We also provide detailed guideline to help reproduce the results step by step.
@@ -20,7 +20,7 @@ First, git clone the source code.
 git clone https://github.com/microsoft/nni
 cd nni && git checkout sparta_artifact
 ```
-To make the reproduing easier, we provide a docker image that contains all dependencies and baselines. Build the docker image:
+To make the reproducing easier, we provide a docker image that contains all dependencies and baselines. Build the docker image:
 ```
 cd image
 sudo docker build . -t artifact
@@ -37,7 +37,7 @@ First we also need get the source code and initialize the environment
 git clone https://github.com/microsoft/nni && cd nni && git checkout sparta_artifact
 conda activate artifact
 cd SparTA && python setup.py develop
-# initilze the environment
+# initialize the environment
 cd script && bash init_env.sh
 ```
 ## Run the experiments
