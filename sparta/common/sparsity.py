@@ -3,10 +3,13 @@ import torch.nn as nn
 
 __all__ = ['TeSA', 'SparseModuleInfo', 'ModelSparsityInfo']
 
+# TODO: more elegant definition for TesaAttr
 TesaAttr = {-1: 'constant',
             0: 'pruned',
+            4: 'int4',
             7: 'uint8',
             8: 'int8',
+            16: 'float16',
             31: 'int32',
             32: 'float32',
             33: 'nonpruned'}
@@ -16,6 +19,7 @@ class TeSA:
         self.tesa: torch.Tensor = tesaattr_tensor
         # NOTE: can be refactored here to support balanced sparsity pattern
         self.block_size: tuple = None
+        # number of different bits in this tesa
         self.n_bits: int = None
 
     def set_transform_meta(self, block_size: tuple, n_bits: int):

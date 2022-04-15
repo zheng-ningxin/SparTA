@@ -20,10 +20,24 @@ def rebuild_sparse_model_pytorch(model: nn.Module, opt_modules: dict):
 def rebuild_sparse_model_nnfusion(model: nn.Module, opt_modules: dict):
     ...
 
+def is_fast_pass(post_sparsity: ModelSparsityInfo) -> bool:
+    ...
+
+def fast_pass_for_dense(model: nn.Module, backend = 'pytorch', device_info = None):
+    ...
+
 def optimize_and_rebuild(model: nn.Module,
                          post_sparsity: ModelSparsityInfo,
                          backend = 'pytorch',
                          device_info = None):
+    # fast pass when the model is dense.
+    # in some cases, the sparse model is directly converted
+    # to a small dense in the previous stage
+    if is_fast_pass(post_sparsity):
+        opt_model = fast_pass_for_dense(model, backend, device_info)
+        return opt_model
+
+    # the pass for sparse operator optimizations
     opt_modules = {}
     # init a transformation policy
     tpolicy = TransformPolicy(device_info)
