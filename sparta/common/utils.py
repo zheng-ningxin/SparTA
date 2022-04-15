@@ -582,7 +582,7 @@ def generate_block_quantize_cfg(tesa_path, state_path, id_map_path,out_dir, bloc
                 if tesa[tesaid]['weight'].size(0) % _block_h !=0 or tesa[tesaid]['weight'].size(1) % _block_w !=0:
                     continue
                 
-                row_d, col_d, value_d = convert_to_block_csr_int8(tesa[tesaid]['weight'], state_dict[torch_name+'.weight'], block_h=_block_h, block_w=_block_w)
+                row_d, col_d, value_d = convert_to_block_csr_int8(tesa[tesaid]['weight'].t(), state_dict[torch_name+'.weight'].t(), block_h=_block_h, block_w=_block_w)
                 value_d = fake_quantize(value_d)
                 bias_d, bias_f = None, ""
                 if torch_name + '.bias' in state_dict:
