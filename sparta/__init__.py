@@ -1,1 +1,1 @@
-from .core import SpartaModel
+#from .core import SpartaModel
