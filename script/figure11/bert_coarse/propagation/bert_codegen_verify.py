@@ -102,11 +102,9 @@ def bert_coarse_fp32_verify(config: dict):
     log_dict = json.load(f)
     f_template = open(template_name)
     template_str = f_template.read()
-    tesa_dict = torch.load("artifact_bert_coarse_no_propagation_onnx_with_tesa/tesa")
+    tesa_dict = torch.load("artifact_bert_coarse_onnx_with_tesa/tesa")
     for name, val_dict in config.items():
         tesa_id = val_dict['tesa_id']
-        if int(tesa_id) != 4:
-            continue
         print(f"tesa_id: {tesa_id}")
         m, k, n = val_dict['m'], val_dict['k'], val_dict['n']
         if tesa_id in log_dict:
@@ -117,9 +115,9 @@ def bert_coarse_fp32_verify(config: dict):
         template_config['K_VALUE'] = k
         template_config['N_VALUE'] = n
         if n <= template_config['BLOCK_SIZE_N_VALUE']:
-            template_config['BLOCK_SIZE_N_VALUE'] = n
+            template_config['BLOCK_SIZE_N_VALUE'] = n-1
         if m <= template_config['BLOCK_SIZE_M_VALUE']:
-            template_config['BLOCK_SIZE_M_VALUE'] = m
+            template_config['BLOCK_SIZE_M_VALUE'] = m-1
         # template_config['BLOCK_SIZE_N_VALUE'] = 64
         kernel_code = template_str
         for key, value in template_config.items():
@@ -138,11 +136,11 @@ def bert_coarse_fp32_verify(config: dict):
         #assert(int(n / block_size_n) != 0 and int(m / block_size_m) != 0)
 
 
-tesaid_2_names_file = "artifact_bert_coarse_no_propagation_onnx_with_tesa/tesaid_2_names"
+tesaid_2_names_file = "artifact_bert_coarse_onnx_with_tesa/tesaid_2_names"
 tesaid_2_names = torch.load(tesaid_2_names_file)
 config = {}
 
-id_shapes_name = "artifact_bert_coarse_no_propagation_onnx_with_tesa/shape.json"
+id_shapes_name = "id_shapes"
 f = open(id_shapes_name)
 id_shapes = json.load(f)
 
@@ -154,15 +152,15 @@ for tesa_id, name_list in tesaid_2_names.items():
 
 for tesa_id, name_list in tesaid_2_names.items():
     pytorch_name, onnx_name = name_list[0], name_list[1]
-    shape_dict = id_shapes[str(pytorch_name)]
+    shape_dict = id_shapes[str(tesa_id)]
     if pytorch_name not in tesa_pytorch_name_list:
         continue
     #import ipdb; ipdb.set_trace()
-    if len(shape_dict['in_shape'][0]) == 4:
+    if len(shape_dict['in_shape'][0]) == 3:
         m = shape_dict['in_shape'][0][0] * shape_dict['in_shape'][0][1]
         k = shape_dict['in_shape'][0][2]
         n = shape_dict['out_shape'][0][2]
-    elif len(shape_dict['in_shape'][0]) == 3:
+    elif len(shape_dict['in_shape'][0]) == 2:
         m = shape_dict['in_shape'][0][0]
         k = shape_dict['in_shape'][0][1]
         n = shape_dict['out_shape'][0][1]

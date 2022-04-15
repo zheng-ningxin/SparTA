@@ -73,7 +73,7 @@ def bcsr_generate(weight_tesa: TeSA, bit: int):
     
     write_array(rows, rows_path)
     write_array(cols, cols_path)
-    write_array(vals, vals_path)
+    write_array(vals, vals_path, 'f')
 
     config['ROW_PATH_VALUE'] = '"' + rows_path + '"'
     config['COL_PATH_VALUE'] = '"' + cols_path + '"'

@@ -31,9 +31,9 @@ def bert_coarse_fp32_codegen(config: dict) -> dict:
         template_config['K_VALUE'] = k
         template_config['N_VALUE'] = n
         if n <= template_config['BLOCK_SIZE_N_VALUE']:
-            template_config['BLOCK_SIZE_N_VALUE'] = n
+            template_config['BLOCK_SIZE_N_VALUE'] = n-1
         if m <= template_config['BLOCK_SIZE_M_VALUE']:
-            template_config['BLOCK_SIZE_M_VALUE'] = m
+            template_config['BLOCK_SIZE_M_VALUE'] = m-1
         block_size_m = template_config['BLOCK_SIZE_M_VALUE']
         block_size_k = template_config['BLOCK_SIZE_K_VALUE']
         block_size_n = template_config['BLOCK_SIZE_N_VALUE']
@@ -66,11 +66,11 @@ for tesa_id, name_list in tesaid_2_names.items():
     if pytorch_name not in tesa_pytorch_name_list:
         continue
     #import ipdb; ipdb.set_trace()
-    if len(shape_dict['in_shape'][0]) == 4:
+    if len(shape_dict['in_shape'][0]) == 3:
         m = shape_dict['in_shape'][0][0] * shape_dict['in_shape'][0][1]
         k = shape_dict['in_shape'][0][2]
         n = shape_dict['out_shape'][0][2]
-    elif len(shape_dict['in_shape'][0]) == 3:
+    elif len(shape_dict['in_shape'][0]) == 2:
         m = shape_dict['in_shape'][0][0]
         k = shape_dict['in_shape'][0][1]
         n = shape_dict['out_shape'][0][1]

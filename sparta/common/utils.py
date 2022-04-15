@@ -421,7 +421,7 @@ def write_array(data, file_path, dtype="i"):
     with open(file_path, 'wb') as f:
         array_data.tofile(f)
 
-def generate_block_sparse_cfg(tesa_path, state_path, id_map_path, out_dir, block_h=32, block_w=32, sparse_block_cfg=None):
+def generate_block_sparse_cfg(tesa_path, state_path, id_map_path, out_dir, block_h=32, block_w=32, sparse_block_cfg=None, sparsity_threshold=0.5):
     os.makedirs(out_dir, exist_ok=True)
     if sparse_block_cfg is None:
         sparse_block_cfg = {}
@@ -436,13 +436,18 @@ def generate_block_sparse_cfg(tesa_path, state_path, id_map_path, out_dir, block
             torch_name = id_maps[tesaid][0]
             # import pdb; pdb.set_trace()
             sparse_ratio = torch.sum(tesa[tesaid]['weight']) / tesa[tesaid]['weight'].numel()
-            if sparse_ratio > 0.5:
+            if sparse_ratio > sparsity_threshold:
                 # too few sparsity
                 continue
             if tesaid in sparse_block_cfg:
                 _block_h, _block_w = sparse_block_cfg[tesaid]
             else:
                 _block_h, _block_w = block_h, block_w
+
+            if tesa[tesaid]['weight'].t().size(0) < 32 or tesa[tesaid]['weight'].t().size(1) < 32:
+                continue
+            if tesa[tesaid]['weight'].t().size(0) % _block_h != 0 or tesa[tesaid]['weight'].t().size(1) % _block_w != 0:
+                continue
             print(f"Tesa-{tesaid} Convering with block size: ", _block_h, _block_w)
             row_d, col_d, value_d = convert_to_block_csr_bin(tesa[tesaid]['weight'].t(), state_dict[torch_name+'.weight'].t(), block_h=_block_h, block_w=_block_w)
             bias_d, bias_f = None, ""

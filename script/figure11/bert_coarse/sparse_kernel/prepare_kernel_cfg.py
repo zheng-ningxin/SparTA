@@ -27,7 +27,7 @@ if __name__ == '__main__':
     for name in kernels:
         tid = name_2_tid[name]
         sparse_block_cfg[tid] = (kernels[name]['block_size_k'], kernels[name]['block_size_n'])
-    generate_block_sparse_cfg(tesa_path, state_path, id_map, args.out_dir, sparse_block_cfg=sparse_block_cfg)
+    generate_block_sparse_cfg(tesa_path, state_path, id_map, args.out_dir, sparse_block_cfg=sparse_block_cfg, sparsity_threshold=1)
     onnx_path = os.path.join(args.in_dir, 'model_tesa.onnx')
     os.system('cp {} {}'.format(onnx_path, args.out_dir))
     kernel_path = 'kernel_dict.json'

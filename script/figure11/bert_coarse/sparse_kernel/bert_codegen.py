@@ -31,9 +31,9 @@ def bert_coarse_fp32_codegen(config: dict) -> dict:
         template_config['K_VALUE'] = k
         template_config['N_VALUE'] = n
         if n <= template_config['BLOCK_SIZE_N_VALUE']:
-            template_config['BLOCK_SIZE_N_VALUE'] = n
+            template_config['BLOCK_SIZE_N_VALUE'] = n-1
         if m <= template_config['BLOCK_SIZE_M_VALUE']:
-            template_config['BLOCK_SIZE_M_VALUE'] = m
+            template_config['BLOCK_SIZE_M_VALUE'] = m-1
         block_size_m = template_config['BLOCK_SIZE_M_VALUE']
         block_size_k = template_config['BLOCK_SIZE_K_VALUE']
         block_size_n = template_config['BLOCK_SIZE_N_VALUE']

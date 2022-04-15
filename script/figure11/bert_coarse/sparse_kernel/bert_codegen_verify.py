@@ -117,9 +117,9 @@ def bert_coarse_fp32_verify(config: dict):
         template_config['K_VALUE'] = k
         template_config['N_VALUE'] = n
         if n <= template_config['BLOCK_SIZE_N_VALUE']:
-            template_config['BLOCK_SIZE_N_VALUE'] = n
+            template_config['BLOCK_SIZE_N_VALUE'] = n-1
         if m <= template_config['BLOCK_SIZE_M_VALUE']:
-            template_config['BLOCK_SIZE_M_VALUE'] = m
+            template_config['BLOCK_SIZE_M_VALUE'] = m-1
         # template_config['BLOCK_SIZE_N_VALUE'] = 64
         kernel_code = template_str
         for key, value in template_config.items():
