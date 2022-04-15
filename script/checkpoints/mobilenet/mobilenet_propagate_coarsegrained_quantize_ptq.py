@@ -37,9 +37,10 @@ def test(model, device, test_loader):
             pred = output.argmax(dim=1, keepdim=True)
             correct += pred.eq(target.view_as(pred)).sum().item()
     test_loss /= len(test_loader.dataset)
-
-    print('Loss: {}  Accuracy: {}%)\n'.format(
+    acc = 100 * correct / len(test_loader.dataset)
+    print('Loss: {}  accuracy: {}%)\n'.format(
         test_loss, 100 * correct / len(test_loader.dataset)))
+    return acc
 
 def get_mobile_coarse():
     import torch
@@ -88,14 +89,6 @@ quantizer = ObserverQuantizer(model.eval(), configure_list, optimizer)
 calibration(model, device, test_dataloader)
 quantizer.compress()
 
-test(model, device, test_dataloader)
+acc = test(model, device, test_dataloader)
 
-# import pdb; pdb.set_trace()
-
-model_path = "mobilenet_ptq.pth"
-calibration_path = "mobilenet_ptq_calibration.pth"
-onnx_path = "mobilenet_ptq.onnx"
-input_shape = (1,3,224,224)
-
-calibration_config = quantizer.export_model(model_path, calibration_path, onnx_path, input_shape, device)
-# pdb.set_trace()
+print(f"Accuracy:{acc}")

@@ -150,10 +150,4 @@ for name, module in norm_model.named_modules():
 
 acc_quant = evaluate(norm_model, token)
 
-import ipdb; ipdb.set_trace()
-
-model_path = "bert_ptq.pth"
-calibration_path = "bert_ptq_calibration.pth"
-
-calibration_config = quantizer.export_model(model_path, calibration_path)
-ipdb.set_trace()
+print(f"Accuracy:{acc_quant}")
