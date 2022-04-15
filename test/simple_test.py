@@ -12,7 +12,7 @@ logger = logging.getLogger('mnist_AutoML')
 class WrapLinear(nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
-        self.fc2 = nn.Linear(hidden_size, 10)
+        self.fc2 = nn.Linear(hidden_size, 32)
 
     def forward(self, x):
         return self.fc2(x)
@@ -43,6 +43,10 @@ linear = wraplinear.fc2
 tesa = torch.ones_like(linear.weight, dtype=torch.int8)
 tesa[0][0] = 0
 setattr(linear, 'weight_tesa', tesa)
+in_tesa = torch.ones(32, 128, dtype=torch.int8)
+setattr(linear, 'input_tesa', in_tesa)
+out_tesa = torch.ones(32, 10, dtype=torch.int8)
+setattr(linear, 'output_tesa', out_tesa)
 
 opt_model = SpartaModel(model)
 data = torch.ones(1, 1, 28, 28)

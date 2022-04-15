@@ -16,7 +16,7 @@ def extract_sparsity(model: nn.Module):
             input_tesa = module.input_tesa
         if hasattr(module, 'output_tesa'):
             output_tesa = module.output_tesa
-        if not (weight_tesa == input_tesa == output_tesa == None):
+        if weight_tesa != None or input_tesa != None or output_tesa != None:
             model_sparsity.update(
                 SparseModuleInfo(name, module, weight_tesa,
                     input_tesa, output_tesa)
