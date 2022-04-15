@@ -1,5 +1,13 @@
 source ~/anaconda/etc/profile.d/conda.sh
 conda activate artifact
+# get the latest nnfusion
+pushd /root/nnfusion
+git pull origin hubert_antares
+pushd build
+make -j
+popd
+popd
+
 
 HTTP_PORT=8881 BACKEND=c-cuda nohup antares rest-server &
 # wait the antares to be ready
