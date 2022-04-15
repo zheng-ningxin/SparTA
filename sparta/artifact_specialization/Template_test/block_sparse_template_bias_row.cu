@@ -322,20 +322,22 @@ void HostComputation_sparse(float* A, int* row, int* col, float* val, float* D, 
     size_t mem_size_B = sizeof(float) * K * N;
     float* B = (float*)malloc(mem_size_B);
     std::memset(B, 0, sizeof(B));
-    int ROW_BLOCK_NUM = K / BLOCK_SIZE_K;
-    for(int i = 0; i < ROW_BLOCK_NUM; i++){
+    int ROW_BLOCK_NUM = N / BLOCK_SIZE_N;
+    for(int i = 0; i < ROW_BLOCK_NUM; i ++){
         int index_start = row[i], index_end = row[i+1];
         for(int index = index_start; index < index_end; index += 1){
-            int col_index = col[index] * BLOCK_SIZE_N;
-            int row_index = i * BLOCK_SIZE_K;
+            int col_index = col[index] * BLOCK_SIZE_K;
+            int row_index = i * BLOCK_SIZE_N;
             float* val_ptr = val + index * BLOCK_SIZE_K * BLOCK_SIZE_N;
-            for(int k = row_index; k < (i+1) * BLOCK_SIZE_K; k += 1){
-                for(int n = col_index; n < col_index+BLOCK_SIZE_N; n += 1){
-                    B[OFFSET(k,n,N)] = *(val_ptr + k * BLOCK_SIZE_N + n);
+            for(int k = 0; k < BLOCK_SIZE_K; k += 1){
+                for(int n = 0; n < BLOCK_SIZE_N; n += 1){
+                    B[OFFSET(k + col_index, row_index+n, N)] = *(val_ptr + k * BLOCK_SIZE_N + n);
                 }
             }
         }
     }
+
+
     for(int i = 0; i < M; i += 1){
         for(int j = 0; j < N; j += 1){
             float cSub = 0;

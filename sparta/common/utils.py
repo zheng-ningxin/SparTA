@@ -326,6 +326,7 @@ def export_tesa_debug(model, dummy_input, export_dir, tesa=None):
     # torch.save(tesaid2name, os.path.join(export_dir, 'tesaid_2_names'))
 
 def convert_to_block_csr_int8(m_tensor, v_tensor, block_h, block_w):
+    v_tensor = v_tensor * m_tensor
     m_tensor = m_tensor.t()
     v_tensor = v_tensor.t()
     block_size_k = block_h
@@ -344,13 +345,14 @@ def convert_to_block_csr_int8(m_tensor, v_tensor, block_h, block_w):
             i_end = (_i+1) * block_size_n
             j_start = _j * block_size_k
             j_end = (_j+1) * block_size_k
-            if torch.sum(m_tensor[i_start:i_end, j_start:j_end]) > 0:
+            if torch.sum(torch.abs(m_tensor[j_start:j_end, i_start:i_end])) > 0:
                 cols.append(_j)
                 values.extend(v_tensor[i_start:i_end, j_start:j_end].flatten().tolist())
     rows.append(len(cols))
     return rows, cols, values
 
 def convert_to_block_csr_bin(m_tensor, v_tensor, block_h, block_w):
+    v_tensor = v_tensor * m_tensor
     assert len(m_tensor.size()) == 2
     size_h, size_w = m_tensor.size()
     if size_h % block_h != 0 or size_w % block_w != 0:
@@ -365,14 +367,15 @@ def convert_to_block_csr_bin(m_tensor, v_tensor, block_h, block_w):
             i_end = (_i+1) * block_w
             j_start = _j * block_h
             j_end = (_j+1) * block_h
-            if torch.sum(m_tensor[j_start:j_end, i_start:i_end]) > 0:
+            if torch.sum(torch.abs(m_tensor[j_start:j_end, i_start:i_end])) > 0:
                 cols.append(_j)
                 values.extend(v_tensor[j_start:j_end, i_start:i_end].flatten().tolist())
     rows.append(len(cols))
     return rows, cols, values
 
 def convert_to_block_csr(m_tensor, v_tensor, block_h, block_w):
-    raise NotImplementedError
+    v_tensor = v_tensor * m_tensor
+    # raise NotImplementedError
     assert len(m_tensor.size()) == 2
     size_h, size_w = m_tensor.size()
     if size_h % block_h != 0 or size_w % block_w != 0:
@@ -387,7 +390,7 @@ def convert_to_block_csr(m_tensor, v_tensor, block_h, block_w):
             i_end = (_i+1) * block_h
             j_start = _j * block_w
             j_end = (_j+1) * block_w
-            if torch.sum(m_tensor[i_start:i_end, j_start:j_end]) > 0:
+            if torch.sum(torch.abs(m_tensor[j_start:j_end, i_start:i_end])) > 0:
                 cols.append(_j)
                 values.extend(v_tensor[i_start:i_end,j_start:j_end].flatten().tolist())
     rows.append(len(cols))

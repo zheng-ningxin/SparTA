@@ -5,7 +5,7 @@ python prepare_kernel_cfg.py --in_dir artifact_bert_coarse_no_propagation_onnx_w
 cp artifact_bert_coarse_no_propagation_onnx_with_tesa/model_tesa.onnx nnfusion_cfg
 pushd ./nnfusion_cfg
 nnfusion model_tesa.onnx -f onnx -flayernorm_fusion=1 -fgelu_fusion=1 -fspargen_cfg config -frun_step=500
-#nnfusion model.onnx -f onnx -flayernorm_fusion=1 -fgelu_fusion=1 -fblockfusion_level=0 -fcodegen_debug=true -fspargen_cfg config
+#nnfusion model_tesa.onnx -f onnx -flayernorm_fusion=1 -fgelu_fusion=1 -fblockfusion_level=0 -fcodegen_debug=true -fspargen_cfg config
 pushd nnfusion_rt/cuda_codegen
 mkdir build
 pushd build 
