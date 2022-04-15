@@ -1,6 +1,7 @@
+cp -r ../../../checkpoints/bert/artifact_bert_coarse_no_propagation_onnx_with_tesa .
 python bert_codegen_int8.py
 rm ~/.cache/nnfusion/kernel_cache.db
-cp -r ../../../checkpoints/bert/artifact_bert_coarse_no_propagation_onnx_with_tesa .
+
 python prepare_kernel_cfg.py --in_dir artifact_bert_coarse_no_propagation_onnx_with_tesa --out_dir ./nnfusion_cfg
 pushd ./nnfusion_cfg
 nnfusion model_tesa.onnx -f onnx -flayernorm_fusion=1 -fgelu_fusion=1 -fspargen_cfg config -frun_step 500
