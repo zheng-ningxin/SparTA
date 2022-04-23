@@ -1216,18 +1216,18 @@ at::Tensor our_sparse_attention_forward(
     torch::Tensor Q,
     torch::Tensor K,
     torch::Tensor V,
-    torch::Tensor d_m_index,
-    torch::Tensor d_n_index,
-    torch::Tensor d_block_index,
+    torch::Tensor sparse_pattern,
     torch::Tensor val,
     torch::Tensor row_ptr,
     torch::Tensor col_idx,
-    torch::Tensor val_mask,
-    torch::Tensor col_range_index
+    torch::Tensor val_mask
 )
 {
     cudaSetDevice(Q.get_device());
+    // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
     int batch_size = Q.size(0);
+    int seq_length = Q.size(1);
+    int hidden_dim = Q.size(2);
     torch::Tensor output = torch::empty({batch_size, HEAD_NUM, GLOBAL_M, GLOBAL_K}, Q.options());
     
     AT_DISPATCH_FLOATING_TYPES(Q.type(), "our_sparse_attention", ([&]

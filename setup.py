@@ -19,6 +19,11 @@ if torch.cuda.is_available():
                                 'csrc/cusparse_linear_forward.cpp', 'csrc/cusparse_linear_forward_kernel.cu'],
                                 extra_compile_args=['-std=c++14', '-lcusparse', '-O3'])
         ext_modules.append(cusparse_ext)
+    # the bcsr convert kernel
+    bcsr_ext = CUDAExtension(name='convert_bcsr', sources=['csrc/convert_bcsr_forward.cpp',
+                                                           'csrc/convert_bcsr_forward_kernel.cu'],
+                             extra_compile_args=['-std=c++14', '-O3'])
+    ext_modules.append(bcsr_ext)
     # cusparse_ext = CUDAExtension(name='our_sparse_attention', sources=[
     #                             'csrc/sparse_attention.cpp', 'csrc/sparse_attention_kernel.cu'],
     #                             extra_compile_args=['-std=c++14', '-O3'])
