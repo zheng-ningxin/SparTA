@@ -17,28 +17,44 @@ using namespace std;
 #define FETCH_INT32(pointer) (reinterpret_cast<int*>(&(pointer))[0])
 #define FULL_MASK 0xffffffff
 
-#define HEAD_NUM _REPLACE_HEAD_NUM
-#define SPARSE_VAL_SIZE _REPLACE_SPARSE_VAL_SIZE
-#define GLOBAL_M _REPLACE_GLOBAL_M
-#define GLOBAL_N _REPLACE_GLOBAL_N
-#define GLOBAL_K _REPLACE_GLOBAL_K
-#define SMALL_BLOCK_NUM _REPLACE_SMALL_BLOCK_NUM
-#define SOFTMAX_BLOCK_SIZE_M 32
-#define SOFTMAX_BLOCK_SIZE_N 32
+// #define HEAD_NUM _REPLACE_HEAD_NUM
+// #define SPARSE_VAL_SIZE _REPLACE_SPARSE_VAL_SIZE
+// #define GLOBAL_M _REPLACE_GLOBAL_M
+// #define GLOBAL_N _REPLACE_GLOBAL_N
+// #define GLOBAL_K _REPLACE_GLOBAL_K
+// #define SMALL_BLOCK_NUM _REPLACE_SMALL_BLOCK_NUM
+// #define SOFTMAX_BLOCK_SIZE_M 32
+// #define SOFTMAX_BLOCK_SIZE_N 32
 
 
-__device__ __forceinline__ const float* add_ptr_u(const float* src, int offset)      {                                                                                const float* dst;                                                                asm("{                       \n\t"                                               ".reg .u32 lo,hi,of;     \n\t"                                               "mul.lo.u32 of, %2, %3;  \n\t"                                               "mov.b64    {lo,hi}, %1; \n\t"                                               "add.cc.u32  lo,lo,  of; \n\t"                                               "addc.u32    hi,hi,  0;  \n\t"                                               "mov.b64 %0, {lo,hi};    \n\t"                                               "}" : "=l"(dst) : "l"(src), "r"(offset), "r"((int)sizeof(*src)));        return dst;                                                              }
+__device__ __forceinline__ const float* add_ptr_u(const float* src, int offset)      \
+{                                                                            \
+    const float* dst;                                                            \
+    asm("{                       \n\t"                                       \
+        ".reg .u32 lo,hi,of;     \n\t"                                       \
+        "mul.lo.u32 of, %2, %3;  \n\t"                                       \
+        "mov.b64    {lo,hi}, %1; \n\t"                                       \
+        "add.cc.u32  lo,lo,  of; \n\t"                                       \
+        "addc.u32    hi,hi,  0;  \n\t"                                       \
+        "mov.b64 %0, {lo,hi};    \n\t"                                       \
+        "}" : "=l"(dst) : "l"(src), "r"(offset), "r"((int)sizeof(*src)));    \
+    return dst;                                                              \
+}
 
 __device__ __forceinline__ float2  _add(float2 x, float2 y) { float2 res; res.x = x.x + y.x; res.y = x.y + y.y; return res; }
+
 
 
 __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     float* A,
     float* B,
     float* C_val,
-    int* m_index,
-    int* n_index,
-    int* block_index){
+    int * row_index,
+    int * col_index,
+    int GLOBAL_M,
+    int GLOBAL_K,
+    int GLOBAL_N,
+    int SPARSE_VAL_SIZE){
     /*
     description:
     tiling k dimension

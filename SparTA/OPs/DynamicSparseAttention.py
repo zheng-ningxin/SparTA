@@ -7,11 +7,11 @@ from cmath import inf
 import torch
 import types
 import logging
-from torch.utils.cpp_extension import load as module_load
+
 from .SparseOPBase import SparseOPBase
 from .Template.SparseAttention import *
 from SparTA.Common.Utils import *
-
+from .BcsrConverter import BcsrConverter
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 our_sparse_attention = None
@@ -25,169 +25,98 @@ class DynamicSparseAttentionFunction(torch.autograd.Function):
         Q,
         K,
         V,
-        d_m_index,
-        d_n_index,
-        d_block_index,
-        val,
         row_ptr,
         col_idx,
-        val_mask,
-        col_range_index,
-        gradv_row_idx,
-        gradv_col_idx,
-        gradv_subblock_idx
+        val_mask
     ):
         ctx.save_for_backward(
             Q,
             K,
             V,
-            val,
-            gradv_row_idx,
-            gradv_col_idx,
-            gradv_subblock_idx,
-            d_m_index,
-            d_n_index,
-            d_block_index,
-            col_range_index,
             row_ptr,
             col_idx
         )
 
-        return our_sparse_attention.forward(
+        return dynamic_sparse_attention.forward(
             Q,
             K,
             V,
-            d_m_index,
-            d_n_index,
-            d_block_index,
-            val,
             row_ptr,
             col_idx,
-            val_mask,
-            col_range_index,
+            val_mask
         )
 
     @staticmethod
     def backward(ctx, *grad_outputs):
-        (
-            Q,
-            K,
-            V,
-            val,
-            gradv_row_idx,
-            gradv_col_idx,
-            gradv_subblock_idx,
-            m_index,
-            n_index,
-            block_index,
-            col_range_index,
-            row_ptr,
-            col_idx
-        ) = ctx.saved_tensors
-        assert len(grad_outputs) == 1
-        grad_q, grad_k, grad_v, qxk_grad, val_grad = our_sparse_attention.backward(
-            grad_outputs[0],
-            Q,
-            K,
-            V,
-            gradv_row_idx,
-            gradv_col_idx,
-            gradv_subblock_idx,
-            val,
-            m_index,
-            n_index,
-            block_index,
-            col_range_index,
-            row_ptr,
-            col_idx
-        )
-
-        return grad_q, grad_k, grad_v, None, None, None, None, None, None, None, None, None, None, None
+        pass
 
 
-class SparseAttention(SparseOPBase):
+class DynamicSparseAttention(SparseOPBase):
     """
-    The Sparse Attention module.
+    The Sparse Attention module that support the dynamic sparse pattern.
     """
+    # if all the sparse attention share the same sparse pattern, then
+    # no need to convert the sparse pattern for each module. Set the global_mode
+    # to be true when initialize the module
+    global_sparse_pattern = None
+    global_bcsr_row = None
+    global_bcsr_col = None
+    global_bcsr_val_mask = None
+    global_converter = BcsrConverter()
 
-    def __init__(self, out_mask, HEAD_NUM, seq_len, hidden_dim):
-        super(SparseAttention, self).__init__()
-        assert isinstance(out_mask, torch.Tensor)
-        out_mask
+    @staticmethod
+    def set_global_sparse_pattern(sparse_pattern):
+        assert isinstance(sparse_pattern, torch.Tensor)
+        assert sparse_pattern.dtype == torch.int32, "only support int32 type"
+        DynamicSparseAttention.global_sparse_pattern = sparse_pattern
+        DynamicSparseAttention.global_bcsr_row, DynamicSparseAttention.global_bcsr_col, \
+            DynamicSparseAttention.global_bcsr_val_mask = DynamicSparseAttention.global_converter(
+                DynamicSparseAttention.global_sparse_pattern, DynamicSparseAttention.global_sparse_pattern.to(torch.float))
+
+    def __init__(self, HEAD_NUM, max_seq_len, global_mode=True):
+        super(DynamicSparseAttention, self).__init__()
         self.HEAD_NUM = HEAD_NUM
-        self.M = seq_len
-        self.N = seq_len
-        self.K = hidden_dim
+        self.max_seq_len = max_seq_len
+        self.global_mode = global_mode
         err_msg = 'Currently, seq_len and hidden_dim should be divisible by 32'
-        assert seq_len % 32 == 0, err_msg
-        assert hidden_dim % 32 == 0, err_msg
+        assert max_seq_len % 32 == 0, err_msg
         # currently only support 32 x 64
         self.block_size_h = 32
-        self.block_size_w = 64
+        self.block_size_w = 32
         self.target_device = None
-        # build the index used for the kernel
-        self.specialize(out_mask)
+        self.converter = BcsrConverter() 
 
-    def specialize(self, out_mask):
-        self.out_mask = out_mask
-        _logger.info("Preprocess the index of the sparse pattern")
-        with torch.no_grad():
-            self.row_ptr, self.col_index, self.val_mask = convert_bcsr(
-                self.out_mask, self.out_mask, self.block_size_h, self.block_size_w)
-
-            self.val_mask = self.val_mask.to(torch.int32)
-            self.val_size = self.val_mask.numel() + self.block_size_h * self.block_size_w
-            # build the index for original csr format
-            self.csr_index = {}
-            for row_id in range(self.row_ptr.size(0)-1):
-                self.csr_index[row_id] = {}
-                _start = self.row_ptr[row_id]
-                _end = self.row_ptr[row_id+1]
-                for _pos in range(_start, _end):
-                    col_id = self.col_index[_pos].item()
-                    self.csr_index[row_id][col_id] = _pos
-            self._m_index, self._n_index, self._block_index, self._col_range_index = self._build_forward_index()
-            # following indexes are for backward function
-            self._gradv_row_idx, self._gradv_col_idx, self._gradv_subblock_idx = self._build_backward_index()
-            self.register_buffer('m_index', self._m_index)
-            self.register_buffer('n_index', self._n_index)
-            self.register_buffer('block_index', self._block_index)
-            self.register_buffer('col_range_index', self._col_range_index)
-            self.register_buffer('gradv_row_idx', self._gradv_row_idx)
-            self.register_buffer('gradv_col_idx', self._gradv_col_idx)
-            self.register_buffer('gradv_subblock_idx', self._gradv_subblock_idx)
-
-        self.load_kernel_library()
-
-
-    def forward(self, Q, K, V):
+    def forward(self, Q, K, V, sparse_mask=None):
         """
         Q, K, V are the output tensors of the corresponding
         projection linear layers.
+        sparse_
         """
+        if self.global_mode is not True:
+            assert isinstance(sparse_mask, torch.Tensor)
+            csr_row, csr_col, csr_value_mask = self.converter(sparse_mask, sparse_mask.to(torch.float), self.block_size_h, self.block_size_w)
+        else:
+            csr_row, csr_col, csr_value_mask = DynamicSparseAttention.global_bcsr_row, DynamicSparseAttention.global_bcsr_col, DynamicSparseAttention.global_bcsr_val_mask 
+            sparse_mask = DynamicSparseAttention.global_sparse_pattern
         # need create val each time
         assert isinstance(Q, torch.Tensor)
         assert isinstance(K, torch.Tensor)
         assert isinstance(V, torch.Tensor)
-        if self.target_device != Q.device:
-            self.target_device = Q.device
-            self._move_index(self.target_device)
+        # Shape of tensor Q should be {Batchsize, sequence length, hidden dim}
         batch_size = Q.size(0)
-        val = torch.zeros(batch_size * self.HEAD_NUM * self.val_size,
+        seq_len = Q.size(1)
+        hidden_dim = Q.size(2)
+        assert seq_len % 32 == 0
+        assert hidden_dim % 32 == 0
+        assert seq_len < self.max_seq_len
+        sparse_val_size = (csr_row[sparse_mask.size(0)//self.block_size_h] + 1) * self.block_size_h * self.block_size_w
+        val = torch.zeros(batch_size * self.HEAD_NUM * sparse_val_size,
                           dtype=torch.float32, device=self.target_device)
-        result = SparseAttentionFunction.apply(Q, K, V,
-                                               self.m_index,
-                                               self.n_index,
-                                               self.block_index,
-                                               val,
-                                               self.row_ptr,
-                                               self.col_index,
-                                               self.val_mask,
-                                               self.col_range_index,
-                                               # following are for backwards
-                                               self.gradv_row_idx,
-                                               self.gradv_col_idx,
-                                               self.gradv_subblock_idx)
+        result = DynamicSparseAttentionFunction.apply(Q, K, V,
+                                                val,
+                                                csr_row,
+                                                csr_col,
+                                                csr_value_mask)
 
         return result
 
@@ -213,7 +142,6 @@ class SparseAttention(SparseOPBase):
                 self.m_index.to(target_device), self.n_index.to(target_device), self.block_index.to(target_device),\
                 self.col_range_index.to(target_device), self.gradv_row_idx.to(target_device), self.gradv_col_idx.to(target_device),\
                 self.gradv_subblock_idx.to(target_device)
-
 
     def _build_forward_index(self):
         block_idx = []
@@ -297,29 +225,4 @@ class SparseAttention(SparseOPBase):
         gradv_subblock_idx = torch.tensor(subblock_idx, dtype=torch.int32)
 
         return gradv_row_idx, gradv_col_idx, gradv_subblock_idx
-
-    def load_kernel_library(self):
-        _logger.info('Building and loading the kernel library')
-        global our_sparse_attention
-        need_replace = {'_REPLACE_HEAD_NUM': self.HEAD_NUM,
-                        '_REPLACE_GLOBAL_M': self.M,
-                        '_REPLACE_GLOBAL_N': self.N,
-                        '_REPLACE_GLOBAL_K': self.K,
-                        '_REPLACE_SPARSE_VAL_SIZE': self.val_size,
-                        '_REPLACE_SMALL_BLOCK_NUM': len(self.block_index)
-                        }
-        kernel_template = copy.deepcopy(sparse_attention_template)
-        interface_template = copy.deepcopy(sparse_attention_interface)
-        for k, v in need_replace.items():
-            kernel_template = kernel_template.replace(k, str(v))
-        prefix = tempfile.gettempdir()
-        cu_f = os.path.join(prefix, 'sparse_attention_kernel.cu')
-        interface_f = os.path.join(prefix, 'sparse_attention.cpp')
-        with open(cu_f, 'w') as f:
-            f.write(kernel_template)
-        with open(interface_f, 'w') as f:
-            f.write(interface_template)
-        our_sparse_attention = module_load(name='our_sparse_attention', sources=[
-                                                              cu_f, interface_f], extra_cflags=['-std=c++14', '-O3'], extra_cuda_cflags=['-lcusparse'])
-        _logger.info('Kernel library loaded')
 
