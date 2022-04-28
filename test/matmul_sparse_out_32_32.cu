@@ -8,6 +8,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+// #include <math>
 #include <algorithm>
 #include <assert.h>
 // CUDA runtime
@@ -272,7 +273,6 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     uint ty = tid / 16;
     assert(THREAD_SIZE_K % 16 == 0);
     uint k = tx * 4;
-
     uint ori_offsetA00 = (by * 32 + ty) * K + k;
     uint ori_offsetA16 = ori_offsetA00 + K * 16;
     uint ori_offsetB00 = (bx * 32 + ty) * K + k;
@@ -431,6 +431,46 @@ void matmul_sparse_out_32_64_32(float * dA, float * dB, float *dC, int *row_inde
     BLOCK_SPARSE_MATMUL_OUT_32_64_32<<<dimGrid, dimBlock>>>(dA, dB, dC, row_pos, col_index, M, K, N, SPARSE_VAL_SIZE);
 }
 
+void calculate_ref(float * A, float *B, float * C, int M, int K, int N)
+{
+    for(int m=0;m<M;m++){
+        for(int n=0;n<N;n++){
+            float sum = 0;
+            for(int k=0;k<K;k++){
+                // sum += A[m][k] * B[n][k];
+                sum += A[m*K+k] * B[n*K+k];
+            }
+            // C[m][n] = sum
+            C[m*N+n] = sum;
+        }
+
+    }
+}
+
+bool verify_matmul_sparse_out(float * ref_C, float * C_val, int * row_index, int * col_index, int h, int w, int block_h, int block_w)
+{
+    bool flag = true;
+    for(int rowid=0; rowid<h/block_h; rowid++){
+        int start = row_index[rowid];
+        int end = row_index[rowid+1];
+        for(int pos=start; pos<end; pos++){
+            int colid = col_index[pos];
+            int offset_ref = rowid* block_h * w + colid * block_w;
+            int offset_c = pos * block_h * block_w;
+            for(int i=0;i<block_h;i++){
+                for(int j=0;j<block_w;j++){
+                    float ref_value =  ref_C[offset_ref+ i*w+j];
+                    float our_value =  C_val[offset_c+i*block_w+j];
+                    if(fabs(ref_value-our_value)>1e-5){
+                        printf("%f %f\n", ref_value, our_value);
+                        flag = false;
+                    }
+                }
+            }
+        }
+    }
+    return flag;
+}
 int main()
 {
     cudaEvent_t time_start, time_end;
@@ -442,19 +482,23 @@ int main()
     // float sparsiy=0.9999;
     float sparsiy=0.95;
     float * data = (float*) malloc(sizeof(float)*M*K);
-    int * mask = (int*) malloc(sizeof(int)*M*K);
+    int * mask = (int*) malloc(sizeof(int)*M*N);
     int * row = (int*) malloc(sizeof(int)*(M+1));
     int * col = (int*) malloc(sizeof(int)*M*K);
-    float * values = (float*)malloc(sizeof(float)*M*K);
+    float * values = (float*)malloc(sizeof(float)*M*N);
     float * A = (float*)malloc(sizeof(float)*M*K);
     float * B = (float*)malloc(sizeof(float)*K*N);
     float * C = (float*)malloc(sizeof(float)*M*N);
+    float * ref_C = (float*) malloc(sizeof(float)*M*N);
     float *dA, *dB, *dC;
     init_mask(mask, M*K , sparsiy);
     init(data, M*K, 0);
-    init(A, M*K, 0);
-    init(B, N*K, 0);
-    
+    init(A, M*K, 0.95);
+    init(B, N*K, 0.95);
+    // for(int i=0;i<K;i++){
+    //     A[i] = 1;
+    //     B[i*N] = 1;
+    // }
     int * d_mask, *d_row, *d_col, *extra_buffer, *d_row_pos;
     float * d_data, *d_val;
     CUDA_SAFE_CALL(cudaMalloc(&dA, sizeof(float)*M*K));
@@ -473,7 +517,7 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(dB, B, sizeof(float)*K*N, cudaMemcpyHostToDevice));
 
     CUDA_SAFE_CALL(cudaEventRecord(time_start));
-    for(int runtime=0; runtime<100; runtime++){
+    for(int runtime=0; runtime<10; runtime++){
         convert_bcsr(d_mask, d_data, M, K, block_h, block_w, d_row, d_col, d_row_pos, d_val, extra_buffer);
         matmul_sparse_out_32_64_32(dA, dB, dC, d_row, d_col, d_row_pos, M, K, N, block_h, block_w);
     }
@@ -484,6 +528,15 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(row, d_row, sizeof(int)*(M+1), cudaMemcpyDeviceToHost));
     CUDA_SAFE_CALL(cudaMemcpy(col, d_col, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
     CUDA_SAFE_CALL(cudaMemcpy(values, d_val, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
-
+    CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(float)*M*N, cudaMemcpyDeviceToHost));
+    if (!verify_bcsr(mask, data, M, N, block_h, block_w, row, col, values)){
+        printf("Convert check failed!!!\n");
+        return -1;
+    }
+    calculate_ref(A, B, ref_C,M ,K, N);
+    if(!verify_matmul_sparse_out(ref_C, C, row, col, M, N, block_h, block_w)){
+        printf("value wrong!!\n");
+        return -1;
+    }
     return 0;
 }

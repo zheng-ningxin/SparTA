@@ -160,6 +160,7 @@ void init(float * ptr, size_t length, float sparsity)
         else
         {
             ptr[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+            // ptr[i] = 1; // for debug
         }
     }
 }
