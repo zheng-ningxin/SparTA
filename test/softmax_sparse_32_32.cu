@@ -561,13 +561,52 @@ void sparse_softmax_v1(float * C_val, float * C_val_mask, int * row_ptr, int * c
 {
     int batchsize = 1;
     int HEAD_NUM = 1;
-
     int row_tile = 4;
     const dim3 softmax_dimBlock(row_tile*32);
     const dim3 softmax_dimGrid(h/row_tile, HEAD_NUM * batchsize);
     SPARSE_SOFTMAX<<<softmax_dimGrid, softmax_dimBlock>>>(C_val, C_val_mask, row_ptr, block_h, block_w, SPARSE_VAL_SIZE, row_tile);
 }
 
+void calculate_softmax_ref(float* tin, int* mask, int M, int N)
+{
+    for(int i=0; i<M; i++){
+        float sum = 0;
+        for(int j=0; j<N; j++){
+            int index =  i *N + j;
+            if(mask[i])
+                sum+=expf(tin[index]);
+        }
+        for(int j=0; j<N; j++){
+            int index =  i *N + j;
+            if(mask[i])
+                tin[index]=tin[index] / sum;
+        }
+    }
+}
+bool verify_softmax(float * ref_C, float * C_val, int * row_index, int * col_index, int h, int w, int block_h, int block_w)
+{
+    bool flag = true;
+    for(int rowid=0; rowid<h/block_h; rowid++){
+        int start = row_index[rowid];
+        int end = row_index[rowid+1];
+        for(int pos=start; pos<end; pos++){
+            int colid = col_index[pos];
+            int offset_ref = rowid* block_h * w + colid * block_w;
+            int offset_c = pos * block_h * block_w;
+            for(int i=0;i<block_h;i++){
+                for(int j=0;j<block_w;j++){
+                    float ref_value =  ref_C[offset_ref+ i*w+j];
+                    float our_value =  C_val[offset_c+i*block_w+j];
+                    if(fabs(ref_value-our_value)>1e-5){
+                        printf("%f %f\n", ref_value, our_value);
+                        flag = false;
+                    }
+                }
+            }
+        }
+    }
+    return flag;
+}
 int main()
 {
     cudaEvent_t time_start, time_end;
@@ -588,8 +627,10 @@ int main()
     float * C = (float*)malloc(sizeof(float)*M*N);
     float * ref_C = (float*) malloc(sizeof(float)*M*N);
     float *dA, *dB, *dC;
-    init_mask(mask, M*K , sparsiy);
-    init(data, M*K, 0);
+    init_mask(mask, M*N , sparsiy);
+    for(int i=0;i<M*N; i++)
+        data[i] = float(mask[i]);
+    // init(data, M*N, 0);
     init(A, M*K, 0.95);
     init(B, N*K, 0.95);
     // for(int i=0;i<K;i++){
@@ -621,6 +662,7 @@ int main()
         CUDA_SAFE_CALL(cudaMemcpy(&SMALL_BLOCK_NUM, d_row + n_row, sizeof(int), cudaMemcpyDeviceToHost));
         const int SPARSE_VAL_SIZE = SMALL_BLOCK_NUM * block_h * block_w;
         matmul_sparse_out_32_64_32(dA, dB, dC, d_row, d_col, d_row_pos, M, K, N, block_h, block_w, SPARSE_VAL_SIZE, SMALL_BLOCK_NUM);
+        // sparse_softmax_v1(dC, d_val, d_row, d_col, d_row_pos, M, N, block_h, block_w, SPARSE_VAL_SIZE);
     }
     CUDA_SAFE_CALL(cudaEventRecord(time_end));
     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
@@ -635,7 +677,10 @@ int main()
         return -1;
     }
     calculate_ref(A, B, ref_C,M ,K, N);
-    if(!verify_matmul_sparse_out(ref_C, C, row, col, M, N, block_h, block_w)){
+
+    calculate_softmax_ref(ref_C, mask, M, N);
+
+    if(!verify_softmax(ref_C, C, row, col, M, N, block_h, block_w)){
         printf("value wrong!!\n");
         return -1;
     }
