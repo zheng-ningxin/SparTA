@@ -545,14 +545,17 @@ __global__ void SPARSE_SOFTMAX(
         regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
     }
     regSum = __shfl_sync(FULL_MASK, regSum, 0);
-
+    if(threadIdx.x%32==1)
+        printf("Row %d Regsum %f  \n", block_inter_row + bm + blk_row_idx * block_h, regSum);
     for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
         uint index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
         regC = 0.0f;
         if (C_val_mask[index] > 0) {
-            regC = expf(C_val[index]);
+            C_val[index] = expf(C_val[index])/regSum;
         }
-        C_val[index] = regC / regSum;
+        else{
+            C_val[index] = 0;
+        }
 
     }
 }
@@ -561,7 +564,7 @@ void sparse_softmax_v1(float * C_val, float * C_val_mask, int * row_ptr, int * c
 {
     int batchsize = 1;
     int HEAD_NUM = 1;
-    int row_tile = 4;
+    const int row_tile = 4;
     const dim3 softmax_dimBlock(row_tile*32);
     const dim3 softmax_dimGrid(h/row_tile, HEAD_NUM * batchsize);
     SPARSE_SOFTMAX<<<softmax_dimGrid, softmax_dimBlock>>>(C_val, C_val_mask, row_ptr, block_h, block_w, SPARSE_VAL_SIZE, row_tile);
@@ -573,13 +576,19 @@ void calculate_softmax_ref(float* tin, int* mask, int M, int N)
         float sum = 0;
         for(int j=0; j<N; j++){
             int index =  i *N + j;
-            if(mask[i])
+            // printf("index: %d mask[index]: %d\n",index, mask[index]);
+            if(mask[index]>0){
                 sum+=expf(tin[index]);
+                // printf("#### i:%d %f \n", mask[index], expf(tin[index]));
+            }
         }
+        printf("Row: %d sum: %f\n", i, sum);
         for(int j=0; j<N; j++){
             int index =  i *N + j;
-            if(mask[i])
-                tin[index]=tin[index] / sum;
+            if(mask[index])
+                tin[index]=expf(tin[index]) / sum;
+            else
+                tin[index] = 0;
         }
     }
 }
@@ -628,8 +637,12 @@ int main()
     float * ref_C = (float*) malloc(sizeof(float)*M*N);
     float *dA, *dB, *dC;
     init_mask(mask, M*N , sparsiy);
-    for(int i=0;i<M*N; i++)
+    int mask_nnz = 0;
+    for(int i=0;i<M*N; i++){
         data[i] = float(mask[i]);
+        mask_nnz += mask[i];
+    }
+    printf("Mask NNZ: %d \n", mask_nnz);
     // init(data, M*N, 0);
     init(A, M*K, 0.95);
     init(B, N*K, 0.95);
@@ -655,14 +668,14 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(dB, B, sizeof(float)*K*N, cudaMemcpyHostToDevice));
 
     CUDA_SAFE_CALL(cudaEventRecord(time_start));
-    for(int runtime=0; runtime<10; runtime++){
+    for(int runtime=0; runtime<1; runtime++){
         convert_bcsr(d_mask, d_data, M, N, block_h, block_w, d_row, d_col, d_row_pos, d_val, extra_buffer);
         int n_row = M / block_h;
         int SMALL_BLOCK_NUM;
         CUDA_SAFE_CALL(cudaMemcpy(&SMALL_BLOCK_NUM, d_row + n_row, sizeof(int), cudaMemcpyDeviceToHost));
         const int SPARSE_VAL_SIZE = SMALL_BLOCK_NUM * block_h * block_w;
         matmul_sparse_out_32_64_32(dA, dB, dC, d_row, d_col, d_row_pos, M, K, N, block_h, block_w, SPARSE_VAL_SIZE, SMALL_BLOCK_NUM);
-        // sparse_softmax_v1(dC, d_val, d_row, d_col, d_row_pos, M, N, block_h, block_w, SPARSE_VAL_SIZE);
+        sparse_softmax_v1(dC, d_val, d_row, d_col, d_row_pos, M, N, block_h, block_w, SPARSE_VAL_SIZE);
     }
     CUDA_SAFE_CALL(cudaEventRecord(time_end));
     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
@@ -672,10 +685,10 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(col, d_col, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
     CUDA_SAFE_CALL(cudaMemcpy(values, d_val, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
     CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(float)*M*N, cudaMemcpyDeviceToHost));
-    if (!verify_bcsr(mask, data, M, N, block_h, block_w, row, col, values)){
-        printf("Convert check failed!!!\n");
-        return -1;
-    }
+    // if (!verify_bcsr(mask, data, M, N, block_h, block_w, row, col, values)){
+    //     printf("Convert check failed!!!\n");
+    //     return -1;
+    // }
     calculate_ref(A, B, ref_C,M ,K, N);
 
     calculate_softmax_ref(ref_C, mask, M, N);
