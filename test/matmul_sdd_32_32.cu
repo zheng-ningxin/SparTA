@@ -432,7 +432,7 @@ void matmul_sparse_out_32_64_32(float * dA, float * dB, float *dC, int *row_inde
     BLOCK_SPARSE_MATMUL_OUT_32_64_32<<<dimGrid, dimBlock>>>(dA, dB, dC, row_pos, col_index, M, K, N, SPARSE_VAL_SIZE);
 }
 
-void calculate_ref(float * A, float *B, float * C, int M, int K, int N)
+void calculate_ref_nt(float * A, float *B, float * C, int M, int K, int N)
 {
     for(int m=0;m<M;m++){
         for(int n=0;n<N;n++){
@@ -447,6 +447,24 @@ void calculate_ref(float * A, float *B, float * C, int M, int K, int N)
 
     }
 }
+
+
+void calculate_ref_nn(float * A, float *B, float * C, int M, int K, int N)
+{
+    for(int m=0;m<M;m++){
+        for(int n=0;n<N;n++){
+            float sum = 0;
+            for(int k=0;k<K;k++){
+                // sum += A[m][k] * B[k][n];
+                sum += A[m*K+k] * B[k*N+n];
+            }
+            // C[m][n] = sum
+            C[m*N+n] = sum;
+        }
+
+    }
+}
+
 
 bool verify_matmul_sparse_out(float * ref_C, float * C_val, int * row_index, int * col_index, int h, int w, int block_h, int block_w)
 {
@@ -510,7 +528,6 @@ __global__ void SPARSE_SOFTMAX_STAGE2(float * C_val, float*C_val_mask, int*row_p
 {
 
 }
-
 __global__ void SPARSE_SOFTMAX(
     float* C_val,
     float* C_val_mask,
@@ -545,14 +562,17 @@ __global__ void SPARSE_SOFTMAX(
         regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
     }
     regSum = __shfl_sync(FULL_MASK, regSum, 0);
-
+    // if(threadIdx.x%32==1)
+    //     printf("Row %d Regsum %f  \n", block_inter_row + bm + blk_row_idx * block_h, regSum);
     for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
         uint index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
         regC = 0.0f;
         if (C_val_mask[index] > 0) {
-            regC = expf(C_val[index]);
+            C_val[index] = expf(C_val[index])/regSum;
         }
-        C_val[index] = regC / regSum;
+        else{
+            C_val[index] = 0;
+        }
 
     }
 }
@@ -561,7 +581,7 @@ void sparse_softmax_v1(float * C_val, float * C_val_mask, int * row_ptr, int * c
 {
     int batchsize = 1;
     int HEAD_NUM = 1;
-    int row_tile = 4;
+    const int row_tile = 4;
     const dim3 softmax_dimBlock(row_tile*32);
     const dim3 softmax_dimGrid(h/row_tile, HEAD_NUM * batchsize);
     SPARSE_SOFTMAX<<<softmax_dimGrid, softmax_dimBlock>>>(C_val, C_val_mask, row_ptr, block_h, block_w, SPARSE_VAL_SIZE, row_tile);
@@ -573,13 +593,19 @@ void calculate_softmax_ref(float* tin, int* mask, int M, int N)
         float sum = 0;
         for(int j=0; j<N; j++){
             int index =  i *N + j;
-            if(mask[i])
+            // printf("index: %d mask[index]: %d\n",index, mask[index]);
+            if(mask[index]>0){
                 sum+=expf(tin[index]);
+                // printf("#### i:%d %f \n", mask[index], expf(tin[index]));
+            }
         }
+        // printf("Row: %d sum: %f\n", i, sum);
         for(int j=0; j<N; j++){
             int index =  i *N + j;
-            if(mask[i])
-                tin[index]=tin[index] / sum;
+            if(mask[index])
+                tin[index]=expf(tin[index]) / sum;
+            else
+                tin[index] = 0;
         }
     }
 }
@@ -735,8 +761,23 @@ void matmul_sdd_32_32(int * csr_row, int *csr_col, float * csr_value, float *B, 
     assert(BLOCK_SIZE_M==block_h);
     assert(BLOCK_SIZE_K==block_w);
     dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
-    dim3 blockDim(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M)
-    BLOCK_SPARSE_MATMUL_SDD<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<gradDim, blockDim>>>(csr_row, csr_col, csr_value, B, C, M, K, N, block_h, block_w);
+    dim3 blockDim(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M);
+    BLOCK_SPARSE_MATMUL_SDD<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<gridDim, blockDim>>>(csr_row, csr_col, csr_value, B, C, M, K, N, block_h, block_w);
+}
+
+bool verify_matmul_sdd(float * A, float * B, int M, int N)
+{
+    bool flag = true;
+    for(int i=0;i<M;i++){
+        for(int j=0;j<N;j++){
+            int index = i * N + j;
+            if(fabs(A[index]-B[index])>0.001){
+                printf("%d %d : %f %f\n", i, j, A[index], B[index]);
+                flag=false;
+            }
+        }
+    }
+    return flag;
 }
 int main()
 {
@@ -757,22 +798,28 @@ int main()
     float * B = (float*)malloc(sizeof(float)*K*N);
     float * C = (float*)malloc(sizeof(float)*M*N);
     float * ref_C = (float*) malloc(sizeof(float)*M*N);
+    float * out = (float*) malloc(sizeof(float)*M*N);
+    float * ref_out = (float*) malloc(sizeof(float)*M*N);
     float *dA, *dB, *dC;
-    init_mask(mask, M*N , sparsiy);
-    for(int i=0;i<M*N; i++)
-        data[i] = float(mask[i]);
     // init(data, M*N, 0);
-    init(A, M*K, 0.95);
-    init(B, N*K, 0.95);
-    // for(int i=0;i<K;i++){
-    //     A[i] = 1;
-    //     B[i*N] = 1;
-    // }
+    init_mask(mask, M*K, 0.95);
+    init(A, M*K, 0);
+    init(B, N*K, 0);
+    // memset(A,0,sizeof(float)*M*K);
+    // memset(B,0,sizeof(float)*N*K);
+    // for(int i=0;i<K;i++)
+    //     A[i] = 1, B[i*N]=1;
+    for(int i=0;i<M*K;i++){
+        if (mask[i] == 0)
+            A[i] = 0.0;    // B[i*N] = 1;
+    }
+
     int * d_mask, *d_row, *d_col, *extra_buffer, *d_row_pos;
-    float * d_data, *d_val;
+    float * d_data, *d_val, *d_out;
     CUDA_SAFE_CALL(cudaMalloc(&dA, sizeof(float)*M*K));
     CUDA_SAFE_CALL(cudaMalloc(&dB, sizeof(float)*N*K));
     CUDA_SAFE_CALL(cudaMalloc(&dC, sizeof(float)*M*N));
+    CUDA_SAFE_CALL(cudaMalloc(&d_out, sizeof(float)*M*N));
     CUDA_SAFE_CALL(cudaMalloc(&d_mask, sizeof(int)*M*K));
     CUDA_SAFE_CALL(cudaMalloc(&d_row, sizeof(int)*(M+1)));
     CUDA_SAFE_CALL(cudaMalloc(&d_col, sizeof(int)*M*K));
@@ -787,13 +834,12 @@ int main()
 
     CUDA_SAFE_CALL(cudaEventRecord(time_start));
     for(int runtime=0; runtime<10; runtime++){
-        convert_bcsr(d_mask, d_data, M, N, block_h, block_w, d_row, d_col, d_row_pos, d_val, extra_buffer);
+        convert_bcsr(d_mask, dA, M, K, block_h, block_w, d_row, d_col, d_row_pos, d_val, extra_buffer);
         int n_row = M / block_h;
         int SMALL_BLOCK_NUM;
         CUDA_SAFE_CALL(cudaMemcpy(&SMALL_BLOCK_NUM, d_row + n_row, sizeof(int), cudaMemcpyDeviceToHost));
         const int SPARSE_VAL_SIZE = SMALL_BLOCK_NUM * block_h * block_w;
-        matmul_sparse_out_32_64_32(dA, dB, dC, d_row, d_col, d_row_pos, M, K, N, block_h, block_w, SPARSE_VAL_SIZE, SMALL_BLOCK_NUM);
-        sparse_softmax_v1(dC, d_val, d_row, d_col, d_row_pos, M, N, block_h, block_w, SPARSE_VAL_SIZE);
+        matmul_sdd_32_32(d_row, d_col, d_val, dB, dC, M, K, N, block_h, block_w);
     }
     CUDA_SAFE_CALL(cudaEventRecord(time_end));
     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
@@ -803,17 +849,98 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(col, d_col, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
     CUDA_SAFE_CALL(cudaMemcpy(values, d_val, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
     CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(float)*M*N, cudaMemcpyDeviceToHost));
-    if (!verify_bcsr(mask, data, M, N, block_h, block_w, row, col, values)){
+    if (!verify_bcsr(mask, A, M, N, block_h, block_w, row, col, values)){
         printf("Convert check failed!!!\n");
         return -1;
     }
-    calculate_ref(A, B, ref_C,M ,K, N);
+    calculate_ref_nn(A, B, ref_C, M ,K, N);
 
-    calculate_softmax_ref(ref_C, mask, M, N);
-
-    if(!verify_softmax(ref_C, C, row, col, M, N, block_h, block_w)){
-        printf("value wrong!!\n");
-        return -1;
+    if(!verify_matmul_sdd(ref_C, C, M, N)){
+        printf("value error!\n");
     }
     return 0;
 }
+// int main()
+// {
+//     cudaEvent_t time_start, time_end;
+//     float msecTotal=0;
+//     CUDA_SAFE_CALL(cudaEventCreate(&time_start));
+//     CUDA_SAFE_CALL(cudaEventCreate(&time_end));
+//     int M=1024, K=1024, N=1024;
+//     int block_h=32, block_w = 32;
+//     // float sparsiy=0.9999;
+//     float sparsiy=0.95;
+//     float * data = (float*) malloc(sizeof(float)*M*K);
+//     int * mask = (int*) malloc(sizeof(int)*M*N);
+//     int * row = (int*) malloc(sizeof(int)*(M+1));
+//     int * col = (int*) malloc(sizeof(int)*M*K);
+//     float * values = (float*)malloc(sizeof(float)*M*N);
+//     float * A = (float*)malloc(sizeof(float)*M*K);
+//     float * B = (float*)malloc(sizeof(float)*K*N);
+//     float * C = (float*)malloc(sizeof(float)*M*N);
+//     float * ref_C = (float*) malloc(sizeof(float)*M*N);
+//     float * out = (float*) malloc(sizeof(float)*M*N);
+//     float * ref_out = (float*) malloc(sizeof(float)*M*N);
+//     float *dA, *dB, *dC;
+//     init_mask(mask, M*N , sparsiy);
+//     for(int i=0;i<M*N; i++)
+//         data[i] = float(mask[i]);
+//     // init(data, M*N, 0);
+//     init(A, M*K, 0.95);
+//     init(B, N*K, 0.95);
+//     // for(int i=0;i<K;i++){
+//     //     A[i] = 1;
+//     //     B[i*N] = 1;
+//     // }
+//     int * d_mask, *d_row, *d_col, *extra_buffer, *d_row_pos;
+//     float * d_data, *d_val, *d_out;
+//     CUDA_SAFE_CALL(cudaMalloc(&dA, sizeof(float)*M*K));
+//     CUDA_SAFE_CALL(cudaMalloc(&dB, sizeof(float)*N*K));
+//     CUDA_SAFE_CALL(cudaMalloc(&dC, sizeof(float)*M*N));
+//     CUDA_SAFE_CALL(cudaMalloc(&d_out, sizeof(float)*M*N));
+//     CUDA_SAFE_CALL(cudaMalloc(&d_mask, sizeof(int)*M*K));
+//     CUDA_SAFE_CALL(cudaMalloc(&d_row, sizeof(int)*(M+1)));
+//     CUDA_SAFE_CALL(cudaMalloc(&d_col, sizeof(int)*M*K));
+//     CUDA_SAFE_CALL(cudaMalloc(&d_row_pos, sizeof(int)*M*K));
+//     CUDA_SAFE_CALL(cudaMalloc(&extra_buffer, sizeof(int)*M*K));
+//     CUDA_SAFE_CALL(cudaMalloc(&d_data, sizeof(float)*M*K));
+//     CUDA_SAFE_CALL(cudaMalloc(&d_val, sizeof(float)*M*K));
+//     CUDA_SAFE_CALL(cudaMemcpy(d_data, data, sizeof(float)*M*K, cudaMemcpyHostToDevice));
+//     CUDA_SAFE_CALL(cudaMemcpy(d_mask, mask, sizeof(int)*M*K, cudaMemcpyHostToDevice));
+//     CUDA_SAFE_CALL(cudaMemcpy(dA, A, sizeof(float)*M*K, cudaMemcpyHostToDevice));
+//     CUDA_SAFE_CALL(cudaMemcpy(dB, B, sizeof(float)*K*N, cudaMemcpyHostToDevice));
+
+//     CUDA_SAFE_CALL(cudaEventRecord(time_start));
+//     for(int runtime=0; runtime<10; runtime++){
+//         convert_bcsr(d_mask, d_data, M, N, block_h, block_w, d_row, d_col, d_row_pos, d_val, extra_buffer);
+//         int n_row = M / block_h;
+//         int SMALL_BLOCK_NUM;
+//         CUDA_SAFE_CALL(cudaMemcpy(&SMALL_BLOCK_NUM, d_row + n_row, sizeof(int), cudaMemcpyDeviceToHost));
+//         const int SPARSE_VAL_SIZE = SMALL_BLOCK_NUM * block_h * block_w;
+//         matmul_sparse_out_32_64_32(dA, dB, dC, d_row, d_col, d_row_pos, M, K, N, block_h, block_w, SPARSE_VAL_SIZE, SMALL_BLOCK_NUM);
+//         sparse_softmax_v1(dC, d_val, d_row, d_col, d_row_pos, M, N, block_h, block_w, SPARSE_VAL_SIZE);
+//         matmul_sdd_32_32(d_row, d_col, dC, dB, d_out, M, K, N, block_h, block_w);
+//     }
+//     CUDA_SAFE_CALL(cudaEventRecord(time_end));
+//     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
+//     CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));
+
+//     CUDA_SAFE_CALL(cudaMemcpy(row, d_row, sizeof(int)*(M+1), cudaMemcpyDeviceToHost));
+//     CUDA_SAFE_CALL(cudaMemcpy(col, d_col, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
+//     CUDA_SAFE_CALL(cudaMemcpy(values, d_val, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
+//     CUDA_SAFE_CALL(cudaMemcpy(out, d_out, sizeof(float)*M*N, cudaMemcpyDeviceToHost));
+//     // if (!verify_bcsr(mask, data, M, N, block_h, block_w, row, col, values)){
+//     //     printf("Convert check failed!!!\n");
+//     //     return -1;
+//     // }
+//     calculate_ref(A, B, ref_C,M ,K, N);
+
+//     calculate_softmax_ref(ref_C, mask, M, N);
+
+//     calculate_ref(ref_C, B, ref_out, M, K, N);
+    
+//     if(!verify_matmul_sdd(ref_out, out, M,N)){
+//         printf("value error!\n");
+//     }
+//     return 0;
+// }
