@@ -331,7 +331,7 @@ template <
     const int THREAD_SIZE_K, // 4
     const int THREAD_SIZE_N  // 8
 >
-__global__ void BLOCK_SPARSE_MATMUL_SDD(int* csr_row, int * csr_col, float* csr_val, float * B, float* C,  int M, int K, int N, int block_h, int block_w){
+__global__ void BLOCK_SPARSE_MATMUL_SDD(int* csr_row, int * csr_col, float* csr_val, float * B, float* C,  int M, int K, int N, int block_h, int block_w, int sparse_val_size){
     // const int BLOCK_SIZE_M = 32;
     // const int BLOCK_SIZE_K = 32;
     // const int BLOCK_SIZE_N = 64;
@@ -340,8 +340,13 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD(int* csr_row, int * csr_col, float* csr_
     // const int THREAD_SIZE_N = 4;
     int by = blockIdx.y; // M
     int bx = blockIdx.x; // N
+    int bz = blockIdx.z;
     int ty = threadIdx.y; 
     int tx = threadIdx.x;
+    csr_val = csr_val + sparse_val_size * bz;
+    B = B + K * N * sizeof(float) * bz;
+    C = C + M * N * sizeof(float) * bz;
+
     const int padding = 1;
     __shared__ float As[BLOCK_SIZE_M * (padding+BLOCK_SIZE_K)];
     __shared__ float Bs[BLOCK_SIZE_N * (padding+BLOCK_SIZE_K)];
@@ -445,7 +450,7 @@ void dynamic_forward_function(float* Q, float* K, float* V,
                     float * inter_result, int * row_ptr, int * col_idx, int * row_pos, float * val_mask,
                     int batch_size, int head_num, int seq_length, int hidden_dim, const int block_nnz, float* output)
 {
-    const int sparse_val_size =  block_nnz * 32* 32; //block_nnz * block_h * block_w
+    const int sparse_val_size =  block_nnz * 32* 32 * sizeof(float); //block_nnz * block_h * block_w
     // already set to zero outside, no need to memset here
     //cudaMemset((void*)val, 0, (SPARSE_VAL_SIZE * HEAD_NUM) * batch_size);
     const dim3 dimBlock(256);
@@ -483,7 +488,7 @@ void dynamic_forward_function(float* Q, float* K, float* V,
     const int THREAD_SIZE_K = 4;
     const int THREAD_SIZE_N = 4;
 
-    dim3 sdd_gridDim(hidden_dim/BLOCK_SIZE_N, seq_length/BLOCK_SIZE_M);
+    dim3 sdd_gridDim(hidden_dim/BLOCK_SIZE_N, seq_length/BLOCK_SIZE_M, head_num * batch_size);
     dim3 sdd_blockDim(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M);
     BLOCK_SPARSE_MATMUL_SDD<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<sdd_gridDim, sdd_blockDim>>>(
         row_ptr,
@@ -495,7 +500,8 @@ void dynamic_forward_function(float* Q, float* K, float* V,
         seq_length,
         hidden_dim,
         32,
-        32);
+        32,
+        sparse_val_size);
 }
 
 
@@ -516,8 +522,9 @@ at::Tensor dynamic_sparse_attention_forward(
     cudaSetDevice(Q.get_device());
     // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
     int batch_size = Q.size(0);
-    int seq_length = Q.size(1);
-    int hidden_dim = Q.size(2);
+    // int head_num = Q.size(1);
+    int seq_length = Q.size(2);
+    int hidden_dim = Q.size(3);
     torch::Tensor output = torch::empty({batch_size, head_num, seq_length, hidden_dim}, Q.options());
     
     AT_DISPATCH_FLOATING_TYPES(Q.type(), "dynamic_sparse_attention", ([&]

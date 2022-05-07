@@ -92,7 +92,7 @@ __device__ __forceinline__ const float* add_ptr_f(const float* src, int offset) 
 }
 
 __global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
-                                int block_h, int block_w, int * row, int *col,
+                                int block_h, int block_w, int * row, int *col, int * row_pos,
                                 float * values, int * extra_buffer)
 {
 
@@ -134,7 +134,7 @@ __global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, float * __
 
 }
 __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
-    int block_h, int block_w, int * row, int *col,
+    int block_h, int block_w, int * row, int *col, int * row_pos,
     float * values, int * extra_buffer)
 {
     __shared__ int pos_id, prefix_count, ori_bx, ori_by;
@@ -147,6 +147,7 @@ __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __
         pos_id = -1;
         prefix_count = 0;
         // contend for the block
+
         pos_id = atomicSub(&extra_buffer[by], 1);
         pos_id-=1;
         if (pos_id>=0){
@@ -158,6 +159,7 @@ __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __
             
             row[by] = prefix_count;
             col[prefix_count+pos_id] = ori_bx;
+            row_pos[prefix_count+pos_id] = by;
         }
     }
     __syncthreads();
@@ -177,17 +179,20 @@ __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __
 }
 
 void convert_bcsr(int * mask, float * dense, int h, int w,
-    int block_h, int block_w, int * row, int *col,
+    int block_h, int block_w, int * row, int *col, int * row_pos,
     float*values, int * extra_buffer)
 {
     // need reset the extra buffer here
     assert(block_w % 4 == 0);
-    CUDA_SAFE_CALL(cudaMemset((void*)extra_buffer, 0, sizeof(int)*(h+(h/block_h)*(w/block_w))) );
+    CUDA_SAFE_CALL(cudaMemset((void*)extra_buffer, 0, sizeof(int)*(2*h+(h/block_h)*(w/block_w))) );
+    CUDA_SAFE_CALL(cudaMemset((void*)row, 0, sizeof(int)*(1+(h/block_h))) );
     dim3 block_dim(block_h*block_w/4);
     dim3 grid_dim(w/block_w, h/block_h);
+    // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
+    convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
+    convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
 
-    convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, values, extra_buffer);
-    convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, values, extra_buffer);
+
 }
 
 std::vector<at::Tensor> convert_bcsr_forward(
@@ -204,6 +209,7 @@ std::vector<at::Tensor> convert_bcsr_forward(
     torch::Tensor csr_values = torch::empty_like(dense_values);
     torch::Tensor csr_row = torch::zeros({h/block_h+1}, sparse_pattern.options());
     int n_total_block = h * w / block_h / block_w;
+    torch::Tensor csr_row_pos = torch::zeros({n_total_block}, sparse_pattern.options());
     torch::Tensor csr_col = torch::zeros({n_total_block}, sparse_pattern.options());
     torch::Tensor ext_buffer = torch::zeros({2*h+n_total_block}, sparse_pattern.options());
     
@@ -214,9 +220,10 @@ std::vector<at::Tensor> convert_bcsr_forward(
                 h, w, block_h, block_w,
                 csr_row.data_ptr<int>(),
                 csr_col.data_ptr<int>(),
+                csr_row_pos.data_ptr<int>(),
                 csr_values.data_ptr<float>(),
                 ext_buffer.data_ptr<int>()
             ); }));
-    std::vector<torch::Tensor> bcsr({csr_row, csr_col, csr_values});
+    std::vector<torch::Tensor> bcsr({csr_row, csr_col, csr_row_pos, csr_values});
     return bcsr;
 }

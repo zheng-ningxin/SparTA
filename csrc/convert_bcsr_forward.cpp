@@ -9,5 +9,5 @@ std::vector<at::Tensor> convert_bcsr_forward(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("forward", &convert_bcsr_forward, "cuSparse sparse forward");
+    m.def("forward", &convert_bcsr_forward, "Convert block csr format");
 }
