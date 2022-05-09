@@ -81,7 +81,7 @@ class DynamicSparseAttention(SparseOPBase):
         DynamicSparseAttention.global_bcsr_row, DynamicSparseAttention.global_bcsr_col, DynamicSparseAttention.global_bcsr_row_pos, \
             DynamicSparseAttention.global_bcsr_val_mask = DynamicSparseAttention.global_converter(
                 DynamicSparseAttention.global_sparse_pattern, DynamicSparseAttention.global_sparse_pattern.to(torch.float), DynamicSparseAttention.global_block_h, DynamicSparseAttention.global_block_w)
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         DynamicSparseAttention.global_block_nnz = DynamicSparseAttention.global_bcsr_row[n_row].item()
 
     def __init__(self, global_mode=True):
@@ -163,6 +163,8 @@ class DynamicSparseAttention(SparseOPBase):
         dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
         added = torch.add(dots, add_mask)
         attn = added.softmax(dim=-1)
+        nan_pos = torch.isnan(attn)
+        attn[nan_pos] = 0.0
         ref_out = torch.einsum('b h m n, b h n k -> b h m k', attn, V)
 
         return ref_out

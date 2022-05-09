@@ -274,6 +274,8 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     C_val += 16 * 32;
     *(float2*)C_val = c2[0];
 
+
+
 }
 __global__ void SPARSE_SOFTMAX(
     float* C_val,
@@ -322,6 +324,8 @@ __global__ void SPARSE_SOFTMAX(
         }
 
     }
+
+
 }
 template <
     const int BLOCK_SIZE_M, // 64
@@ -344,8 +348,8 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD(int* csr_row, int * csr_col, float* csr_
     int ty = threadIdx.y; 
     int tx = threadIdx.x;
     csr_val = csr_val + sparse_val_size * bz;
-    B = B + K * N * sizeof(float) * bz;
-    C = C + M * N * sizeof(float) * bz;
+    B = B + K * N * bz;
+    C = C + M * N * bz;
 
     const int padding = 1;
     __shared__ float As[BLOCK_SIZE_M * (padding+BLOCK_SIZE_K)];
@@ -443,6 +447,8 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD(int* csr_row, int * csr_col, float* csr_
             )] = (accum[thread_x][thread_y]);
         }
     }
+
+
 }
 
 
@@ -450,7 +456,8 @@ void dynamic_forward_function(float* Q, float* K, float* V,
                     float * inter_result, int * row_ptr, int * col_idx, int * row_pos, float * val_mask,
                     int batch_size, int head_num, int seq_length, int hidden_dim, const int block_nnz, float* output)
 {
-    const int sparse_val_size =  block_nnz * 32* 32 * sizeof(float); //block_nnz * block_h * block_w
+    const int sparse_val_size =  block_nnz * 32* 32 ; //block_nnz * block_h * block_w
+    CUDA_SAFE_CALL(cudaMemset(inter_result, 0, sizeof(float) * sparse_val_size * batch_size * head_num));
     // already set to zero outside, no need to memset here
     //cudaMemset((void*)val, 0, (SPARSE_VAL_SIZE * HEAD_NUM) * batch_size);
     const dim3 dimBlock(256);
@@ -467,6 +474,7 @@ void dynamic_forward_function(float* Q, float* K, float* V,
         sparse_val_size
         
     );
+
     const int row_tile = 4;
     const dim3 softmax_dimBlock(row_tile*32);
     const dim3 softmax_dimGrid(seq_length/row_tile, head_num * batch_size);
@@ -502,6 +510,8 @@ void dynamic_forward_function(float* Q, float* K, float* V,
         32,
         32,
         sparse_val_size);
+
+    
 }
 
 
