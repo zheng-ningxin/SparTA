@@ -207,6 +207,7 @@ bool verify_bcsr(int * mask, float * data, int h, int w, int block_h, int block_
                         // printf("%f %f\n", data[offset], values[csr_offset]);
                         if(abs(data[offset]-values[csr_offset])>1e-8)
                         {
+                            printf("pos_block: %d %d values: %f %f\n", rid, cid, data[offset], values[csr_offset]);
                             return false;
                         }
                         mask[offset]= 0;
@@ -216,7 +217,7 @@ bool verify_bcsr(int * mask, float * data, int h, int w, int block_h, int block_
         }
     }
     printf("%d blocks remained\n", row[h/block_h]);
-    for(int i=0;i<block_h*block_w;i++)
+    for(int i=0;i<h*w;i++)
         if(mask[i])
             return false;
     return true;
@@ -788,7 +789,7 @@ int main()
     int M=1024, K=1024, N=1024;
     int block_h=32, block_w = 32;
     // float sparsiy=0.9999;
-    float sparsiy=0.95;
+    float sparsiy=0.99999;
     float * data = (float*) malloc(sizeof(float)*M*K);
     int * mask = (int*) malloc(sizeof(int)*M*N);
     int * row = (int*) malloc(sizeof(int)*(M+1));
@@ -802,7 +803,7 @@ int main()
     float * ref_out = (float*) malloc(sizeof(float)*M*N);
     float *dA, *dB, *dC;
     // init(data, M*N, 0);
-    init_mask(mask, M*K, 0.95);
+    init_mask(mask, M*K, sparsiy);
     init(A, M*K, 0);
     init(B, N*K, 0);
     // memset(A,0,sizeof(float)*M*K);
