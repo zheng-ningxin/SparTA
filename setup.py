@@ -22,12 +22,16 @@ if torch.cuda.is_available():
     # the bcsr convert kernel
     bcsr_ext = CUDAExtension(name='convert_bcsr', sources=['csrc/convert_bcsr_forward.cpp',
                                                            'csrc/convert_bcsr_forward_kernel.cu'],
-                             extra_compile_args=['-std=c++14', '-O3'])
+                                extra_compile_args=['-std=c++14', '-O3'])
     ext_modules.append(bcsr_ext)
     dynamic_attention_ext = CUDAExtension(name='dynamic_sparse_attention', sources=['csrc/dynamic_sparse_attention_forward.cpp',
                                                            'csrc/dynamic_sparse_attention_forward_kernel.cu'],
-                             extra_compile_args=['-std=c++14', '-O3'])
+                                extra_compile_args=['-std=c++14', '-O3'])
     ext_modules.append(dynamic_attention_ext)
+    dynamic_linear_ext = CUDAExtension(name='dynamic_sparse_linear', sources=['csrc/dynamic_sparse_linear_forward.cpp',
+                                                            'csrc/dynamic_sparse_attention_forward_kernel.cu'],
+                                extra_compile_args=['-std=c++14', '-O3'])
+    ext_modules.append(dynamic_linear_ext)
     # cusparse_ext = CUDAExtension(name='our_sparse_attention', sources=[
     #                             'csrc/sparse_attention.cpp', 'csrc/sparse_attention_kernel.cu'],
     #                             extra_compile_args=['-std=c++14', '-O3'])

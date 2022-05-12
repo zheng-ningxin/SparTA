@@ -87,10 +87,11 @@ def test_speed(sparse_attention, head_num, seq_len, hidden_n, device):
                    dtype=torch.float32, device=device)
     out = sparse_attention(q, k, v)
     out_grad = torch.rand_like(out)
-
+    n_iter = 200
     torch.cuda.synchronize()
+    
     st = time.time()
-    for _ in range(50):
+    for _ in range(n_iter):
         q = torch.rand(batch_size, head_num, seq_len, hidden_n,
                        dtype=torch.float32, device=device)
         k = torch.rand(batch_size, head_num, seq_len, hidden_n,
@@ -100,11 +101,12 @@ def test_speed(sparse_attention, head_num, seq_len, hidden_n, device):
         sparse_attention(q, k, v)
     torch.cuda.synchronize()
     end = time.time()
-    print('Sparse Forward Implementation', end-st)
-
+    s_f = (end-st)/n_iter*1000
+    print('Sparse Forward Implementation', (end-st)/n_iter*1000)
+    
     torch.cuda.synchronize()
     st = time.time()
-    for _ in range(50):
+    for _ in range(n_iter):
         q = torch.rand(batch_size, head_num, seq_len, hidden_n,
                        dtype=torch.float32, device=device, requires_grad=True)
         k = torch.rand(batch_size, head_num, seq_len, hidden_n,
@@ -115,7 +117,9 @@ def test_speed(sparse_attention, head_num, seq_len, hidden_n, device):
         out.backward(out_grad)
     torch.cuda.synchronize()
     end = time.time()
-    print('Sparse Forward+Backward Implementation', end-st)
+    
+
+    print('Sparse Backward Implementation', (end-st)/n_iter*1000)
 
 
 def dense_speed(sparse_attention, head_num, seq_len, hidden_n, device):
@@ -131,7 +135,8 @@ def dense_speed(sparse_attention, head_num, seq_len, hidden_n, device):
 
     torch.cuda.synchronize()
     st = time.time()
-    for _ in range(50):
+    n_iter = 200
+    for _ in range(n_iter):
         q = torch.rand(batch_size, head_num, seq_len, hidden_n,
                        dtype=torch.float32, device=device)
         k = torch.rand(batch_size, head_num, seq_len, hidden_n,
@@ -141,11 +146,12 @@ def dense_speed(sparse_attention, head_num, seq_len, hidden_n, device):
         out = sparse_attention.reference_forward(q, k, v)
     torch.cuda.synchronize()
     end = time.time()
-    print('Dense Forward Implementation', end-st)
-
+    d_f = (end-st)/n_iter*1000
+    print('Dense Forward Implementation', (end-st)/n_iter*1000)
+    
     torch.cuda.synchronize()
     st = time.time()
-    for _ in range(50):
+    for _ in range(n_iter):
         q = torch.rand(batch_size, head_num, seq_len, hidden_n,
                        dtype=torch.float32, device=device, requires_grad=True)
         k = torch.rand(batch_size, head_num, seq_len, hidden_n,
@@ -156,7 +162,142 @@ def dense_speed(sparse_attention, head_num, seq_len, hidden_n, device):
         out.backward(out_grad)
     torch.cuda.synchronize()
     end = time.time()
-    print('Dense Forward+Backward Implementation', end-st)
+    print('Dense Backward Implementation', (end-st)/n_iter*1000)
+
+
+
+def dense_forward_mem(sparse_attention, head_num, seq_len, hidden_n, device):
+    q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    out = sparse_attention.reference_forward(q, k, v)
+    out_grad = torch.rand_like(out)
+
+    torch.cuda.synchronize()
+    st = time.time()
+    n_iter = 200
+    for runid in range(n_iter):
+        print(runid)
+        # q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+        #                dtype=torch.float32, device=device)
+        # k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+        #                dtype=torch.float32, device=device)
+        # v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+        #                dtype=torch.float32, device=device)
+        _ = sparse_attention.reference_forward(q, k, v)
+    torch.cuda.synchronize()
+    end = time.time()
+    d_f = (end-st)/n_iter*1000
+    print('Dense Forward Implementation', (end-st)/n_iter*1000)
+    
+    torch.cuda.synchronize()
+    st = time.time()
+    for _ in range(n_iter):
+        q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device, requires_grad=True)
+        k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device, requires_grad=True)
+        v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device, requires_grad=True)
+        out = sparse_attention.reference_forward(q, k, v)
+        out.backward(out_grad)
+    torch.cuda.synchronize()
+    end = time.time()
+    print('Dense Backward Implementation', (end-st)/n_iter*1000)
+
+
+def dense_backward_mem(sparse_attention, head_num, seq_len, hidden_n, device):
+    # warmup
+    q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    out = sparse_attention.reference_forward(q, k, v)
+    out_grad = torch.rand_like(out)
+
+    n_iter = 200
+
+    torch.cuda.synchronize()
+    st = time.time()
+    for runid in range(n_iter):
+        print(runid)
+        q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device, requires_grad=True)
+        k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device, requires_grad=True)
+        v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device, requires_grad=True)
+        out = sparse_attention.reference_forward(q, k, v)
+        out.backward(out_grad)
+    torch.cuda.synchronize()
+    end = time.time()
+    print('Dense Backward Implementation', (end-st)/n_iter*1000)
+    
+
+def sparse_forward_mem(sparse_attention, head_num, seq_len, hidden_n, device):
+    # warmup
+    q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    out = sparse_attention(q, k, v)
+    out_grad = torch.rand_like(out)
+    n_iter = 200
+    torch.cuda.synchronize()
+    
+    st = time.time()
+    for runid in range(n_iter):
+        print(runid)
+        q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device)
+        k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device)
+        v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device)
+        sparse_attention(q, k, v)
+    torch.cuda.synchronize()
+    end = time.time()
+    s_f = (end-st)/n_iter*1000
+    print('Sparse Forward Implementation', (end-st)/n_iter*1000)
+    
+
+
+
+def sparse_backward_mem(sparse_attention, head_num, seq_len, hidden_n, device):
+    # warmup
+    q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    out = sparse_attention(q, k, v)
+    out_grad = torch.rand_like(out)
+    n_iter = 200
+    
+    torch.cuda.synchronize()
+    st = time.time()
+    for _ in range(n_iter):
+        q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device, requires_grad=True)
+        k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device, requires_grad=True)
+        v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device, requires_grad=True)
+        out = sparse_attention(q, k, v)
+        out.backward(out_grad)
+    torch.cuda.synchronize()
+    end = time.time()
+    
+
+    print('Sparse Backward Implementation', (end-st)/n_iter*1000)
 
 
 def test_correctness(sparse_attention, HEAD_NUM, seq_len, hidden_n, device):
@@ -213,6 +354,27 @@ def test_nuwa():
     test_correctness(spa, HEAD_NUM, M, K, device)
 
 
+def test_nuwa_mem():
+    HEAD_NUM = 20
+    attn_t = 1  # 4
+    attn_h = 5
+    attn_w = 5
+    frame_t = 1  # 10
+    frame_h = 32  # 16
+    frame_w = 32  # 16
+    device = torch.device('cuda:2')
+    sp_matrix = nuwa_sparse_pattern(
+        attn_t, attn_h, attn_w, frame_t, frame_h, frame_w)
+    out_mask = torch.tensor(sp_matrix)
+    M, N = out_mask.size()
+    K = 64
+    spa = SparseAttention(out_mask, HEAD_NUM, M, K)
+    # test the speed
+    # dense_forward_mem(spa, HEAD_NUM, M, K, device)
+    # dense_backward_mem(spa, HEAD_NUM, M, K, device)
+    # sparse_forward_mem(spa, HEAD_NUM, M, K, device)
+    sparse_backward_mem(spa, HEAD_NUM, M, K, device)
+
 def test_random(HEAD_NUM, seq_len, hidden_dim, sparsity):
     print(HEAD_NUM, seq_len, hidden_dim, sparsity)
     sp_pattern = random_sparse_pattern(seq_len, sparsity)
@@ -227,6 +389,7 @@ def test_random(HEAD_NUM, seq_len, hidden_dim, sparsity):
 
 
 if __name__ == '__main__':
-    batch_size = 1
-    test_nuwa()
+    batch_size = 64
+    # test_nuwa()
+    test_nuwa_mem()
     # test_random(20, 1024, 64, 0.00001)
