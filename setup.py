@@ -29,7 +29,7 @@ if torch.cuda.is_available():
                                 extra_compile_args=['-std=c++14', '-O3'])
     ext_modules.append(dynamic_attention_ext)
     dynamic_linear_ext = CUDAExtension(name='dynamic_sparse_linear', sources=['csrc/dynamic_sparse_linear_forward.cpp',
-                                                            'csrc/dynamic_sparse_attention_forward_kernel.cu'],
+                                                            'csrc/dynamic_sparse_linear_forward_kernel.cu'],
                                 extra_compile_args=['-std=c++14', '-O3'])
     ext_modules.append(dynamic_linear_ext)
     # cusparse_ext = CUDAExtension(name='our_sparse_attention', sources=[

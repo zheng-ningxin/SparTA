@@ -213,6 +213,7 @@ bool verify_bcsr(int * mask, float * data, int h, int w, int block_h, int block_
         }
     }
     printf("%d blocks remained\n", row[h/block_h]);
+    printf("Blockwise sparsity %f \n", 1.0-1.0*row[h/block_h]/(h/block_w)/(w/block_w));
     for(int i=0;i<block_h*block_w;i++)
         if(mask[i])
             return false;
@@ -228,7 +229,7 @@ int main()
     int M=1024, K=1024;
     int block_h=32, block_w = 32;
     // float sparsiy=0.9999;
-    float sparsiy=0.95;
+    float sparsity=0.99;
     float * data = (float*) malloc(sizeof(float)*M*K);
     int * mask = (int*) malloc(sizeof(int)*M*K);
     int * row = (int*) malloc(sizeof(int)*(M+1));
@@ -251,8 +252,8 @@ int main()
     //             vcount +=1;
     //             // printf("mask:%d\n", mask[i*K+j]);
     // }
-
-    init_mask(mask, M*K , sparsiy);
+    init_mask_blockwise(mask, M, K, block_h, block_w, sparsity);
+    // init_mask(mask, M*K , sparsity);
     init(data, M*K, 0);
     // FILE * mask_f;
     // mask_f = fopen("mask.bin", "wb");
@@ -280,13 +281,15 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(values, d_val, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
 
     std::cout<<"Correctness check: "<< verify_bcsr(mask, data, M, K, block_h, block_w, row, col, values) << std::endl;
+    int n_iter = 100;
+
     CUDA_SAFE_CALL(cudaEventRecord(time_start));
-    for(int i=0;i<10;i++){
+    for(int i=0;i<n_iter;i++){
         convert_bcsr(d_mask, d_data, M, K, block_h, block_w, d_row, d_col, d_val, extra_buffer);    
     }
     CUDA_SAFE_CALL(cudaEventRecord(time_end));
     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
     CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));
-    printf("Dynamic convert time cost= %f msec\n", msecTotal);
+    printf("Dynamic convert time cost= %f msec\n", msecTotal/n_iter);
     return 0;
 }

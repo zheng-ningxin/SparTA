@@ -92,7 +92,7 @@ template <
     const int THREAD_SIZE_K, // 4
     const int THREAD_SIZE_N  // 8
 >
-__global__ void BLOCK_SPARSE_MATMUL_BIAS(float* A, float* W_val, int* W_row, int* W_col, float* C, float *bias, int M, int K, int N){
+__global__ void BLOCK_SPARSE_MATMUL(float* A, float* W_val, int* W_row, int* W_col, float* C, float *bias, int M, int K, int N){
     int by = blockIdx.y;
     int bx = blockIdx.x;
     int ty = threadIdx.y;
@@ -106,7 +106,7 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS(float* A, float* W_val, int* W_row, int
     float b_frag[THREAD_SIZE_N][THREAD_SIZE_K];
 
     int A_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
-    int B_THREAD_PER_ROW = BLOCK_SIZE_k / 4;
+    int B_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
 
     int bszy = BLOCK_SIZE_M / THREAD_SIZE_M;
     int bszx = BLOCK_SIZE_N / THREAD_SIZE_N;
@@ -128,7 +128,7 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS(float* A, float* W_val, int* W_row, int
 
     const int vBLOCK_SIZE_M = BLOCK_SIZE_M / THREAD_SIZE_M;
     const int vBLOCK_SIZE_N = BLOCK_SIZE_N / THREAD_SIZE_N;
-    float4  load_weight;
+    float4 tmp_float4;
     for(int tile_block_idx = index_start; tile_block_idx < index_end; tile_block_idx += 1){
         int tile_idx = W_col[tile_block_idx] * BLOCK_SIZE_K;
         #pragma unroll
@@ -143,12 +143,23 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS(float* A, float* W_val, int* W_row, int
         }
         */
 
+        // #pragma unroll
+        // for(int k = 0; k < BLOCK_SIZE_K; k += B_TILE_ROW_STRIDE){
+        //     FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BLOCK_SIZE_N)]) = 
+        //         FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+        //         // FETCH_FLOAT4(B[OFFSET(tile_idx+k+B_BLOCK_ROW_START, bx*BLOCK_SIZE_N+B_BLOCK_COL_START, N)]);
+        // }
+
         #pragma unroll
-        for(int k = 0; k < BLOCK_SIZE_K; k += B_TILE_ROW_STRIDE){
-            
-            load_weight = FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_K + B_BLOCK_COL_START]);
-            
+        for(int k=0; k < BLOCK_SIZE_N; k+= B_TILE_ROW_STRIDE){
+            // transpose here
+            tmp_float4 =  FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_K + B_BLOCK_COL_START]);
+            Bs[OFFSET(B_BLOCK_COL_START, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.x;
+            Bs[OFFSET(B_BLOCK_COL_START+1, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.y;
+            Bs[OFFSET(B_BLOCK_COL_START+2, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.z;
+            Bs[OFFSET(B_BLOCK_COL_START+3, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.w;
         }
+
 
         __syncthreads();
 
@@ -206,6 +217,7 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS(float* A, float* W_val, int* W_row, int
 }
 
 
+
 void dynamic_forward_function(float* activation, int* row_ptr, int* col_idx,
                     float * val, float* bias, int M, int K, int N, int block_h, int block_w, float* output)
 {
@@ -219,19 +231,22 @@ void dynamic_forward_function(float* activation, int* row_ptr, int* col_idx,
     const int THREAD_SIZE_K = 4;
     const int THREAD_SIZE_N = 4;
     
-    assert(BLOCK_SIZE_K == block_h);
-    assert(BLOCK_SIZE_N == block_w);
-
-
+    assert(BLOCK_SIZE_N == block_h);
+    assert(BLOCK_SIZE_K == block_w);
+    dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
+    dim3 blockDim(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M);
+    // float* A, float* W_val, int* W_row, int* W_col, float* C, float *bias, int M, int K, int N
+    BLOCK_SPARSE_MATMUL<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<gridDim, blockDim>>>(activation, val, row_ptr, col_idx, output, bias, M, K, N);
     
 }
 
-at::Tensor dynamic_sparse_attention_forward(
+at::Tensor dynamic_sparse_linear_forward(
     torch::Tensor activation,
     torch::Tensor row_ptr,
-    torch::Tensor col_indx,
+    torch::Tensor col_index,
     torch::Tensor val,
-    int M, int K, int N
+    torch::Tensor bias,
+    int M, int K, int N, int block_h, int block_w
 )
 {
     cudaSetDevice(activation.get_device());
@@ -245,7 +260,7 @@ at::Tensor dynamic_sparse_attention_forward(
                                     col_index.data_ptr<int>(),
                                     val.data_ptr<float>(),
                                     bias.data_ptr<float>(),
-                                    M, K, N,
+                                    M, K, N, block_h, block_w,
                                     output.data_ptr<float>()
                                 ); }));
     return output;

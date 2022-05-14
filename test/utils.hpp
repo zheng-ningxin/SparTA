@@ -181,4 +181,27 @@ void init_mask(int * ptr, size_t length, float sparsity)
     }
 }
 
+void init_mask_blockwise(int * ptr, size_t M, size_t N, int block_h, int block_w, float sparsity)
+{
+    int m_block_n = M / block_h;
+    int n_block_n = N / block_w;
+
+    for (int i = 0; i < m_block_n; i++)
+    {
+        for(int j=0; j < n_block_n; j++){
+            float pro = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+            int pos = i*block_h*N+j*block_w;
+            if (pro < sparsity)
+            {
+                ptr[pos] = 0;
+            }
+            else
+            {
+                ptr[pos] = 1;
+            }
+        }
+        
+    }
+}
+
 #endif

@@ -15,7 +15,7 @@ from .BcsrConverter import BcsrConverter
 import dynamic_sparse_attention
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
-our_sparse_attention = None
+
 
 
 class DynamicSparseAttentionFunction(torch.autograd.Function):

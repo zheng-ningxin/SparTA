@@ -8,7 +8,7 @@ at::Tensor dynamic_sparse_linear_forward(
     torch::Tensor col_indx,
     torch::Tensor val,
     torch::Tensor bias,
-    int M, int K, int N
+    int M, int K, int N, int block_h, int block_w
 );
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
