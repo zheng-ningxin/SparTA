@@ -2,7 +2,7 @@
 
 `SparTA` is an end-to-end system to harvest the speeding up gain from the model sparsity.Given a deep neural network (DNN) model and its initial *TeSA* (Tensor with Sparsity Attributes) specification, SparTA could generate the execution codes that are accelerated by the most appropriate ways to leverage its sparsity.
 
-![arch](medias/arch.svg)
+![arch](medias/arch.png)
 
 ## Key components
 
