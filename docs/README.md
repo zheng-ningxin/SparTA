@@ -1,13 +1,13 @@
 # SparTA Architecture Design
 
-`SparTA` is an end-to-end system to harvest the speeding up gain from the model sparsity.Given a deep neural network (DNN) model and its initial *TeSA* (Tensor with Sparsity Attributes) specification, SparTA could generate the execution codes that are accelerated by the most appropriate ways to leverage its sparsity.
+`SparTA` is an end-to-end system to harvest the speeding up gain from the model sparsity. Given a deep neural network (DNN) model and its initial *TeSA* (Tensor with Sparsity Attributes) specification, SparTA could generate the execution codes that are accelerated by the most appropriate ways to leverage its sparsity.
 
 ![arch](medias/arch.png)
 
 ## Key components
 
 ### SparTA propagator
-SparTA leverages the [NNI](github.com/microsoft/nni) IR utilities to implement the make *TeSA* propagated across the computational graph. 
+SparTA leverages the [NNI](github.com/microsoft/nni) IR utilities to propagate the *TeSA* across the computational graph. 
 
 After *TeSA* propagation, we could get a compact model through a simple structured pruner. It could be passed to the bottom layers or accessed via the *to-be-determined* API for users.
 
@@ -19,10 +19,10 @@ There are lots of compilation works for deep learning. SparTA focuses on sparsit
 3. make necessary decisions to select the most suitable kernel implementations from many
 
 #### PyTorch
-For better support sparse training, `PyTorch` itself could be seen as a must-support compiler, though it has little graph level optimization and mainly works as a operator parser in this scenario. After specializing the sparse kernels, PyTorch could load them as custom operators and generate efficient sparse modules (e.g., [sparse attention]() module).
+For better support sparse training, `PyTorch` is a necessary compiler, though it has little graph level optimization and mainly works as a operator parser in this scenario. After specializing the sparse kernels, PyTorch could load them as custom operators and generate efficient sparse modules (e.g., [sparse attention]() module).
 
 #### Rammer
-Rammer ([nnFusion](github.com/microsoft/nn-fusion)) is one of the SOTA DNN compilers that is also open sourced by Microsoft. 
+Rammer ([nnFusion](github.com/microsoft/nn-fusion)) is one of the SOTA DNN compilers that is also open sourced by Microsoft. Ideally, Rammer gives the fused sub-graph IR that contains the input/output tesa and format requirements to SparTA via the compiler interface. SparTA perform the transformation and specialization for the sub-graph and return the transformed graph IR and specilizad kernel.
 
 ### SparTA specializer
 SparTA specializer apply policies on the received subgraph (or fused kernel) and transform it into one or more highly efficient computing kernels. Such computing kernels could be both
