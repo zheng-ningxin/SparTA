@@ -332,11 +332,6 @@ __global__ void BLOCK_SPARSE_MATMUL(float* A, float* W_val, int* W_row, int* W_c
         __syncthreads();
     }
 
-    // float bias_local[THREAD_SIZE_N];
-    // for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
-    //     bias_local[thread_x] = bias[BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N];
-    // }
-
     #pragma unroll
     for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
         #pragma unroll
@@ -348,6 +343,7 @@ __global__ void BLOCK_SPARSE_MATMUL(float* A, float* W_val, int* W_row, int* W_c
             )] = (accum[thread_x][thread_y]);
         }
     }
+
 }
 
 
@@ -425,22 +421,23 @@ vector<at::Tensor> dynamic_sparse_linear_backward(
     torch::Tensor row_ptr,
     torch::Tensor col_index,
     torch::Tensor val,
-    torch::Tensor grad_out,
+    torch::Tensor grad_c,
     int M, int K, int N, int block_h, int block_w
 )
 {
     cudaSetDevice(activation.get_device());
     // torch::Tensor w_grad = torch.empty({M,N}, activation.options());
-    torch::Tensor a_grad = torch::empty_like(activation);
-    torch::Tensor w_grad = at::matmul(activation.t(), grad_out);
+    torch::Tensor a_grad = torch::zeros_like(activation);
+    torch::Tensor w_grad = at::matmul(grad_c.t(), activation);
+    printf("M, K, N: %d %d %d\n", M, K, N);
     AT_DISPATCH_FLOATING_TYPES(activation.type(), "dynamic_sparse_linear", ([&]
         { dynamic_backward_function(
-                activation.data_ptr<float>(),
+                grad_c.data_ptr<float>(),
                 row_ptr.data_ptr<int>(),
                 col_index.data_ptr<int>(),
                 val.data_ptr<float>(),
                 M, K, N, block_h, block_w,
-                grad_out.data_ptr<float>()
+                a_grad.data_ptr<float>()
             ); }));
     vector<torch::Tensor> grads({a_grad, w_grad});
     return grads;
