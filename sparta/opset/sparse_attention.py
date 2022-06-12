@@ -5,12 +5,11 @@ import copy
 import tempfile
 from cmath import inf
 import torch
-import types
 import logging
 from torch.utils.cpp_extension import load as module_load
-from .SparseOPBase import SparseOPBase
-from .Template.SparseAttention import *
-from SparTA.Common.Utils import *
+from sparta.common.utils import *
+from sparta.codegen.template.sparse_attention import *
+from .sparse_opbase import SparseOPBase
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
@@ -18,7 +17,6 @@ our_sparse_attention = None
 
 
 class SparseAttentionFunction(torch.autograd.Function):
-
     @staticmethod
     def forward(
         ctx,

@@ -1,0 +1,7 @@
+{
+    "code": "sparse_attention_kernel.cu",
+    "knobs":{},
+    "input_parameters": [],
+    "input_types": [],
+    "output_types": []
+}
