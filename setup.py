@@ -31,15 +31,15 @@ def _setup():
                                     extra_compile_args=['-std=c++14', '-lcusparse', '-O3'])
             ext_modules.append(cusparse_ext)
         # the bcsr convert kernel
-        bcsr_ext = CUDAExtension(name='convert_bcsr', sources=['csrc/convert_bcsr_forward.cpp',
+        bcsr_ext = CUDAExtension(name='convert_bcsr_cpp', sources=['csrc/convert_bcsr_forward.cpp',
                                                             'csrc/convert_bcsr_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(bcsr_ext)
-        dynamic_attention_ext = CUDAExtension(name='dynamic_sparse_attention', sources=['csrc/dynamic_sparse_attention_forward.cpp',
+        dynamic_attention_ext = CUDAExtension(name='dynamic_sparse_attention_cpp', sources=['csrc/dynamic_sparse_attention_forward.cpp',
                                                             'csrc/dynamic_sparse_attention_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(dynamic_attention_ext)
-        dynamic_linear_ext = CUDAExtension(name='dynamic_sparse_linear', sources=['csrc/dynamic_sparse_linear_forward.cpp',
+        dynamic_linear_ext = CUDAExtension(name='dynamic_sparse_linear_cpp', sources=['csrc/dynamic_sparse_linear_forward.cpp',
                                                                 'csrc/dynamic_sparse_linear_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(dynamic_linear_ext)

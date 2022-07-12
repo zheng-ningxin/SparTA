@@ -4,8 +4,9 @@ import time
 import copy
 import torch
 import random
-from SparTA.OPs import *
-from SparTA.Common.Utils import verify_bcsr
+from sparta.opset.dynamic_sparse_linear import *
+from sparta.common.utils import verify_bcsr
+
 
 
 if __name__ == '__main__':

@@ -7,11 +7,11 @@ import torch
 import types
 import logging
 
-from .SparseOPBase import SparseOPBase
-from .Template.SparseAttention import *
-from SparTA.Common.Utils import *
-from .BcsrConverter import BcsrConverter
-import dynamic_sparse_linear
+from .sparse_opbase import SparseOPBase
+from sparta.codegen.template.sparse_attention import *
+from sparta.common.utils import *
+from .bcsr_converter import BcsrConverter
+import dynamic_sparse_linear_cpp
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
@@ -42,13 +42,13 @@ class DynamicSparseLinearFunction(torch.autograd.Function):
             M, K, N,
             block_h, block_w
         )
-        return dynamic_sparse_linear.forward(activation, row_ptr, col_idx, val, bias, M.item(), K.item(), N.item(), block_h.item(), block_w.item())
+        return dynamic_sparse_linear_cpp.forward(activation, row_ptr, col_idx, val, bias, M.item(), K.item(), N.item(), block_h.item(), block_w.item())
 
     @staticmethod
     def backward(ctx, *grad_out):
         assert len(grad_out) == 1
         (activation, grad_csr_row, grad_csr_col, grad_csr_val, bias, M, K, N, block_h, block_w) =  ctx.saved_tensors
-        a_grad, w_grad = dynamic_sparse_linear.backward(activation, grad_csr_row, grad_csr_col, grad_csr_val, grad_out[0], M.item(), N.item(), K.item(), block_h.item(), block_w.item())
+        a_grad, w_grad = dynamic_sparse_linear_cpp.backward(activation, grad_csr_row, grad_csr_col, grad_csr_val, grad_out[0], M.item(), N.item(), K.item(), block_h.item(), block_w.item())
         return a_grad, None, None, None, torch.zeros_like(bias), None, None, None, w_grad, None, None, None, None, None
 
 class DynamicSparseLinear(SparseOPBase):

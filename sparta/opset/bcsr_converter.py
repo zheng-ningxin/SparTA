@@ -7,9 +7,9 @@ import torch
 import types
 import logging
 from torch.utils.cpp_extension import load as module_load
-from .SparseOPBase import SparseOPBase
-from SparTA.Common.Utils import *
-import convert_bcsr
+from .sparse_opbase import SparseOPBase
+from sparta.common.utils import *
+import convert_bcsr_cpp
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
@@ -36,6 +36,6 @@ class BcsrConverter(SparseOPBase):
         # currently only support on the cuda devices
         assert(sparse_pattern.is_cuda)
         assert(dense_values.is_cuda)
-        self.csr_row, self.csr_col, self.csr_row_pos, self.csr_value = convert_bcsr.forward(sparse_pattern, dense_values, block_size_h, block_size_w)
+        self.csr_row, self.csr_col, self.csr_row_pos, self.csr_value = convert_bcsr_cpp.forward(sparse_pattern, dense_values, block_size_h, block_size_w)
         return self.csr_row, self.csr_col, self.csr_row_pos, self.csr_value
 

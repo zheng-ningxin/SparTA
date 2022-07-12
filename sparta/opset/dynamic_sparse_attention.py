@@ -8,11 +8,11 @@ import torch
 import types
 import logging
 
-from .SparseOPBase import SparseOPBase
-from .Template.SparseAttention import *
-from SparTA.Common.Utils import *
-from .BcsrConverter import BcsrConverter
-import dynamic_sparse_attention
+from .sparse_opbase import SparseOPBase
+from sparta.codegen.template.sparse_attention import *
+from sparta.common.utils import *
+from .bcsr_converter import BcsrConverter
+import dynamic_sparse_attention_cpp
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
@@ -37,7 +37,7 @@ class DynamicSparseAttentionFunction(torch.autograd.Function):
         # ctx.save_for_backward(
         # )
 
-        return dynamic_sparse_attention.forward(
+        return dynamic_sparse_attention_cpp.forward(
             Q,
             K,
             V,
