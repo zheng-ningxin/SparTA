@@ -21,7 +21,7 @@ using namespace std;
 #define FETCH_UINT4(pointer) (reinterpret_cast<uint4*>(&(pointer))[0])
 #define FETCH_INT4(pointer) (reinterpret_cast<int4*>(&(pointer))[0])
 #define FETCH_INT32(pointer) (reinterpret_cast<int*>(&(pointer))[0])
-#define MAX_BLOCK_THREAD_COUNT 1024
+#define MAX_ROW_COUNT 2048
 
 #define CUBLAS_SAFE_CALL(func)                                                                  \
     do                                                                                          \
@@ -87,29 +87,26 @@ __device__ __forceinline__ const float* add_ptr_f(const float* src, int offset) 
     return dst;                                                              \
 }
 
-__global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
-                                int block_h, int block_w, int * row, int *col,
-                                float * values, int * extra_buffer)
+__global__ void convert_csr_kernel_1(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
+                                int * row, int *col, float * values, int * extra_buffer)
 {
 
-    __shared__ int reduce[MAX_BLOCK_THREAD_COUNT];
-    assert(blockDim.x<=MAX_BLOCK_THREAD_COUNT);
+    __shared__ int reduce[MAX_ROW_COUNT];
+    assert(blockDim.x<=MAX_ROW_COUNT);
     // initial the shared flag
-    uint bx = blockIdx.x;
-    uint by = blockIdx.y;
+    uint row_id = blockIdx.x;
     uint tid = threadIdx.x;
-    int global_offset =  (by * block_h) * w + bx * block_w;
-    int block_size =  block_h * block_w;
-    assert(block_w % 4 == 0);
-    // cannot handle the misalignment for now
-    assert((block_size / 4) % blockDim.x==0);
+    int global_offset =  row_id * w + tid * 4;
+    
+    assert(w % 4 == 0);
+
     int flag = 0;
-    for(int _pos = tid; _pos< block_size / 4; _pos+=blockDim.x){
-        uint block_offset = _pos / (block_w / 4) * w + _pos % (block_w / 4) * 4;        
-        int4 data = __ldg((const int4*)(add_ptr_u(mask, global_offset+block_offset)));
+    for(int _pos = tid; _pos< w / 4; _pos+=blockDim.x){     
+        int4 data = __ldg((const int4*)(add_ptr_u(mask, global_offset)));
         flag += data.x + data.y + data.z + data.w;
     }
     reduce[tid] = flag;
+
     __syncthreads();
     // fast tree reduce accross the block
     for(uint s=blockDim.x/2; s>32; s>>=1){
@@ -120,103 +117,74 @@ __global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, float * __
     if(tid<32)
         warpReduce(reduce, tid);
     __syncthreads();
-    int pos_id;
+
     if(tid==0 && reduce[0]>0){
-        pos_id= atomicAdd(&extra_buffer[by], 1);
-        atomicAdd(&extra_buffer[by+h], 1);
-        atomicAdd(&row[h/block_h], 1);
-        extra_buffer[2*h + gridDim.x * by + pos_id] = bx;
+        extra_buffer[row_id] = reduce[0];
+        extra_buffer[h+row_id] = reduce[0];
     }
 
 }
-__global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
-    int block_h, int block_w, int * row, int *col,
-    float * values, int * extra_buffer)
+__global__ void convert_csr_kernel_2(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
+    int * row, int *col, float * values, int * extra_buffer)
 {
-    __shared__ int pos_id, prefix_count, ori_bx, ori_by;
-    // __shared__ int prefix_sum[MAX_BLOCK_THREAD_COUNT];
-    uint by = blockIdx.y;
-    uint bx = blockIdx.x;
+    // __shared__ int prefix_sum[MAX_ROW_COUNT];
+    __shared__ int prefix_count;
+    uint row_id = blockIdx.x;
     uint tid = threadIdx.x;
+    uint posid;
+    if(extra_buffer[row_id]>0){
+        if (tid==0){
 
-    if (tid==0){
-        pos_id = -1;
-        prefix_count = 0;
-        // contend for the block
-
-        pos_id = atomicSub(&extra_buffer[by], 1);
-        pos_id-=1;
-        if (pos_id>=0){
-            for(int i=0; i<by;i++){
-                prefix_count +=  extra_buffer[h+i];
+            prefix_count = 0;
+            for(int i=0; i<row_id;i++){
+                prefix_count +=  extra_buffer[i];
             }
-            ori_by = by;
-            ori_bx = extra_buffer[ 2*h + by * gridDim.x + pos_id];       
-            
-            row[by] = prefix_count;
-            col[prefix_count+pos_id] = ori_bx;
+            row[row_id] = prefix_count;
+            if (row_id==h-1){
+                row[h] = prefix_count + extra_buffer[row_id];
+            }
+        }
+        __syncthreads();
+        int global_offset =  row_id * w + tid;
+        if(mask[global_offset]){
+            posid = atomicSub(&(extra_buffer[h+row_id]), 1);
+            col[prefix_count+posid-1] = tid;
+            values[prefix_count+posid-1] = dense[global_offset];
         }
     }
-    __syncthreads();
-    if(pos_id>=0){
-        int global_offset =  (ori_by * block_h) * w + ori_bx * block_w;
-        int block_size = block_h * block_w;
-        int write_global_offset = (prefix_count + pos_id) * block_size;
-
-        for(int _pos=tid; _pos<block_size/4; _pos+=blockDim.x){
-            uint block_offset = _pos / (block_w / 4) * w + _pos % (block_w / 4) * 4;
-            float4 data = __ldg((const float4*)(add_ptr_f(dense, global_offset + block_offset)));
-            *(float4*)&values[write_global_offset+_pos*4] = data;
-        }
-        
-    }
-
 }
 
-void convert_bcsr(int * mask, float * dense, int h, int w,
-    int block_h, int block_w, int * row, int *col,
-    float*values, int * extra_buffer)
+void convert_csr(int * mask, float * dense, int h, int w,
+    int * row, int *col, float*values, int * extra_buffer)
 {
     // need reset the extra buffer here
-    assert(block_w % 4 == 0);
-    CUDA_SAFE_CALL(cudaMemset((void*)extra_buffer, 0, sizeof(int)*(h+(h/block_h)*(w/block_w))) );
-    dim3 block_dim(block_h*block_w/4);
-    dim3 grid_dim(w/block_w, h/block_h);
+    CUDA_SAFE_CALL(cudaMemset((void*)extra_buffer, 0, sizeof(int)*h*2) );
+    dim3 block_dim(w/4);
+    dim3 block_dim2(w);
+    dim3 grid_dim(h);
     // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
-    convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, values, extra_buffer);
-    convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, values, extra_buffer);
+    convert_csr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, row, col, values, extra_buffer);
+    convert_csr_kernel_2<<<grid_dim, block_dim2>>>(mask, dense, h, w, row, col, values, extra_buffer);
 
 
 }
-bool verify_bcsr(int * mask, float * data, int h, int w, int block_h, int block_w, int* row, int * col, float* values)
+bool verify_csr(int * mask, float * data, int h, int w, int* row, int * col, float* values)
 {
-    for(int rid=0; rid<h/block_h; rid++){
-        // printf("row-%d: %d row-%d : %d\n", rid, row[rid], rid+1, row[rid+1]);
-        int _start = row[rid];
-        int _end = row[rid+1];
-        for(int _pos=_start; _pos<_end; _pos++){
-            int cid = col[_pos];
-            for(int i=0;i<block_h;i++){
-                for(int j=0;j<block_w;j++){
-                    int offset = (rid * block_h+i) * w + cid * block_w + j;
-                    int csr_offset = _pos * block_h * block_w + i * block_w + j;
-                    if (mask[offset]>0){
-                        // printf("%f %f\n", data[offset], values[csr_offset]);
-                        if(abs(data[offset]-values[csr_offset])>1e-8)
-                        {
-                            return false;
-                        }
-                        mask[offset]= 0;
-                    }
-                }
-            }
+    for(int row_id = 0; row_id<h; row_id++){
+        int _start = row[row_id];
+        int _end = row[row_id+1];
+        for(int _pos= _start; _pos<_end; _pos++){
+            int col_id = col[_pos];
+            int global_offset = row_id * w + col_id;
+            assert(values[_pos] == data[global_offset]);
         }
     }
-    printf("%d blocks remained\n", row[h/block_h]);
-    printf("Blockwise sparsity %f \n", 1.0-1.0*row[h/block_h]/(h/block_w)/(w/block_w));
-    for(int i=0;i<block_h*block_w;i++)
-        if(mask[i])
-            return false;
+    int sum = 0;
+    for(int i=0; i<h; i++)
+        for(int j=0; j<w; j++)
+            sum+=mask[i*w+j];
+    assert(sum == row[h]);
+    printf("nnz: %d, sparsity: %f\n", sum, 1.0*sum/h/w);
     return true;
 }
 
@@ -227,42 +195,19 @@ int main()
     CUDA_SAFE_CALL(cudaEventCreate(&time_start));
     CUDA_SAFE_CALL(cudaEventCreate(&time_end));
     int M=1024, K=1024;
-    int block_h=32, block_w = 32;
+    
     // float sparsiy=0.9999;
-    float sparsity=0.99;
+    float sparsity=0.95;
     float * data = (float*) malloc(sizeof(float)*M*K);
     int * mask = (int*) malloc(sizeof(int)*M*K);
     int * row = (int*) malloc(sizeof(int)*(M+1));
     int * col = (int*) malloc(sizeof(int)*M*K);
     float * values = (float*)malloc(sizeof(float)*M*K);
 
-    // FILE * mask_f;
-    // mask_f = fopen("mask.bin", "rb");
-    // if (mask_f==NULL){
-    //     printf("Load failed!\n");
-    //     return -1;
-    // }
-    // printf("load succeed\n");
-    // fread(mask, sizeof(int), M*K, mask_f);
-    // fclose(mask_f);
-    // int vcount = 0;
-    // for(int i=0;i<M;i++)
-    //     for(int j=0;j<K;j++)
-    //         if (mask[i*K+j]){
-    //             vcount +=1;
-    //             // printf("mask:%d\n", mask[i*K+j]);
-    // }
-    init_mask_blockwise(mask, M, K, block_h, block_w, sparsity);
-    // init_mask(mask, M*K , sparsity);
+
+    init_mask(mask, M*K , sparsity);
     init(data, M*K, 0);
-    // FILE * mask_f;
-    // mask_f = fopen("mask.bin", "wb");
-    // if (mask_f==NULL){
-    //     printf("Dump failed!\n");
-    //     return -1;
-    // }
-    // fwrite(mask, sizeof(int), M*K, mask_f);
-    // fclose(mask_f);
+    
     int * d_mask, *d_row, *d_col, *extra_buffer;
     float * d_data, *d_val;
     CUDA_SAFE_CALL(cudaMalloc(&d_mask, sizeof(int)*M*K));
@@ -273,19 +218,20 @@ int main()
     CUDA_SAFE_CALL(cudaMalloc(&d_val, sizeof(float)*M*K));
     CUDA_SAFE_CALL(cudaMemcpy(d_data, data, sizeof(float)*M*K, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(d_mask, mask, sizeof(int)*M*K, cudaMemcpyHostToDevice));
-
-    convert_bcsr(d_mask, d_data, M, K, block_h, block_w, d_row, d_col, d_val, extra_buffer);
+    
+    convert_csr(d_mask, d_data, M, K, d_row, d_col, d_val, extra_buffer);
 
     CUDA_SAFE_CALL(cudaMemcpy(row, d_row, sizeof(int)*(M+1), cudaMemcpyDeviceToHost));
     CUDA_SAFE_CALL(cudaMemcpy(col, d_col, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
     CUDA_SAFE_CALL(cudaMemcpy(values, d_val, sizeof(int)*M*K, cudaMemcpyDeviceToHost));
 
-    std::cout<<"Correctness check: "<< verify_bcsr(mask, data, M, K, block_h, block_w, row, col, values) << std::endl;
+    verify_csr(mask, data, M, K, row, col, values);
+    printf("Verification passed!\n");
     int n_iter = 100;
 
     CUDA_SAFE_CALL(cudaEventRecord(time_start));
     for(int i=0;i<n_iter;i++){
-        convert_bcsr(d_mask, d_data, M, K, block_h, block_w, d_row, d_col, d_val, extra_buffer);    
+        convert_csr(d_mask, d_data, M, K, d_row, d_col, d_val, extra_buffer);    
     }
     CUDA_SAFE_CALL(cudaEventRecord(time_end));
     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));

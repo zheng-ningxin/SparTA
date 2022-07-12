@@ -1,0 +1,7 @@
+include sparta/codegen/template/*.cu
+include sparta/codegen/template/*.c
+include sparta/codegen/template/*.cpp
+include sparta/codegen/template/*.h
+include sparta/codegen/template/*.hpp
+include sparta/codegen/template/*.txt
+include sparta/codegen/template/*.json
