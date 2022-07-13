@@ -69,7 +69,7 @@ class DynamicSparseLinear(SparseOPBase):
         self.csr_row, self.csr_col, self.csr_row_pos, self.csr_val = self.converter(
             self.mask, self.ori_linear.weight, self.block_h, self.block_w)
         self.grad_csr_row, self.grad_csr_col, self.grad_csr_row_pos, self.grad_csr_val = self.converter(
-            self.mask.t(), self.ori_linear.weight.t(), self.block_h, self.block_w)
+            self.mask.t().contiguous(), self.ori_linear.weight.t().contiguous(), self.block_h, self.block_w)
 
     def forward(self, activation):
         N = self.ori_linear.weight.size(0)

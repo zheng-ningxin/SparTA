@@ -4,8 +4,8 @@
 import time
 import torch
 import random
-from SparTA.OPs import *
-from SparTA.Common.Utils import convert_bcsr, verify_bcsr
+from sparta.opset import *
+from sparta.common.utils import convert_bcsr, verify_bcsr
 # def verify(mask, dense_value, row, col, value, block_h, block_w):
 #     n_row =  mask.size(0)//block_h
 #     for rid in range(n_row):
