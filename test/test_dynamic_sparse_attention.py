@@ -3,9 +3,8 @@
 import time
 import torch
 import random
-from SparTA.OPs import *
-
-from SparTA.OPs.DynamicSparseAttention import DynamicSparseAttention
+from sparta.opset import *
+from sparta.opset.dynamic_sparse_attention import DynamicSparseAttention
 
 
 def random_sparse_pattern(seq_len, sparsity):
@@ -19,7 +18,7 @@ def random_sparse_pattern(seq_len, sparsity):
 
 def random_sparse_pattern_v2(seq_len, sparsity):
     pattern = torch.zeros(seq_len, seq_len, dtype=torch.int32)
-    pattern[:900, 0] = 1
+    pattern[:993, 0] = 1
     return pattern
 
 def test_speed(sparse_attention, head_num, seq_len, hidden_n, device):
@@ -96,9 +95,7 @@ def test_correctness(sparse_attention, HEAD_NUM, seq_len, hidden_n, device):
     out_2 = sparse_attention.reference_forward(q2, k2, v2)
     in_grad = torch.rand_like(out_2)
     out = sparse_attention(q1, k1, v1)
-    # tmp_attn.retain_grad()
-    # out_2.backward(in_grad)
-    # out.backward(in_grad)
+
     
     if not torch.allclose(out, out_2, rtol=1e-08, atol=1e-04):
         import pdb
@@ -111,8 +108,8 @@ def test_correctness(sparse_attention, HEAD_NUM, seq_len, hidden_n, device):
 
 def test_random(HEAD_NUM, seq_len, hidden_dim, sparsity):
     print(HEAD_NUM, seq_len, hidden_dim, sparsity)
-    sp_pattern = random_sparse_pattern(seq_len, sparsity)
-    # sp_pattern = random_sparse_pattern_v2(seq_len, sparsity)
+    # sp_pattern = random_sparse_pattern(seq_len, sparsity)
+    sp_pattern = random_sparse_pattern_v2(seq_len, sparsity)
     M, N = sp_pattern.size()
     K = hidden_dim
     device = torch.device('cuda:0')

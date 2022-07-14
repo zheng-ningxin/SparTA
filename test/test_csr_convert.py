@@ -6,18 +6,9 @@ import torch
 import random
 from sparta.opset import *
 from sparta.common.utils import convert_bcsr, verify_bcsr
-# def verify(mask, dense_value, row, col, value, block_h, block_w):
-#     n_row =  mask.size(0)//block_h
-#     for rid in range(n_row):
-#         _start = row[rid]
-#         _end = row[rid+1]
-#         for pos in range(_start, _end):
-#             cid =  col[pos]
-#             for i in range(block_h):
-#                 for j in range(block_w):
-#                     if torch.abs(dense_value)
 
-if __name__ == '__main__':
+
+def test_dense():
     h = 1024
     w = 2048
     block_h = 64
@@ -36,5 +27,29 @@ if __name__ == '__main__':
     row_ref, col_ref, val_ref = convert_bcsr(mask, dense_value, block_h, block_w)
     # import ipdb; ipdb.set_trace()
     verify_bcsr(mask, dense_value, row, col, value, block_h, block_w)
-    # if verify(mask, dense_value, row, col, value, block_h, block_w):
-    #     import ipdb; ipdb.set_trace()
+
+def test_empty_line():
+    h = 1024
+    w = 2048
+    block_h = 64
+    block_w = 32
+    sparsity = 0.0
+    device = torch.device('cuda')
+    dense_value = torch.rand(h, w).to(device)
+    k = int(dense_value.numel() * sparsity)
+    # threshold = torch.topk(dense_value.view(-1), k, largest=False)[0].max()
+    # mask = (dense_value > threshold).to(torch.int32).to(device)
+    mask = torch.zeros_like(dense_value, dtype=torch.int32)
+    mask[:512]= 1
+    dense_value *= mask
+    print(dense_value)
+    converter = BcsrConverter()
+    row, col, row_pos, value = converter(mask, dense_value, block_h, block_w)
+    row_ref, col_ref, val_ref = convert_bcsr(mask, dense_value, block_h, block_w)
+    import ipdb; ipdb.set_trace()
+    verify_bcsr(mask, dense_value, row, col, value, block_h, block_w)
+        
+
+if __name__ == '__main__':
+    # test_dense()
+    test_empty_line()
