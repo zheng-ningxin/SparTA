@@ -3,6 +3,7 @@
 import time
 import torch
 import random
+import numpy as np
 from sparta.opset import *
 from sparta.opset.dynamic_sparse_attention import DynamicSparseAttention
 
@@ -21,7 +22,21 @@ def random_sparse_pattern_v2(seq_len, sparsity):
     pattern[:512, 0] = 1
     return pattern
 
-def test_speed(sparse_attention, head_num, seq_len, hidden_n, device):
+def random_sparse_pattern_block(seq_len, sparsity, block_h, block_w):
+    pattern = torch.zeros(seq_len, seq_len, dtype=torch.int32)
+    # b_map = torch.zeros(seq_len//block_h, seq_len//block_w, dtype=torch.int32)
+    b_nnz = int(seq_len * seq_len //block_h //block_w*sparsity)
+    for _ in range(b_nnz):
+        i, j = random.randint(0, seq_len//block_h-1), random.randint(0, seq_len//block_w-1)
+        i_start = i * block_h
+        i_end = i_start+ block_h
+        j_start = j * block_w
+        j_end = j_start + block_w
+        pattern[i_start:i_end][j_start:j_end] = 1
+
+    return pattern
+
+def test_speed(sparse_attention, sparse_pattern, head_num, seq_len, hidden_n, device):
     # warmup
     q = torch.rand(batch_size, head_num, seq_len, hidden_n,
                    dtype=torch.float32, device=device)
@@ -29,12 +44,15 @@ def test_speed(sparse_attention, head_num, seq_len, hidden_n, device):
                    dtype=torch.float32, device=device)
     v = torch.rand(batch_size, head_num, seq_len, hidden_n,
                    dtype=torch.float32, device=device)
+    # import ipdb; ipdb.set_trace()
+
     out = sparse_attention(q, k, v)
     out_grad = torch.rand_like(out)
 
     torch.cuda.synchronize()
     st = time.time()
     for _ in range(50):
+        sparse_attention.set_global_sparse_pattern(sparse_pattern)
         q = torch.rand(batch_size, head_num, seq_len, hidden_n,
                        dtype=torch.float32, device=device)
         k = torch.rand(batch_size, head_num, seq_len, hidden_n,
@@ -96,6 +114,7 @@ def test_correctness(sparse_attention, HEAD_NUM, seq_len, hidden_n, device):
     in_grad = torch.rand_like(out_2)
     out = sparse_attention(q1, k1, v1)
 
+
     
     if not torch.allclose(out, out_2, rtol=1e-08, atol=1e-04):
         import pdb
@@ -122,6 +141,24 @@ def test_random(HEAD_NUM, seq_len, hidden_dim, sparsity):
 
 
 if __name__ == '__main__':
-    batch_size = 2
-    test_random(20, 1024, 128, 0.999)
+    batch_size = 1
+    
+    # test_random(20, 1024, 128, 0.999)
+    # exit()
+
+    seq_len = 1024
+    HEAD_NUM = 20
+    block_h, block_w = 32, 32
+    hidden_n = 128
+    device = torch.device('cuda:0')
+    for sparsity in np.arange(0.1, 1, 0.1):
+        print('Sparsity Ratio:', sparsity)
+        sp_pattern =  random_sparse_pattern_block(seq_len, sparsity, block_h, block_w).cuda()
+        spa = DynamicSparseAttention(True)
+        DynamicSparseAttention.set_global_sparse_pattern(sp_pattern)
+        test_speed(spa, sp_pattern, HEAD_NUM, seq_len, hidden_n, device)
+        dense_speed(spa, HEAD_NUM, seq_len, hidden_n, device)
+        test_correctness(spa, HEAD_NUM, seq_len, hidden_n, device)
+
+    # test_random(20, 1024, 128, 0.999)
     # test_random(20, 1024, 64, 0.00001)

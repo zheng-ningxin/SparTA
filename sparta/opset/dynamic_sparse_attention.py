@@ -135,7 +135,7 @@ class DynamicSparseAttention(SparseOPBase):
         assert hidden_dim % 32 == 0
         assert seq_len == sparse_mask.size(0), "input sequence length dose not match the given sparse pattern"
         sparse_val_size = block_nnz * self.block_size_h * self.block_size_w
-        if self.inter_result is None or self.inter_result.numel() < batch_size * head_num * block_nnz * self.block_h * self.block_w:
+        if self.inter_result is None or self.inter_result.numel() < batch_size * head_num * block_nnz * self.block_size_h * self.block_size_w:
             self.inter_result = torch.zeros(batch_size * head_num * sparse_val_size,
                           dtype=torch.float32, device=Q.device)
         result = DynamicSparseAttentionFunction.apply(Q, K, V,
