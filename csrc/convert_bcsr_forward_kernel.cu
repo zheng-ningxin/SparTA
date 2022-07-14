@@ -161,6 +161,12 @@ __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __
             col[prefix_count+pos_id] = ori_bx;
             row_pos[prefix_count+pos_id] = by;
         }
+        else if(pos_id==-1){
+            for(int i=0; i<by;i++){
+                prefix_count +=  extra_buffer[h+i];
+            }            
+            row[by] = prefix_count;
+        }
     }
     __syncthreads();
     if(pos_id>=0){

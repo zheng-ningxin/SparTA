@@ -18,7 +18,7 @@ def random_sparse_pattern(seq_len, sparsity):
 
 def random_sparse_pattern_v2(seq_len, sparsity):
     pattern = torch.zeros(seq_len, seq_len, dtype=torch.int32)
-    pattern[:993, 0] = 1
+    pattern[:512, 0] = 1
     return pattern
 
 def test_speed(sparse_attention, head_num, seq_len, hidden_n, device):
