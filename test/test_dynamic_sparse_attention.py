@@ -26,14 +26,23 @@ def random_sparse_pattern_block(seq_len, sparsity, block_h, block_w):
     pattern = torch.zeros(seq_len, seq_len, dtype=torch.int32)
     # b_map = torch.zeros(seq_len//block_h, seq_len//block_w, dtype=torch.int32)
     b_nnz = int(seq_len * seq_len //block_h //block_w*sparsity)
-    for _ in range(b_nnz):
-        i, j = random.randint(0, seq_len//block_h-1), random.randint(0, seq_len//block_w-1)
+    print("Block_nnz: ", b_nnz)
+    block_pos = [(i, j) for i in range(0, seq_len//block_h) for j in range(0, seq_len//block_w)]
+    random.shuffle(block_pos)
+    # import ipdb; ipdb.set_trace()
+    remain_pos = block_pos[:b_nnz] 
+    debug = []
+    for i, j in remain_pos:
         i_start = i * block_h
         i_end = i_start+ block_h
         j_start = j * block_w
         j_end = j_start + block_w
-        pattern[i_start:i_end][j_start:j_end] = 1
-
+        pattern[i_start:i_end, j_start:j_end] = 1
+        debug.append((i_start,i_end, j_start,j_end))
+    remaining_ratio =  torch.sum(pattern)/pattern.numel()
+    if abs(remaining_ratio.item()-sparsity) > 0.01:
+        import ipdb; ipdb.set_trace()
+    print('Remaining ratio: ', torch.sum(pattern)/pattern.numel())
     return pattern
 
 def test_speed(sparse_attention, sparse_pattern, head_num, seq_len, hidden_n, device):
@@ -152,7 +161,7 @@ if __name__ == '__main__':
     hidden_n = 128
     device = torch.device('cuda:0')
     for sparsity in np.arange(0.1, 1, 0.1):
-        print('Sparsity Ratio:', sparsity)
+        
         sp_pattern =  random_sparse_pattern_block(seq_len, sparsity, block_h, block_w).cuda()
         spa = DynamicSparseAttention(True)
         DynamicSparseAttention.set_global_sparse_pattern(sp_pattern)
