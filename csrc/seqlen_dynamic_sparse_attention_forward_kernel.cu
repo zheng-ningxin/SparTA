@@ -478,7 +478,7 @@ void seqlen_dynamic_forward_function(float* Q, float* K, float* V,
         hidden_dim, // K
         max_seq_length // N
     );
-
+    printf("debug point 1\n");
     const int row_tile = 4;
     const dim3 softmax_dimBlock(row_tile*32);
     const dim3 softmax_dimGrid(max_seq_length/row_tile, head_num, batch_size);
@@ -489,6 +489,7 @@ void seqlen_dynamic_forward_function(float* Q, float* K, float* V,
         max_seq_length,
         row_tile
     );
+    printf("debug point 2\n");
 
     // sparse x dense
     // M: seq_length K: seq_length N:hidden dim
@@ -510,6 +511,8 @@ void seqlen_dynamic_forward_function(float* Q, float* K, float* V,
         max_seq_length,
         hidden_dim,
         head_num);
+    printf("debug point 3\n");
+    
 
 }
 
@@ -530,7 +533,7 @@ at::Tensor seqlen_dynamic_sparse_attention_forward(
     int max_seq_length = Q.size(2);
     int hidden_dim = Q.size(3);
     torch::Tensor output = torch::zeros({batch_size, head_num, max_seq_length, hidden_dim}, Q.options());
-    
+    printf("bs:%d head_num:%d seq_len:%d hidden_dim:%d\n", batch_size, head_num, max_seq_length, hidden_dim);
     AT_DISPATCH_FLOATING_TYPES(Q.type(), "seqlen_dynamic_sparse_attention", ([&]
                             { seqlen_dynamic_forward_function(
                                     Q.data_ptr<float>(),

@@ -58,11 +58,12 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
     global_seqlen = None
 
     @staticmethod
-    def set_global_sparse_pattern(seqlens):
+    def set_global_seqlens(seqlens):
         # seqlens is an one-dimension tensor with size of [Batchsize]
         # each element in the tensor represents the effective sequence
         # length of current instance
         assert isinstance(seqlens, torch.Tensor)
+        assert seqlens.is_cuda
         assert seqlens.dtype == torch.int32, "only support int32 type"
         SeqlenDynamicSparseAttention.global_seqlen = seqlens
         
