@@ -1,8 +1,19 @@
-
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-#include <pybind11/numpy.h>
-#include <torch/extension.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <cuda.h>
+#include <cublas.h>
+#include <assert.h>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <vector>
+#include <time.h>
+// #include <math>
+#include <algorithm>
+#include <assert.h>
+// CUDA runtime
+#include <cuda.h>
 using namespace std;
 // Macro definition for the cuda and cusparse
 
@@ -127,15 +138,15 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     char* bShare = (char*)fShare;
 
     uint tid = threadIdx.x;
-    uint bx = (blockIdx.x % (GLOBAL_N / BLOCK_SIZE_N));
-    uint by = (blockIdx.x / (GLOBAL_N / BLOCK_SIZE_N));
+    uint bx = blockIdx.x % (GLOBAL_N / BLOCK_SIZE_N);
+    uint by = blockIdx.x / (GLOBAL_N / BLOCK_SIZE_N);
     // uint bx = col_index[blockIdx.x]; // N
     // uint by = row_index[blockIdx.x]; // M
 
     if (bx * BLOCK_SIZE_N < cur_seq_len && by * BLOCK_SIZE_M < cur_seq_len){
-        // if(threadIdx.x==0 ){
-        //     printf("## bid:%d blockIdx.y:%d bx:%d by:%d seqlen:%d headid:%d\n", batch_idx, blockIdx.y, bx, by, cur_seq_len, head_idx);
-        // }
+        if(threadIdx.x==0 ){
+            printf("## bid:%d blockIdx.y:%d bx:%d by:%d seqlen:%d headid:%d\n", batch_idx, blockIdx.y, bx, by, cur_seq_len, head_idx);
+        }
         uint tx = tid % 16;
         uint ty = tid / 16;
         assert(THREAD_SIZE_K % 16 == 0);
@@ -244,10 +255,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
         // uint blk_index = blockIdx.x;
         // uint intra_blk_index = block_index[blockIdx.x] % 2;
         // C_val += 32 * 32 * blk_index;
-        // if(threadIdx.x==0 ){
-        //     printf("#&& bid:%d blockIdx.y:%d bx:%d by:%d seqlen:%d headid:%d\n", batch_idx, blockIdx.y, (blockIdx.x % (GLOBAL_N / BLOCK_SIZE_N)), (blockIdx.x / (GLOBAL_N / BLOCK_SIZE_N)), cur_seq_len, head_idx);
-        // }
-        C_val += ((blockIdx.x / (GLOBAL_N / BLOCK_SIZE_N)) * BLOCK_SIZE_M + ty) * GLOBAL_N + (blockIdx.x % (GLOBAL_N / BLOCK_SIZE_N)) * BLOCK_SIZE_N + tx * 2;
+        C_val += (by * 32 + ty) * GLOBAL_N + bx * 32 + tx * 2;
         // C_val += ty * 32 + tx * 2;
 
         __syncthreads();
@@ -305,7 +313,7 @@ __global__ void SPARSE_SOFTMAX(
     */
 
     uint cur_seq_len = seqlens[blockIdx.z];
-    uint tmp_seq_len = int((cur_seq_len+31)/32)*32;
+    uint tmp_seq_len = int((cur_seq_len+31)/32);
     assert(M%32==0 && N%32==0);
     uint row_idx = blockIdx.x * row_tile;
     uint bm = threadIdx.x / 32;
@@ -325,16 +333,9 @@ __global__ void SPARSE_SOFTMAX(
             regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
         }
         regSum = __shfl_sync(FULL_MASK, regSum, 0);
-        // if(head_idx==0 && threadIdx.x==0 && blockIdx.x==0){
-        //     printf("regSum: %f \n", regSum);
-        // }
         for (int index = bn; index < tmp_seq_len; index+=32) {
             pos = (row_idx+bm) * N + index;
             if(index<cur_seq_len){
-                // if(head_idx==0 && threadIdx.x==0 && blockIdx.x==0){
-                //     printf("cur_seq_len: %d   tmp_seq_len:%d \n", cur_seq_len, tmp_seq_len);
-                //     printf("tid:%d index:%d regSum:%f expf(val):%f \n", threadIdx.x, index, regSum, expf(C_val[pos]));
-                // }
                 C_val[pos] = expf(C_val[pos]) / regSum;
             }else{
                 C_val[pos] = 0;
@@ -343,7 +344,7 @@ __global__ void SPARSE_SOFTMAX(
         }
 
     }
-    else if(row_idx + bm < tmp_seq_len && row_idx + bm < M){
+    else{
         for (int index = bn; index < tmp_seq_len; index+=32) {
             pos = (row_idx+bm) * N + index;
             C_val[pos] = 0;
@@ -497,83 +498,99 @@ void seqlen_dynamic_forward_function(float* Q, float* K, float* V,
         max_seq_length // N
     );
     // printf("debug point 1\n");
-    const int row_tile = 4;
-    const dim3 softmax_dimBlock(row_tile*32);
-    const dim3 softmax_dimGrid(max_seq_length/row_tile, head_num, batch_size);
-    SPARSE_SOFTMAX<<<softmax_dimGrid, softmax_dimBlock>>>(
-        inter_result,
-        seqlens,
-        max_seq_length,
-        max_seq_length,
-        row_tile
-    );
+    // const int row_tile = 4;
+    // const dim3 softmax_dimBlock(row_tile*32);
+    // const dim3 softmax_dimGrid(max_seq_length/row_tile, head_num, batch_size);
+    // SPARSE_SOFTMAX<<<softmax_dimGrid, softmax_dimBlock>>>(
+    //     inter_result,
+    //     seqlens,
+    //     max_seq_length,
+    //     max_seq_length,
+    //     row_tile
+    // );
     // printf("debug point 2\n");
 
     // // sparse x dense
     // // M: seq_length K: seq_length N:hidden dim
-    const int BLOCK_SIZE_M = 32;
-    const int BLOCK_SIZE_K = 32;
-    const int BLOCK_SIZE_N = 64;
-    const int THREAD_SIZE_M = 4;
-    const int THREAD_SIZE_K = 4;
-    const int THREAD_SIZE_N = 4;
+    // const int BLOCK_SIZE_M = 32;
+    // const int BLOCK_SIZE_K = 32;
+    // const int BLOCK_SIZE_N = 64;
+    // const int THREAD_SIZE_M = 4;
+    // const int THREAD_SIZE_K = 4;
+    // const int THREAD_SIZE_N = 4;
 
-    dim3 sdd_gridDim(hidden_dim/BLOCK_SIZE_N, max_seq_length/BLOCK_SIZE_M, head_num * batch_size);
-    dim3 sdd_blockDim(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M);
-    BLOCK_SPARSE_MATMUL_SDD<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<sdd_gridDim, sdd_blockDim>>>(
-        inter_result,
-        V,
-        output,
-        seqlens,
-        max_seq_length,
-        max_seq_length,
-        hidden_dim,
-        head_num);
+    // dim3 sdd_gridDim(hidden_dim/BLOCK_SIZE_N, max_seq_length/BLOCK_SIZE_M, head_num * batch_size);
+    // dim3 sdd_blockDim(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M);
+    // BLOCK_SPARSE_MATMUL_SDD<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<sdd_gridDim, sdd_blockDim>>>(
+    //     inter_result,
+    //     V,
+    //     output,
+    //     seqlens,
+    //     max_seq_length,
+    //     max_seq_length,
+    //     hidden_dim,
+    //     head_num);
     // printf("debug point 3\n");
     
 
 }
 
-
-at::Tensor seqlen_dynamic_sparse_attention_forward(
-    torch::Tensor Q,
-    torch::Tensor K,
-    torch::Tensor V,
-    torch::Tensor inter_result,
-    torch::Tensor seqlens,
-    int head_num
-)
-{
-    cudaSetDevice(Q.get_device());
-    // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
-    int batch_size = Q.size(0);
-    // int head_num = Q.size(1);
-    int max_seq_length = Q.size(2);
-    int hidden_dim = Q.size(3);
-    torch::Tensor output = torch::zeros({batch_size, head_num, max_seq_length, hidden_dim}, Q.options());
-    // printf("bs:%d head_num:%d seq_len:%d hidden_dim:%d\n", batch_size, head_num, max_seq_length, hidden_dim);
-    AT_DISPATCH_FLOATING_TYPES(Q.type(), "seqlen_dynamic_sparse_attention", ([&]
-                            { seqlen_dynamic_forward_function(
-                                    Q.data_ptr<float>(),
-                                    K.data_ptr<float>(),
-                                    V.data_ptr<float>(),
-                                    inter_result.data_ptr<float>(),
-                                    seqlens.data_ptr<int>(),
-                                    batch_size,
-                                    head_num,
-                                    max_seq_length,
-                                    hidden_dim,
-                                    output.data_ptr<float>()
-                                ); }));
-    return output;
+void generate_seq_lens(int * data, int batchsize, int max_seq_len){
+    srand(0);
+    for(int i=0;i<batchsize;i++){
+        data[i] = rand() % max_seq_len + 1;
+        printf("sequence length:%d \n", data[i]);
+    }
 }
 
-std::vector<at::Tensor> seqlen_dynamic_sparse_attention_backward(
-    torch::Tensor grad,
-    torch::Tensor Q,
-    torch::Tensor K,
-    torch::Tensor V
-    )
+// void ref_attention(float * M, float*K, float *N, int * seq_lens,int batchsize, int head_num, int max_seq_len, int hidden_dim)
+// {
+//     // perform Q x K first
+//     for(int bid=0; bid<batchsize;bid++){
+//         int cur_seq_len = seq_lens[bid];
+//         for(int)
+//     }
+// }
+int main()
 {
-    // TODO: support backward for the seqlen_dynamic_sparse_attention
+    int batchsize = 16;
+    int hidden_dim =128;
+    int max_seq_len=128;
+    int head_num=20;
+    cudaEvent_t time_start, time_end;
+    float msecTotal=0;
+    CUDA_SAFE_CALL(cudaEventCreate(&time_start));
+    CUDA_SAFE_CALL(cudaEventCreate(&time_end));
+    float * Q,*K,*V, *O;
+    float * dQ, *dK, *dV, *dinter,*dO;
+    int * seqlens = (int*) malloc(sizeof(int) * batchsize);
+    int * dseqlens;
+    generate_seq_lens(seqlens, batchsize, max_seq_len);
+    Q = (float*) malloc(sizeof(float) * batchsize * head_num * max_seq_len * hidden_dim);
+    K = (float*) malloc(sizeof(float) * batchsize * head_num * max_seq_len * hidden_dim);
+    V = (float*) malloc(sizeof(float) * batchsize * head_num * max_seq_len * hidden_dim);
+    O = (float*) malloc(sizeof(float) * batchsize * head_num * max_seq_len * hidden_dim);
+    CUDA_SAFE_CALL(cudaMalloc(&dseqlens, sizeof(int)*batchsize));
+    CUDA_SAFE_CALL(cudaMalloc(&dQ, sizeof(float)*batchsize*head_num*max_seq_len*hidden_dim));
+    CUDA_SAFE_CALL(cudaMalloc(&dK, sizeof(float)*batchsize*head_num*max_seq_len*hidden_dim));
+    CUDA_SAFE_CALL(cudaMalloc(&dV, sizeof(float)*batchsize*head_num*max_seq_len*hidden_dim));
+    CUDA_SAFE_CALL(cudaMalloc(&dinter, sizeof(float)*batchsize*head_num*max_seq_len*max_seq_len));
+    CUDA_SAFE_CALL(cudaMalloc(&dO, sizeof(float)*batchsize*head_num*max_seq_len*hidden_dim));
+    CUDA_SAFE_CALL(cudaMemcpy(dseqlens, seqlens, sizeof(int)*batchsize, cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(dQ, Q, sizeof(float) * batchsize * head_num * max_seq_len * hidden_dim, cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(dK, K, sizeof(float) * batchsize * head_num * max_seq_len * hidden_dim, cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(dV, V, sizeof(float) * batchsize * head_num * max_seq_len * hidden_dim, cudaMemcpyHostToDevice));
+
+
+    CUDA_SAFE_CALL(cudaEventRecord(time_start));
+
+    for(int i=0; i<10; i++)
+        seqlen_dynamic_forward_function(dQ, dK, dV, dinter, dseqlens,batchsize, head_num, max_seq_len, hidden_dim, dO);
+    CUDA_SAFE_CALL(cudaEventRecord(time_end));
+    CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
+    CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));
+    printf("Time Cost: %f ms\n", msecTotal/10);
+    CUDA_SAFE_CALL(cudaMemcpy(O , dO, sizeof(float) * batchsize * head_num * max_seq_len * hidden_dim, cudaMemcpyDeviceToHost));
+    printf("finished!\n");
+    return 0;
 }
