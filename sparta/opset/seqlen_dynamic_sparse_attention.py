@@ -91,7 +91,12 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
         projection linear layers.
         sparse_
         """
-
+        if not Q.is_contiguous():
+            Q = Q.contiguous()
+        if not K.is_contiguous():
+            K = K.contiguous()
+        if not V.is_contiguous():
+            V = V.contiguous()
         if self.global_mode is not True:
             assert isinstance(seqlens, torch.Tensor)
             assert seqlens.size(0) == Q.size(0)

@@ -314,12 +314,21 @@ __global__ void SPARSE_SOFTMAX(
     C_val += M * N * head_idx;
     float regC = 0.0f;
     float regSum = 0.0f;
+    float regMax = -100000000.0;
     uint pos;
 
     if(row_idx + bm<cur_seq_len){
         for (int index = bn; index < cur_seq_len; index+=32) {
             pos = (row_idx+bm) * N + index;
-            regSum += expf(C_val[pos]);
+            regMax = max(regMax, C_val[pos]);
+        }        
+        for (int offset = 16; offset > 0; offset /= 2) {
+            regMax = max(regMax, __shfl_down_sync(FULL_MASK, regMax, offset));
+        }
+        regMax = __shfl_sync(FULL_MASK, regMax, 0);
+        for (int index = bn; index < cur_seq_len; index+=32) {
+            pos = (row_idx+bm) * N + index;
+            regSum += expf(C_val[pos]-regMax);
         }
         for (int offset = 16; offset > 0; offset /= 2) {
             regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
@@ -330,12 +339,15 @@ __global__ void SPARSE_SOFTMAX(
         // }
         for (int index = bn; index < tmp_seq_len; index+=32) {
             pos = (row_idx+bm) * N + index;
+            // if(head_idx==3 && row_idx+bm == 22 && index ==23){
+            //     printf("regSum: %f exp:%f regMax:%f\n", regSum, expf(C_val[pos]), regMax);
+            // }
             if(index<cur_seq_len){
                 // if(head_idx==0 && threadIdx.x==0 && blockIdx.x==0){
                 //     printf("cur_seq_len: %d   tmp_seq_len:%d \n", cur_seq_len, tmp_seq_len);
                 //     printf("tid:%d index:%d regSum:%f expf(val):%f \n", threadIdx.x, index, regSum, expf(C_val[pos]));
                 // }
-                C_val[pos] = expf(C_val[pos]) / regSum;
+                C_val[pos] = expf(C_val[pos]-regMax) / regSum;
             }else{
                 C_val[pos] = 0;
             }
@@ -509,8 +521,8 @@ void seqlen_dynamic_forward_function(float* Q, float* K, float* V,
     );
     // printf("debug point 2\n");
 
-    // // sparse x dense
-    // // M: seq_length K: seq_length N:hidden dim
+    // // // sparse x dense
+    // // // M: seq_length K: seq_length N:hidden dim
     const int BLOCK_SIZE_M = 32;
     const int BLOCK_SIZE_K = 32;
     const int BLOCK_SIZE_N = 64;
@@ -529,7 +541,7 @@ void seqlen_dynamic_forward_function(float* Q, float* K, float* V,
         max_seq_length,
         hidden_dim,
         head_num);
-    // printf("debug point 3\n");
+    // // printf("debug point 3\n");
     
 
 }
