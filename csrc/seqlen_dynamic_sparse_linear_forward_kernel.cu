@@ -238,9 +238,9 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
     const int K = GLOBAL_K;
     const int N = GLOBAL_N;
 
-    A += M * K * blockIdx.y;
-    B += K * N * blockIdx.y;
-    output += M * N * blockIdx.y;
+    A += M * K * blockIdx.z;
+    // B += K * N * blockIdx.z;
+    output += M * N * blockIdx.z;
     int batchid = blockIdx.z;
     int cur_seq_len = seqlens[batchid];
     assert(blockDim.x % 32 == 0);
@@ -258,6 +258,9 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
     uint bx = blockIdx.x;
     uint by = blockIdx.y;
     if(by * BLOCK_SIZE_M < cur_seq_len){
+        if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
+            printf("by:%d bx:%d bz:%d\n", by, bx, blockIdx.z);
+        }
         // uint bx = n_index[blockIdx.x]; // N
         // uint by = m_index[blockIdx.x]; // M
         if(tid<BLOCK_SIZE_N){
@@ -373,7 +376,11 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
         // C_val += 32 * 64 * blk_index + intra_blk_index * 32;
         // C_val += ty * 64 + tx * 2;
         // TODO double check here!
-        output += (blockIdx.y * BLOCK_SIZE_M + ty) * K + blockIdx.x * BLOCK_SIZE_N + tx *2;
+        if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
+            printf("output offset: %d\n", (blockIdx.y * BLOCK_SIZE_M + ty) * N + blockIdx.x * BLOCK_SIZE_N + tx *2);
+        }
+
+        output += (blockIdx.y * BLOCK_SIZE_M + ty) * N + blockIdx.x * BLOCK_SIZE_N + tx *2;
         __syncthreads();
         *(float4*)&fShare[storC + 0*32*8] = *(float4*)regC[0];
         *(float4*)&fShare[storC + 1*32*8] = *(float4*)regC[1];
@@ -393,6 +400,9 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
         //-> store((bhalf2*)C, c2[0]);
         // *(float2*)C_val = c2[0];
         *(float2*)output = _add(c2[0], *(float2*)(bias_share+tx*2));
+        if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
+            printf("output value: %f\n", *output);
+        }
 
         __syncthreads();
         *(float4*)&fShare[storC + 0*32*8] = *(float4*)regC[4];
@@ -409,7 +419,7 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
             for (int i = 0; i < j; i++)
                 c2[i] = _add(c2[i], c2[i+j]);
 
-        output += 16 * K;
+        output += 16 * N;
         // *(float2*)C_val = c2[0];
         *(float2*)output = _add(c2[0], *(float2*)(bias_share+tx*2));
 
@@ -428,6 +438,7 @@ void seqlen_dynamic_forward_function(float* activation, float* weight,
     
     dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
     dim3 blockDim(256);
+    // printf("gridDim: %d %d %d")
     BLOCK_SPARSE_MATMUL_BIAS_OPENAI<<<gridDim, blockDim>>>(activation, weight, bias, seqlens, M,K,N, batchsize, output);
     
 }
