@@ -258,9 +258,9 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
     uint bx = blockIdx.x;
     uint by = blockIdx.y;
     if(by * BLOCK_SIZE_M < cur_seq_len){
-        if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
-            printf("by:%d bx:%d bz:%d\n", by, bx, blockIdx.z);
-        }
+        // if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
+        //     printf("by:%d bx:%d bz:%d\n", by, bx, blockIdx.z);
+        // }
         // uint bx = n_index[blockIdx.x]; // N
         // uint by = m_index[blockIdx.x]; // M
         if(tid<BLOCK_SIZE_N){
@@ -376,9 +376,9 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
         // C_val += 32 * 64 * blk_index + intra_blk_index * 32;
         // C_val += ty * 64 + tx * 2;
         // TODO double check here!
-        if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
-            printf("output offset: %d\n", (blockIdx.y * BLOCK_SIZE_M + ty) * N + blockIdx.x * BLOCK_SIZE_N + tx *2);
-        }
+        // if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
+        //     printf("output offset: %d\n", (blockIdx.y * BLOCK_SIZE_M + ty) * N + blockIdx.x * BLOCK_SIZE_N + tx *2);
+        // }
 
         output += (blockIdx.y * BLOCK_SIZE_M + ty) * N + blockIdx.x * BLOCK_SIZE_N + tx *2;
         __syncthreads();
@@ -400,9 +400,9 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
         //-> store((bhalf2*)C, c2[0]);
         // *(float2*)C_val = c2[0];
         *(float2*)output = _add(c2[0], *(float2*)(bias_share+tx*2));
-        if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
-            printf("output value: %f\n", *output);
-        }
+        // if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
+        //     printf("output value: %f\n", *output);
+        // }
 
         __syncthreads();
         *(float4*)&fShare[storC + 0*32*8] = *(float4*)regC[4];

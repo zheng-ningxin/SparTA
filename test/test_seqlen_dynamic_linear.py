@@ -19,11 +19,34 @@ def test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n):
     a2 = activation.clone().detach().cuda()
     o1 = spl(a1)
     o2 = spl.reference_forward(a2)
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     for bid in range(batch_size):
         cur_seq_len = seqlens[bid]
         assert torch.allclose(o1[bid][:cur_seq_len], o2[bid][:cur_seq_len], rtol=1e-08, atol=1e-04)
     print('correctness passed')
+
+def sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n):
+    activation = torch.rand(batch_size, max_seqlen, hidden_n).cuda()
+    runtimes = 100
+    torch.cuda.synchronize()
+    st = time.time()
+    for i in range(runtimes):
+        spl.set_global_seqlens(seqlens)
+        o1 = spl(activation)
+    torch.cuda.synchronize()
+    end = time.time()
+    print('Sparse Forward Implementation', end-st)
+
+def dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n):
+    activation = torch.rand(batch_size, max_seqlen, hidden_n).cuda()
+    runtimes = 100
+    torch.cuda.synchronize()
+    st = time.time()
+    for i in range(runtimes):
+        o2 = spl.reference_forward(activation)
+    torch.cuda.synchronize()
+    end = time.time()
+    print('Dense Forward Implementation', end-st)
 
 if __name__ == '__main__':
     batch_size = 8
@@ -34,5 +57,7 @@ if __name__ == '__main__':
     ori_linear = torch.nn.Linear(hidden_n, hidden_n, bias=True).cuda()
     spl = SeqlenDynamicSparseLinear(ori_linear, True)
     SeqlenDynamicSparseLinear.set_global_seqlens(seqlens)
+    sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n)
+    dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n)
     test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n)
     
