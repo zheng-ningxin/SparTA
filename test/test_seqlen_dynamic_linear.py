@@ -53,11 +53,12 @@ if __name__ == '__main__':
     max_seqlen = 128
     hidden_n = 768
     seqlens = random_seqlen(batch_size, max_seqlen).cuda()
-    
+
     ori_linear = torch.nn.Linear(hidden_n, hidden_n, bias=True).cuda()
     spl = SeqlenDynamicSparseLinear(ori_linear, True)
     SeqlenDynamicSparseLinear.set_global_seqlens(seqlens)
+    print(seqlens)
     sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n)
     dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n)
     test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n)
-    
+

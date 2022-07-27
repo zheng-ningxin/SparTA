@@ -124,7 +124,7 @@ def test_correctness(sparse_attention, seq_len_pattern, HEAD_NUM, max_seq_len, h
     v1.requires_grad_()
     v2.requires_grad_()
     out_2 = debug_reference_forward(q2, k2, v2, attention_mask)
-    
+
 
     out = sparse_attention(q1, k1, v1)
 
@@ -139,7 +139,7 @@ def test_correctness(sparse_attention, seq_len_pattern, HEAD_NUM, max_seq_len, h
         import ipdb
         ipdb.set_trace()
     assert torch.allclose(out, out_2, rtol=1e-08, atol=1e-04)
-    
+
     print('Correctness test passed')
 
 def random_seqlen(batchsize, max_seqlen):
@@ -155,7 +155,7 @@ if __name__ == '__main__':
     device = torch.device('cuda:0')
     seqlens = random_seqlen(batch_size, max_seq_len).to(device)
     print('Sequence length:', seqlens)
-        
+
     spa = SeqlenDynamicSparseAttention(True)
     SeqlenDynamicSparseAttention.set_global_seqlens(seqlens)
     test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
