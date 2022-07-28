@@ -110,6 +110,12 @@ class DynamicSparseAttention(SparseOPBase):
         projection linear layers.
         sparse_
         """
+        if not Q.is_contiguous():
+            Q = Q.contiguous()
+        if not K.is_contiguous():
+            K = K.contiguous()
+        if not V.is_contiguous():
+            V = V.contiguous()
 
         if self.global_mode is not True:
             assert isinstance(sparse_mask, torch.Tensor)
@@ -128,12 +134,14 @@ class DynamicSparseAttention(SparseOPBase):
         # Shape of tensor Q should be {Batchsize, sequence length, hidden dim}
         batch_size = Q.size(0)
         head_num =  Q.size(1)
-        seq_len = Q.size(2)
+        q_seq_len = Q.size(2)
+        k_seq_len = K.size(2)
         hidden_dim = Q.size(3)
         err_msg = 'Currently, seq_len and hidden_dim should be divisible by 32'
-        assert seq_len % 32 == 0, err_msg
+        assert q_seq_len % 32 == 0, err_msg
         assert hidden_dim % 32 == 0
-        assert seq_len == sparse_mask.size(0), "input sequence length dose not match the given sparse pattern"
+        assert q_seq_len == sparse_mask.size(0), "input sequence length dose not match the given sparse pattern"
+        assert k_seq_len == sparse_mask.size(1)
         sparse_val_size = block_nnz * self.block_size_h * self.block_size_w
         if self.inter_result is None or self.inter_result.numel() < batch_size * head_num * block_nnz * self.block_size_h * self.block_size_w:
             self.inter_result = torch.zeros(batch_size * head_num * sparse_val_size,

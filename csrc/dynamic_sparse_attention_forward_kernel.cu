@@ -296,14 +296,23 @@ __global__ void SPARSE_SOFTMAX(
     assert(block_w % 32==0);
     float regC = 0.0f;
     float regSum = 0.0f;
+    float regMax = -100000.0;
     int block_seq_start = row_index[blk_row_idx];
     int block_seq_end = row_index[blk_row_idx+1];
 
     for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
         uint index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
+        regMax = max(regMax, C_val[index] * C_val_mask[index]);
+    }
+    for (int offset = 16; offset > 0; offset /= 2) {
+        regMax = max(regMax, __shfl_down_sync(FULL_MASK, regMax, offset));
+    }
+    regMax = __shfl_sync(FULL_MASK, regMax, 0);
+    for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
+        uint index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
         // regC = (float)C_val_mask[index]*C_val[index];
         // if (C_val_mask[index] != 0) {
-            regC = expf(C_val[index]) * C_val_mask[index];
+            regC = expf(C_val[index]-regMax) * C_val_mask[index];
         // }
         regSum += regC;
     }
@@ -317,7 +326,7 @@ __global__ void SPARSE_SOFTMAX(
         uint index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
         regC = 0.0f;
         if (C_val_mask[index] > 0) {
-            C_val[index] = expf(C_val[index])/regSum;
+            C_val[index] = expf(C_val[index]-regMax)/regSum;
         }
         else{
             C_val[index] = 0;
@@ -454,7 +463,7 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD(int* csr_row, int * csr_col, float* csr_
 
 void dynamic_forward_function(float* Q, float* K, float* V,
                     float * inter_result, int * row_ptr, int * col_idx, int * row_pos, float * val_mask,
-                    int batch_size, int head_num, int seq_length, int hidden_dim, const int block_nnz, float* output)
+                    int batch_size, int head_num, int q_seq_length, int k_seq_length, int hidden_dim, const int block_nnz, float* output)
 {
     const int sparse_val_size =  block_nnz * 32* 32 ; //block_nnz * block_h * block_w
     CUDA_SAFE_CALL(cudaMemset(inter_result, 0, sizeof(float) * sparse_val_size * batch_size * head_num));
@@ -468,16 +477,16 @@ void dynamic_forward_function(float* Q, float* K, float* V,
         inter_result,
         row_pos,
         col_idx,
-        seq_length, // M
+        q_seq_length, // M
         hidden_dim, // K
-        seq_length, // N
+        k_seq_length, // N
         sparse_val_size
         
     );
 
     const int row_tile = 4;
     const dim3 softmax_dimBlock(row_tile*32);
-    const dim3 softmax_dimGrid(seq_length/row_tile, head_num * batch_size);
+    const dim3 softmax_dimGrid(q_seq_length/row_tile, head_num * batch_size);
     SPARSE_SOFTMAX<<<softmax_dimGrid, softmax_dimBlock>>>(
         inter_result,
         val_mask,
@@ -496,7 +505,7 @@ void dynamic_forward_function(float* Q, float* K, float* V,
     const int THREAD_SIZE_K = 4;
     const int THREAD_SIZE_N = 4;
 
-    dim3 sdd_gridDim(hidden_dim/BLOCK_SIZE_N, seq_length/BLOCK_SIZE_M, head_num * batch_size);
+    dim3 sdd_gridDim(hidden_dim/BLOCK_SIZE_N, q_seq_length/BLOCK_SIZE_M, head_num * batch_size);
     dim3 sdd_blockDim(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M);
     BLOCK_SPARSE_MATMUL_SDD<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<sdd_gridDim, sdd_blockDim>>>(
         row_ptr,
@@ -504,8 +513,8 @@ void dynamic_forward_function(float* Q, float* K, float* V,
         inter_result,
         V,
         output,
-        seq_length,
-        seq_length,
+        q_seq_length,
+        k_seq_length,
         hidden_dim,
         32,
         32,
@@ -533,9 +542,10 @@ at::Tensor dynamic_sparse_attention_forward(
     // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
     int batch_size = Q.size(0);
     // int head_num = Q.size(1);
-    int seq_length = Q.size(2);
+    int q_seq_length = Q.size(2);
+    int k_seq_length = K.size(2); // the sequence length of query and key may be different
     int hidden_dim = Q.size(3);
-    torch::Tensor output = torch::empty({batch_size, head_num, seq_length, hidden_dim}, Q.options());
+    torch::Tensor output = torch::empty({batch_size, head_num, q_seq_length, hidden_dim}, Q.options());
     
     AT_DISPATCH_FLOATING_TYPES(Q.type(), "dynamic_sparse_attention", ([&]
                             { dynamic_forward_function(
@@ -549,7 +559,8 @@ at::Tensor dynamic_sparse_attention_forward(
                                     val_mask.data_ptr<float>(),
                                     batch_size,
                                     head_num,
-                                    seq_length,
+                                    q_seq_length,
+                                    k_seq_length,
                                     hidden_dim,
                                     block_nnz,
                                     output.data_ptr<float>()
