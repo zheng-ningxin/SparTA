@@ -303,6 +303,7 @@ __global__ void SPARSE_SOFTMAX(
     for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
         uint index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
         regMax = max(regMax, C_val[index] * C_val_mask[index]);
+        // regMax = max(regMax, C_val[index]);
     }
     for (int offset = 16; offset > 0; offset /= 2) {
         regMax = max(regMax, __shfl_down_sync(FULL_MASK, regMax, offset));
@@ -311,10 +312,10 @@ __global__ void SPARSE_SOFTMAX(
     for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
         uint index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
         // regC = (float)C_val_mask[index]*C_val[index];
-        // if (C_val_mask[index] != 0) {
-            regC = expf(C_val[index]-regMax) * C_val_mask[index];
-        // }
-        regSum += regC;
+        if (C_val_mask[index] != 0) {
+            regC = expf(C_val[index]-regMax);
+            regSum += regC;
+        }
     }
     for (int offset = 16; offset > 0; offset /= 2) {
         regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
@@ -325,6 +326,9 @@ __global__ void SPARSE_SOFTMAX(
     for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
         uint index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
         regC = 0.0f;
+        // if(blk_row_idx==0 && bm == 0 && block_inter_row==0 && blockIdx.y==0){
+        //     printf("expf: %f regMax:%f regSum:%f\n", C_val[index], regMax, regSum);
+        // }
         if (C_val_mask[index] > 0) {
             C_val[index] = expf(C_val[index]-regMax)/regSum;
         }
