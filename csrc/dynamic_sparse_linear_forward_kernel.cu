@@ -429,7 +429,7 @@ vector<at::Tensor> dynamic_sparse_linear_backward(
     // torch::Tensor w_grad = torch.empty({M,N}, activation.options());
     torch::Tensor a_grad = torch::zeros_like(activation);
     torch::Tensor w_grad = at::matmul(grad_c.t(), activation);
-    printf("M, K, N: %d %d %d\n", M, K, N);
+    // printf("M, K, N: %d %d %d\n", M, K, N);
     AT_DISPATCH_FLOATING_TYPES(activation.type(), "dynamic_sparse_linear", ([&]
         { dynamic_backward_function(
                 grad_c.data_ptr<float>(),
