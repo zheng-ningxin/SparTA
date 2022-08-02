@@ -3,12 +3,41 @@
 
 import copy
 import torch
+import time
 import random
 from sparta.opset.dynamic_sparse_linear import *
 from sparta.common.utils import verify_bcsr
 from sparta.opset.bcsr_converter import BcsrConverter
 
 
+
+def test_speed(spl, input, mask):
+    runtime = 100
+    tmp_grad = torch.rand_like(input)
+    input.requres_grad_()
+    torch.cuda.synchronize()
+    st = time.time()
+    for rid in range(runtime):
+        spl.update_mask(mask)
+        out = spl(input)
+        out.backward(tmp_grad)
+    torch.cuda.synchronize()
+    end = time.time()
+    print("Sparse speed: ", (end-st)/runtime*1000)
+        
+def dense_speed(linear, input):
+    runtime = 100
+    tmp_grad = torch.rand_like(input)
+    input.requres_grad_()
+
+    torch.cuda.synchronize()
+    st = time.time()
+    for rid in range(runtime):
+        out = linear(input)
+        out.backward(tmp_grad)
+    torch.cuda.synchronize()
+    end = time.time()
+    print("Dense speed: ", (end-st)/runtime*1000)
 
 if __name__ == '__main__':
 

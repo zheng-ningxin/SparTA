@@ -364,6 +364,7 @@ if __name__ == "__main__":
     seq_len, _ = out_mask.size()
     hidden_dim = 64
     layout = get_pattern(out_mask, 32, HEAD_NUM)
+    import ipdb; ipdb.set_trace()
     print('Sparsity:' , torch.sum(layout)/layout.numel())
     # import ipdb; ipdb.set_trace()
 

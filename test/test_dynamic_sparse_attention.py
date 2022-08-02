@@ -71,7 +71,7 @@ def test_speed(sparse_attention, sparse_pattern, head_num, seq_len, hidden_n, de
         sparse_attention(q, k, v)
     torch.cuda.synchronize()
     end = time.time()
-    print('Sparse Forward Implementation', end-st)
+    print('Sparse Forward Implementation', (end-st)/50*1000)
 
 
 
@@ -98,7 +98,7 @@ def dense_speed(sparse_attention, head_num, seq_len, hidden_n, device):
         out = sparse_attention.reference_forward(q, k, v)
     torch.cuda.synchronize()
     end = time.time()
-    print('Dense Forward Implementation', end-st)
+    print('Dense Forward Implementation', (end-st)/50*1000)
 
 
 
@@ -150,12 +150,12 @@ def test_random(HEAD_NUM, seq_len, hidden_dim, sparsity):
 
 
 if __name__ == '__main__':
-    batch_size = 1
+    batch_size = 16
     
     # test_random(20, 1024, 128, 0.999)
     # exit()
 
-    seq_len = 1024
+    seq_len = 2048
     HEAD_NUM = 20
     block_h, block_w = 32, 32
     hidden_n = 128
