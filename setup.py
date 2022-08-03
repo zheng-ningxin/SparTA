@@ -53,6 +53,10 @@ def _setup():
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(seqlen_dynamic_linear_ext)
 
+        longformer_dynamic_attention_ext = CUDAExtension(name='longformer_dynamic_attention_cpp', sources=['csrc/longformer_dynamic_sparse_attention_forward.cpp',
+                                                                'csrc/longformer_dynamic_sparse_attention_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-O3'])
+        ext_modules.append(longformer_dynamic_attention_ext)
         # cusparse_ext = CUDAExtension(name='our_sparse_attention', sources=[
         #                             'csrc/sparse_attention.cpp', 'csrc/sparse_attention_kernel.cu'],
         #                             extra_compile_args=['-std=c++14', '-O3'])
