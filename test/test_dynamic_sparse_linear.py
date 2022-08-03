@@ -20,7 +20,7 @@ def test_speed(spl, input, mask):
     st = time.time()
     for rid in range(runtime):
         spl.update_mask(mask)
-        # out = spl(input)
+        out = spl(input)
         # out.backward(tmp_grad)
     torch.cuda.synchronize()
     end = time.time()
@@ -35,7 +35,7 @@ def dense_speed(linear, input):
     st = time.time()
     for rid in range(runtime):
         out = linear(input)
-        out.backward(tmp_grad)
+        # out.backward(tmp_grad)
     torch.cuda.synchronize()
     end = time.time()
     print("Dense speed: ", (end-st)/runtime*1000)
