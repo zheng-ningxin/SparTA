@@ -12,14 +12,14 @@ from .bcsr_converter import BcsrConverter
 from .sparse_opbase import SparseOPBase
 from sparta.codegen.template.sparse_attention import *
 from sparta.common.utils import *
-import mixed_dynamic_sparse_attention_cpp
+import longformer_dynamic_attention_cpp
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
 
 
-class MixedDynamicSparseAttentionFunction(torch.autograd.Function):
+class LongformerSparseAttentionFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(
@@ -36,12 +36,14 @@ class MixedDynamicSparseAttentionFunction(torch.autograd.Function):
         block_h, block_w, block_nnz
     ):
         # Q, K, V have the same shape: [Batchsize, Headnum, Sequence length, hidden_n]
-        static_qxk = mixed_dynamic_sparse_attention_cpp.batch_matmul_block_sparse_out(Q, K, static_bcsr_row_pos, static_bcsr_col, inter_result, block_h, block_w, block_nnz)
-        dynamic_cols = K.index_select(global_atten, dim=2)
+        # import ipdb; ipdb.set_trace()
+        static_qxk = longformer_dynamic_attention_cpp.batch_matmul_sdd(Q, K, static_bcsr_row_pos, static_bcsr_col, inter_result, block_h, block_w, block_nnz)
+        # import ipdb; ipdb.set_trace()
+        dynamic_cols = torch.index_select(K, 2, global_atten)
         dynamic_qxk = torch.einsum('bcxd,bcyd->bcxy', (Q, dynamic_cols))
         # directly rewrite the global attention parts
         static_qxk[:,:,:,global_atten] = dynamic_qxk
-        
+        return static_qxk        
 
     @staticmethod
     def backward(ctx, *grad_outputs):
@@ -49,7 +51,7 @@ class MixedDynamicSparseAttentionFunction(torch.autograd.Function):
         pass
 
 
-class MixedDynamicSparseAttention(SparseOPBase):
+class LongformerSparseAttention(SparseOPBase):
     """
     The Sparse Attention module that support the dynamic sparse pattern.
     """
@@ -73,8 +75,7 @@ class MixedDynamicSparseAttention(SparseOPBase):
         # length of current instance
         assert isinstance(dynamic_pattern, torch.Tensor)
         assert dynamic_pattern.is_cuda
-        assert dynamic_pattern.dtype == torch.int32, "only support int32 type"
-        MixedDynamicSparseAttention.global_dynamic_attention = dynamic_pattern
+        LongformerSparseAttention.global_dynamic_attention = dynamic_pattern.to(torch.long)
         
     @staticmethod
     def set_global_static_attention(static_pattern):
@@ -84,14 +85,14 @@ class MixedDynamicSparseAttention(SparseOPBase):
         assert isinstance(static_pattern, torch.Tensor)
         assert static_pattern.is_cuda
         assert static_pattern.dtype == torch.int32, "only support int32 type"
-        MixedDynamicSparseAttention.global_static_pattern = static_pattern
-        MixedDynamicSparseAttention.global_static_bcsr_row, MixedDynamicSparseAttention.global_static_bcsr_col, \
-        MixedDynamicSparseAttention.global_static_bcsr_row_pos, MixedDynamicSparseAttention.global_static_bcsr_val_mask = \
-            MixedDynamicSparseAttention.global_bcsr_converter(MixedDynamicSparseAttention.global_static_attention, \
-            MixedDynamicSparseAttention.global_static_attention.to(torch.float32), MixedDynamicSparseAttention.global_static_block_h,\
-            MixedDynamicSparseAttention.global_static_block_w)
-        n_row = MixedDynamicSparseAttention.global_static_sparse_pattern.size(0) // MixedDynamicSparseAttention.global_static_block_h
-        MixedDynamicSparseAttention.global_static_block_nnz = MixedDynamicSparseAttention.global_static_bcsr_row[n_row].item()
+        LongformerSparseAttention.global_static_attention = static_pattern
+        LongformerSparseAttention.global_static_bcsr_row, LongformerSparseAttention.global_static_bcsr_col, \
+        LongformerSparseAttention.global_static_bcsr_row_pos, LongformerSparseAttention.global_static_bcsr_val_mask = \
+            LongformerSparseAttention.global_bcsr_converter(LongformerSparseAttention.global_static_attention, \
+            LongformerSparseAttention.global_static_attention.to(torch.float32), LongformerSparseAttention.global_static_block_h,\
+            LongformerSparseAttention.global_static_block_w)
+        n_row = LongformerSparseAttention.global_static_attention.size(0) // LongformerSparseAttention.global_static_block_h
+        LongformerSparseAttention.global_static_block_nnz = LongformerSparseAttention.global_static_bcsr_row[n_row].item()
 
     def __init__(self, global_mode=True, static_pattern=None):
         """
@@ -105,7 +106,7 @@ class MixedDynamicSparseAttention(SparseOPBase):
             If use the global sparse pattern, if true, then all the sparse_attention
             instance share the same sparse pattern to get the better performance
         """
-        super(MixedDynamicSparseAttention, self).__init__()
+        super(LongformerSparseAttention, self).__init__()
         self.global_mode = global_mode
         # currently only support 32 x 64
         self.inter_result = None  # tensor to store the internal results
@@ -116,18 +117,13 @@ class MixedDynamicSparseAttention(SparseOPBase):
         self.static_block_nnz = None
         
         
-        if not self.global_model:
+        if not self.global_mode:
             assert isinstance(static_pattern, torch.Tensor)
             assert static_pattern.is_cuda
             self.static_bcsr_row, self.static_bcsr_col, self.static_bcsr_row_pos, self.static_bcsr_val_mask = \
-                MixedDynamicSparseAttention.global_bcsr_converter(static_pattern)
-            self.static_block_nnz = self.static_bcsr_row[static_pattern.size(0)//MixedDynamicSparseAttention.global_block_h]
-        else:
-            self.static_bcsr_row, self.static_bcsr_col, self.static_bcsr_row_pos, self.static_bcsr_val_mask = \
-                MixedDynamicSparseAttention.global_static_bcsr_row, MixedDynamicSparseAttention.global_static_bcsr_col, \
-                MixedDynamicSparseAttention.global_static_bcsr_row_pos, MixedDynamicSparseAttention.global_static_bcsr_val_mask
-            self.static_block_nnz = MixedDynamicSparseAttention.global_static_block_nnz
-
+                LongformerSparseAttention.global_bcsr_converter(static_pattern)
+            self.static_block_nnz = self.static_bcsr_row[static_pattern.size(0)//LongformerSparseAttention.global_block_h]
+        
     def forward(self, Q, K, V, dynamic_attention=None):
         """
         Q, K, V are the output tensors of the corresponding
@@ -142,8 +138,14 @@ class MixedDynamicSparseAttention(SparseOPBase):
             V = V.contiguous()
         if self.global_mode is not True:
             assert isinstance(dynamic_attention, torch.Tensor)
+            dynamic_attention = dynamic_attention.to(torch.long)
         else:
-            dynamic_attention = MixedDynamicSparseAttention.global_dynamic_attention
+            dynamic_attention = LongformerSparseAttention.global_dynamic_attention
+            self.static_bcsr_row, self.static_bcsr_col, self.static_bcsr_row_pos, self.static_bcsr_val_mask = \
+                LongformerSparseAttention.global_static_bcsr_row, LongformerSparseAttention.global_static_bcsr_col, \
+                LongformerSparseAttention.global_static_bcsr_row_pos, LongformerSparseAttention.global_static_bcsr_val_mask
+            self.static_block_nnz = LongformerSparseAttention.global_static_block_nnz
+
         # need create val each time
         assert isinstance(Q, torch.Tensor)
         assert isinstance(K, torch.Tensor)
@@ -157,29 +159,33 @@ class MixedDynamicSparseAttention(SparseOPBase):
         assert max_seq_len % 32 == 0, err_msg
         assert hidden_dim % 32 == 0
         if self.inter_result is None or self.inter_result.numel() < batch_size * head_num * max_seq_len * max_seq_len:
-            self.inter_result = torch.zeros(batch_size * head_num * max_seq_len * max_seq_len,
+            self.inter_result = torch.zeros(batch_size, head_num, max_seq_len, max_seq_len,
                           dtype=torch.float32, device=Q.device)
-        result = MixedDynamicSparseAttentionFunction.apply(Q, K, V,
+
+        result = LongformerSparseAttentionFunction.apply(Q, K, V,
                                                       self.inter_result,
                                                       self.static_bcsr_row,
                                                       self.static_bcsr_col,
                                                       self.static_bcsr_row_pos,
                                                       self.static_bcsr_val_mask,
                                                       dynamic_attention,
-                                                      MixedDynamicSparseAttention.global_block_h,
-                                                      MixedDynamicSparseAttention.global_block_w,
+                                                      LongformerSparseAttention.global_static_block_h,
+                                                      LongformerSparseAttention.global_static_block_w,
                                                       self.static_block_nnz)
 
         return result
 
-    def reference_forward(self, Q, K, V, dynamic_attention):
+    def reference_forward(self, Q, K, V, full_attention_pattern):
         """
         Calculate the reference result the sparse attention to test the correctness.
         """
         pass
         # add_mask = torch.zeros(attention_mask.size()).to(Q.device)
         # add_mask[attention_mask == 0] = float(-inf)
-        # dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
+        dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
+        prune_pos = full_attention_pattern == 0
+        dots[: , :,prune_pos] = 0
+        return dots
         # added = torch.add(dots, add_mask)
         # attn = added.softmax(dim=-1)
         # nan_pos = torch.isnan(attn)

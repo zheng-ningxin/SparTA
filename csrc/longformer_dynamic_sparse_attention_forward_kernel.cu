@@ -111,6 +111,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     smm_dd_s_nn: sparse matmul, dense (MxK, along K) x dense (KxN, along N) -> sparse (MxN, along N)
     the output sparse is block size 32x32, the blocks will be written to bcsr 32x64
     */
+    
     const int BLOCK_SIZE_M = 32; // 64
     const int BLOCK_SIZE_K = 64; // 8
     const int BLOCK_SIZE_N = 32; // 128
@@ -122,7 +123,9 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     A += M * K * blockIdx.y;
     B += K * N * blockIdx.y;
     C_val += SPARSE_VAL_SIZE * blockIdx.y;
-
+    // if(threadIdx.x==0 && blockIdx.x==0){
+    //     printf("blockIdx.x:%d blockIdx.y:%d\n", blockIdx.x, blockIdx.y);
+    // }
     assert(blockDim.x % 32 == 0);
     uint n_warp = 8; // blockDim.x / 32
     assert(THREAD_SIZE_K % n_warp == 0);
@@ -256,8 +259,14 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     // uint blk_index = block_index[blockIdx.x] / 2;
     uint blk_index = blockIdx.x;
     // uint intra_blk_index = block_index[blockIdx.x] % 2;
-    C_val += 32 * 32 * blk_index;
-    C_val += ty * 32 + tx * 2;
+    // C_val += 32 * 32 * blk_index;
+    // C_val += ty * 32 + tx * 2;
+    // C_val += ((blockIdx.x / (GLOBAL_N / BLOCK_SIZE_N)) * BLOCK_SIZE_M + ty) * GLOBAL_N + (blockIdx.x % (GLOBAL_N / BLOCK_SIZE_N)) * BLOCK_SIZE_N + tx * 2;
+    // if(threadIdx.x==0 && blockIdx.x==0){
+    //     printf("blockIdx.x:%d blockIdx.y:%d\n", blockIdx.x, blockIdx.y);
+    // }
+    C_val += (row_index[blockIdx.x]  * BLOCK_SIZE_M + ty) * GLOBAL_N + col_index[blockIdx.x] * BLOCK_SIZE_N + tx * 2;
+
 
     __syncthreads();
     *(float4 *)&fShare[storC + 0 * 32 * 8] = *(float4 *)regC[0];
@@ -293,7 +302,9 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
         for (int i = 0; i < j; i++)
             c2[i] = _add(c2[i], c2[i + j]);
 
-    C_val += 16 * 32;
+    // C_val += 16 * 32;
+    C_val += 16 * GLOBAL_N;
+
     *(float2 *)C_val = c2[0];
 }
 
@@ -312,7 +323,7 @@ void batch_matmul_block_sparse_kernel_launch(
 {
     const dim3 dimBlock(256);
     const dim3 dimGrid(block_nnz, head_num * batch_size);
-    BLOCK_SPARSE_MATMUL_OUT_32_64_32<<<dimGrid, dimBlock>>>(A, W, output, row_pos, col, M, K, N, batch_size * head_num * M * K);
+    BLOCK_SPARSE_MATMUL_OUT_32_64_32<<<dimGrid, dimBlock>>>(A, W, output, row_pos, col, M, K, N,  M * N);
 }
 
 at::Tensor batch_matmul_block_sparse_out(
@@ -328,7 +339,8 @@ at::Tensor batch_matmul_block_sparse_out(
     int head_num = A.size(1);
     int max_seq_length = A.size(2);
     int hidden_dim = A.size(3);
-    AT_DISPATCH_FLOATING_TYPES(A.type(), "batch_matmul_block_sparse_out", ([&]
+    // printf("block nnz: %d \n", block_nnz);
+    AT_DISPATCH_FLOATING_TYPES(A.type(), "longformer_batch_matmul", ([&]
             { batch_matmul_block_sparse_kernel_launch(
                     A.data_ptr<float>(),
                     W.data_ptr<float>(),
@@ -343,4 +355,5 @@ at::Tensor batch_matmul_block_sparse_out(
                     block_nnz,
                     batch_size,
                     head_num); }));
+    return output;
 }
