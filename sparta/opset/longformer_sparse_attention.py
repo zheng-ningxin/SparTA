@@ -33,6 +33,7 @@ class LongformerSparseAttentionFunction(torch.autograd.Function):
         static_bcsr_row_pos,
         static_bcsr_val_mask,
         global_atten,
+        extra_buffer,
         block_h, block_w, block_nnz
     ):
         # Q, K, V have the same shape: [Batchsize, Headnum, Sequence length, hidden_n]
@@ -42,8 +43,9 @@ class LongformerSparseAttentionFunction(torch.autograd.Function):
         dynamic_cols = torch.index_select(K, 2, global_atten)
         dynamic_qxk = torch.einsum('bcxd,bcyd->bcxy', (Q, dynamic_cols))
         # directly rewrite the global attention parts
-        static_qxk[:,:,:,global_atten] = dynamic_qxk
-        return static_qxk        
+        static_qxk[:,:,:,global_atten.to(torch.long)] = dynamic_qxk
+        atten_scores = longformer_dynamic_attention_cpp.longformer_softmax(static_qxk, static_bcsr_row, static_bcsr_col, static_bcsr_val_mask, global_atten, extra_buffer, block_h, block_w, block_nnz)
+        return atten_scores        
 
     @staticmethod
     def backward(ctx, *grad_outputs):
@@ -75,7 +77,7 @@ class LongformerSparseAttention(SparseOPBase):
         # length of current instance
         assert isinstance(dynamic_pattern, torch.Tensor)
         assert dynamic_pattern.is_cuda
-        LongformerSparseAttention.global_dynamic_attention = dynamic_pattern.to(torch.long)
+        LongformerSparseAttention.global_dynamic_attention = dynamic_pattern
         
     @staticmethod
     def set_global_static_attention(static_pattern):
@@ -110,6 +112,7 @@ class LongformerSparseAttention(SparseOPBase):
         self.global_mode = global_mode
         # currently only support 32 x 64
         self.inter_result = None  # tensor to store the internal results
+        self.extra_buffer = None # buffer used to calculate the mixed softmax
         self.static_bcsr_row = None
         self.static_bcsr_col = None
         self.static_bcsr_row_pos = None
@@ -138,7 +141,7 @@ class LongformerSparseAttention(SparseOPBase):
             V = V.contiguous()
         if self.global_mode is not True:
             assert isinstance(dynamic_attention, torch.Tensor)
-            dynamic_attention = dynamic_attention.to(torch.long)
+            # dynamic_attention
         else:
             dynamic_attention = LongformerSparseAttention.global_dynamic_attention
             self.static_bcsr_row, self.static_bcsr_col, self.static_bcsr_row_pos, self.static_bcsr_val_mask = \
@@ -160,8 +163,11 @@ class LongformerSparseAttention(SparseOPBase):
         assert hidden_dim % 32 == 0
         if self.inter_result is None or self.inter_result.numel() < batch_size * head_num * max_seq_len * max_seq_len:
             self.inter_result = torch.zeros(batch_size, head_num, max_seq_len, max_seq_len,
-                          dtype=torch.float32, device=Q.device)
-
+                            dtype=torch.float32, device=Q.device)
+        if self.extra_buffer is None or self.extra_buffer.numel()< batch_size * head_num * dynamic_attention.size(0):
+            self.extra_buffer = torch.zeros(batch_size, head_num, max_seq_len, dynamic_attention.size(0),
+                            dtype=torch.float32, device=Q.device)
+        # import ipdb; ipdb.set_trace()
         result = LongformerSparseAttentionFunction.apply(Q, K, V,
                                                       self.inter_result,
                                                       self.static_bcsr_row,
@@ -169,6 +175,7 @@ class LongformerSparseAttention(SparseOPBase):
                                                       self.static_bcsr_row_pos,
                                                       self.static_bcsr_val_mask,
                                                       dynamic_attention,
+                                                      self.extra_buffer,
                                                       LongformerSparseAttention.global_static_block_h,
                                                       LongformerSparseAttention.global_static_block_w,
                                                       self.static_block_nnz)
@@ -184,8 +191,14 @@ class LongformerSparseAttention(SparseOPBase):
         # add_mask[attention_mask == 0] = float(-inf)
         dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
         prune_pos = full_attention_pattern == 0
-        dots[: , :,prune_pos] = 0
-        return dots
+        # dots[: , :,prune_pos] = 0
+        add_mask = torch.zeros(full_attention_pattern.size()).to(Q.device)
+        add_mask[full_attention_pattern == 0] = float(-inf)
+        added = torch.add(dots, add_mask)
+        attn = added.softmax(dim=-1)
+        nan_pos = torch.isnan(attn)
+        attn[nan_pos] = 0.0
+        return attn
         # added = torch.add(dots, add_mask)
         # attn = added.softmax(dim=-1)
         # nan_pos = torch.isnan(attn)

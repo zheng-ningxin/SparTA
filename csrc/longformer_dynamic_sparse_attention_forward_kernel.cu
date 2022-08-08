@@ -357,3 +357,159 @@ at::Tensor batch_matmul_block_sparse_out(
                     head_num); }));
     return output;
 }
+
+__global__ void longformer_mixed_softmax_kernel(float * A,
+                                     int * row,
+                                     int *col,
+                                     float* val_mask,
+                                     int * global_attention,
+                                     float* extra_buffer,
+                                     int block_h,
+                                     int block_w,
+                                     int block_nnz,
+                                     int row_tile,
+                                     int M,
+                                     int N,
+                                     int global_attention_size)
+{
+    /*
+    description:
+    each row of blocks is dealt with a thread group
+    each block is 32x32
+    */
+    A += M * N * blockIdx.y;
+    extra_buffer += M * global_attention_size * blockIdx.y;
+    uint blk_row_idx = blockIdx.x / (block_h/row_tile) ;
+    int block_inter_row = (blockIdx.x % (block_h/row_tile)) * row_tile;
+    uint bm = threadIdx.x / block_w;
+    uint bn = threadIdx.x % block_w;
+    assert(block_w % 32==0);
+    float regC = 0.0f;
+    float regSum = 0.0f;
+    float regMax = -100000.0;
+    int block_seq_start = row[blk_row_idx];
+    int block_seq_end = row[blk_row_idx+1];
+    uint A_index, col_idx, mask_index;
+    for(int i=bn; i<global_attention_size; i+=32){
+        A_index = (blockIdx.x * row_tile + bm) * N + global_attention[i];
+        regMax = max(regMax, A[A_index]);
+    }
+    for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
+        mask_index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
+        A_index = (blockIdx.x * row_tile + bm) * N + (col[block_seq] * block_w + bn);
+        regMax = max(regMax, A[A_index] * val_mask[mask_index]);
+
+    }
+    for (int offset = 16; offset > 0; offset /= 2) {
+        regMax = max(regMax, __shfl_down_sync(FULL_MASK, regMax, offset));
+    }
+    regMax = __shfl_sync(FULL_MASK, regMax, 0);
+
+    for(int i=bn; i<global_attention_size; i+=32){
+        A_index = (blockIdx.x * row_tile + bm) * N + global_attention[i];
+        regC = expf(A[A_index]-regMax);
+        regSum += regC;
+        A[A_index] = -10000.0;
+        extra_buffer[(blockIdx.x * row_tile + bm)*global_attention_size+ i] = regC; 
+    }
+    for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
+        mask_index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
+        A_index = (blockIdx.x * row_tile + bm) * N + (col[block_seq] * block_w + bn);
+        if (val_mask[mask_index] != 0) {
+            regC = expf(A[A_index]-regMax);
+            regSum += regC;
+        }
+    }
+    for (int offset = 16; offset > 0; offset /= 2) {
+        regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
+    }
+    regSum = __shfl_sync(FULL_MASK, regSum, 0);
+    // if(threadIdx.x%32==1)
+    //     printf("Row %d Regsum %f  \n", block_inter_row + bm + blk_row_idx * block_h, regSum);
+    for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
+        mask_index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
+        A_index = (blockIdx.x * row_tile + bm) * N + (col[block_seq] * block_w + bn);
+        regC = 0.0f;
+        if (val_mask[mask_index] > 0) {
+            A[A_index] = expf(A[A_index]-regMax)/regSum;
+        }
+        else{
+            A[A_index] = 0;
+        }
+
+    }
+    for(int i=bn; i<global_attention_size; i+=32){
+        A_index = (blockIdx.x * row_tile + bm) * N + global_attention[i];
+        A[A_index] = extra_buffer[(blockIdx.x * row_tile + bm)*global_attention_size+ i]/regSum; 
+    }
+
+
+}
+void longformer_mixed_softmax_launch(float * A,
+                                     int * row,
+                                     int *col,
+                                     float* val_mask,
+                                     int * global_attention,
+                                     float* extra_buffer,
+                                     int block_h,
+                                     int block_w,
+                                     int block_nnz,
+                                     int M,
+                                     int N,
+                                     int head_num,
+                                     int batch_size,
+                                     int global_attention_size
+)
+{
+    const int row_tile=8;
+    const dim3 blockDim(row_tile*32);
+    const dim3 gridDim(M/row_tile, head_num*batch_size);
+    longformer_mixed_softmax_kernel<<<gridDim, blockDim>>>(A,
+                                                           row,
+                                                           col,
+                                                           val_mask,
+                                                           global_attention,
+                                                           extra_buffer,
+                                                           block_h,
+                                                           block_w,
+                                                           block_nnz,
+                                                           row_tile,
+                                                           M, N,
+                                                           global_attention_size
+                                                           );
+}
+at::Tensor longformer_mixed_softmax(
+    torch::Tensor A,
+    torch::Tensor row,
+    torch::Tensor col,
+    torch::Tensor val_mask,
+    torch::Tensor global_attention,
+    torch::Tensor extra_buffer,
+    int block_h, int block_w, int block_nnz
+
+)
+{
+    cudaSetDevice(A.get_device());
+    int batch_size = A.size(0);
+    int head_num = A.size(1);
+    int M = A.size(2);
+    int N = A.size(3);
+    AT_DISPATCH_FLOATING_TYPES(A.type(), "longformer_mixed_softmax", ([&]
+            { longformer_mixed_softmax_launch(
+                    A.data_ptr<float>(),
+                    row.data_ptr<int>(),
+                    col.data_ptr<int>(),
+                    val_mask.data_ptr<float>(),
+                    global_attention.data_ptr<int>(),
+                    extra_buffer.data_ptr<float>(),
+                    block_h,
+                    block_w,
+                    block_nnz,
+                    M,
+                    N,
+                    head_num,
+                    batch_size,
+                    global_attention.size(0)
+                    ); }));
+    return A;
+}
