@@ -308,7 +308,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     *(float2 *)C_val = c2[0];
 }
 
-void batch_matmul_block_sparse_kernel_launch(
+void batch_matmul_block_sparse_out_kernel_launch(
     float *A,
     float *W,
     int *row_pos,
@@ -341,7 +341,7 @@ at::Tensor batch_matmul_block_sparse_out(
     int hidden_dim = A.size(3);
     // printf("block nnz: %d \n", block_nnz);
     AT_DISPATCH_FLOATING_TYPES(A.type(), "longformer_batch_matmul", ([&]
-            { batch_matmul_block_sparse_kernel_launch(
+            { batch_matmul_block_sparse_out_kernel_launch(
                     A.data_ptr<float>(),
                     W.data_ptr<float>(),
                     row_pos.data_ptr<int>(),
@@ -511,5 +511,203 @@ at::Tensor longformer_mixed_softmax(
                     batch_size,
                     global_attention.size(0)
                     ); }));
+    return A;
+}
+
+
+template <
+    const int BLOCK_SIZE_M, // 64
+    const int BLOCK_SIZE_K, // 8
+    const int BLOCK_SIZE_N, // 128
+    const int THREAD_SIZE_M, // 8
+    const int THREAD_SIZE_K, // 4
+    const int THREAD_SIZE_N  // 8
+>
+__global__ void BLOCK_SPARSE_MATMUL_DSD(int* csr_row, int * csr_col, float* csr_val, float * B, float* C,  int M, int K, int N, int sparse_val_size){
+    // const int BLOCK_SIZE_M = 32;
+    // const int BLOCK_SIZE_K = 32;
+    // const int BLOCK_SIZE_N = 64;
+    // const int THREAD_SIZE_M = 4;
+    // const int THREAD_SIZE_K = 4;
+    // const int THREAD_SIZE_N = 4;
+    int by = blockIdx.y; // M
+    int bx = blockIdx.x; // N
+    int bz = blockIdx.z;
+    int ty = threadIdx.y; 
+    int tx = threadIdx.x;
+    csr_val = csr_val + sparse_val_size * bz;
+    B = B + K * N * bz;
+    C = C + M * N * bz;
+
+    const int padding = 1;
+    __shared__ float As[BLOCK_SIZE_M * (padding+BLOCK_SIZE_K)];
+    __shared__ float Bs[BLOCK_SIZE_N * (padding+BLOCK_SIZE_K)];
+
+    float accum[THREAD_SIZE_N][THREAD_SIZE_M] = {0};
+    float a_frag[THREAD_SIZE_M][THREAD_SIZE_K];
+    float b_frag[THREAD_SIZE_N][THREAD_SIZE_K];
+
+    int A_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
+    int B_THREAD_PER_ROW = BLOCK_SIZE_N / 4;
+
+    int bszy = BLOCK_SIZE_M / THREAD_SIZE_M;
+    int bszx = BLOCK_SIZE_N / THREAD_SIZE_N;
+
+    int THREADS_PER_BLOCK = bszy * bszx;
+
+    int A_TILE_ROW_STRIDE = THREADS_PER_BLOCK / A_THREAD_PER_ROW;
+    int B_TILE_ROW_STRIDE = THREADS_PER_BLOCK / B_THREAD_PER_ROW;
+
+    int tid = ty * bszx + tx;
+
+    int index_start = csr_row[by], index_end = csr_row[by+1];
+
+    int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
+    int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
+
+    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4;
+    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4;
+    const int vBLOCK_SIZE_M = BLOCK_SIZE_M / THREAD_SIZE_M;
+    const int vBLOCK_SIZE_N = BLOCK_SIZE_N / THREAD_SIZE_N;
+
+    for(int tile_block_idx = index_start; tile_block_idx < index_end; tile_block_idx += 1){
+        int col_pos = csr_col[tile_block_idx] * BLOCK_SIZE_K;
+        #pragma unroll
+        for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
+            FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
+                FETCH_FLOAT4(csr_val[OFFSET(k + A_BLOCK_ROW_START + by*BLOCK_SIZE_M, A_BLOCK_COL_START + col_pos, K)]);
+                // FETCH_FLOAT4(csr_val[tile_block_idx * BLOCK_SIZE_M * BLOCK_SIZE_K + OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]);
+        }
+
+        #pragma unroll
+        for(int k = 0; k < BLOCK_SIZE_K; k += B_TILE_ROW_STRIDE){
+            FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BLOCK_SIZE_N)]) = 
+                FETCH_FLOAT4(B[OFFSET(col_pos+k+B_BLOCK_ROW_START, bx*BLOCK_SIZE_N + B_BLOCK_COL_START, N)]);
+                // FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+                // FETCH_FLOAT4(B[OFFSET(tile_idx+k+B_BLOCK_ROW_START, bx*BLOCK_SIZE_N+B_BLOCK_COL_START, N)]);
+        }
+
+        __syncthreads();
+
+        #pragma unroll
+        for(int k = 0; k < BLOCK_SIZE_K; k += THREAD_SIZE_K){
+            #pragma unroll
+            for(int i = 0; i < THREAD_SIZE_K; i++){
+                #pragma unroll
+                for(int j = 0; j < THREAD_SIZE_M; j += 1){
+                    a_frag[j][i] = As[OFFSET(ty + vBLOCK_SIZE_M * j, k+i, BLOCK_SIZE_K)];
+                    //a_frag[j][i] = As[OFFSET(k+i, ty + vBLOCK_SIZE_M * j, BLOCK_SIZE_M)];
+                }
+            }
+
+            #pragma unroll
+            for(int i = 0; i < THREAD_SIZE_K; i++){
+                #pragma unroll
+                for(int j = 0; j < THREAD_SIZE_N; j += 1){
+                    b_frag[j][i] = Bs[OFFSET(k+i, tx + vBLOCK_SIZE_N * j, BLOCK_SIZE_N)];
+                }
+            }
+
+            #pragma unroll
+            for(int i = 0; i < THREAD_SIZE_N; i++){
+                #pragma unroll
+                for(int j = 0; j < THREAD_SIZE_M; j++){
+                    #pragma unroll
+                    for(int k_in = 0; k_in < THREAD_SIZE_K; k_in++){
+                        // accum[i][j] = fma(a_frag[j][k_in], b_frag[i][k_in], accum[i][j]);
+                        accum[i][j] += a_frag[j][k_in] * b_frag[i][k_in];
+                    }
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+
+    #pragma unroll
+    for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
+        #pragma unroll
+        for(int thread_y = 0; thread_y < THREAD_SIZE_M; thread_y+=1){
+            C[OFFSET(
+                BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
+                N
+            )] = (accum[thread_x][thread_y]);
+        }
+    }
+
+
+}
+
+
+void batch_matmul_block_sparse_kernel_launch(
+    float * A,
+    float * B,
+    float * C,
+    int * row_ptr,
+    int * col_idx,
+    int M,
+    int K,
+    int N,
+    int head_num,
+    int batch_size,
+    int block_h,
+    int block_w
+
+)
+{
+    const int BLOCK_SIZE_M = 32;
+    const int BLOCK_SIZE_K = 32;
+    const int BLOCK_SIZE_N = 64;
+    const int THREAD_SIZE_M = 4;
+    const int THREAD_SIZE_K = 4;
+    const int THREAD_SIZE_N = 4;
+    assert(block_h==BLOCK_SIZE_M);
+    assert(block_w==BLOCK_SIZE_K);
+    dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, head_num * batch_size);
+    dim3 blockDim(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M);
+    BLOCK_SPARSE_MATMUL_DSD<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<gridDim, blockDim>>>(
+        row_ptr,
+        col_idx,
+        A,
+        B,
+        C,
+        M,
+        K,
+        N,
+        M*K);
+
+}
+
+at::Tensor batch_matmul_block_sparse(
+    torch::Tensor A,
+    torch::Tensor B,
+    torch::Tensor row_ptr,
+    torch::Tensor col_idx,
+    int M,
+    int K,
+    int N,
+    int block_h,
+    int block_w
+){
+    cudaSetDevice(A.get_device());
+    int batch_size = A.size(0);
+    int head_num = A.size(1);
+    torch::Tensor output = torch::zeros({batch_size, head_num, M, N}, A.options());
+    AT_DISPATCH_FLOATING_TYPES(A.type(), "longformer_batch_matmul_attenxV", ([&]
+            { batch_matmul_block_sparse_kernel_launch(
+                A.data_ptr<float>(),
+                B.data_ptr<float>(),
+                output.data_ptr<float>(),
+                row_ptr.data_ptr<int>(),
+                col_idx.data_ptr<int>(),
+                M,
+                K,
+                N,
+                head_num,
+                batch_size,
+                block_h,
+                block_w); }));
     return A;
 }

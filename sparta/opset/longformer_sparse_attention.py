@@ -167,7 +167,7 @@ class LongformerSparseAttention(SparseOPBase):
         if self.extra_buffer is None or self.extra_buffer.numel()< batch_size * head_num * dynamic_attention.size(0):
             self.extra_buffer = torch.zeros(batch_size, head_num, max_seq_len, dynamic_attention.size(0),
                             dtype=torch.float32, device=Q.device)
-        # import ipdb; ipdb.set_trace()
+
         result = LongformerSparseAttentionFunction.apply(Q, K, V,
                                                       self.inter_result,
                                                       self.static_bcsr_row,
@@ -190,7 +190,6 @@ class LongformerSparseAttention(SparseOPBase):
         # add_mask = torch.zeros(attention_mask.size()).to(Q.device)
         # add_mask[attention_mask == 0] = float(-inf)
         dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
-        prune_pos = full_attention_pattern == 0
         # dots[: , :,prune_pos] = 0
         add_mask = torch.zeros(full_attention_pattern.size()).to(Q.device)
         add_mask[full_attention_pattern == 0] = float(-inf)
@@ -198,7 +197,9 @@ class LongformerSparseAttention(SparseOPBase):
         attn = added.softmax(dim=-1)
         nan_pos = torch.isnan(attn)
         attn[nan_pos] = 0.0
-        return attn
+        ref_out = torch.einsum('b h m n, b h n k -> b h m k', attn, V)
+
+        return ref_out
         # added = torch.add(dots, add_mask)
         # attn = added.softmax(dim=-1)
         # nan_pos = torch.isnan(attn)
