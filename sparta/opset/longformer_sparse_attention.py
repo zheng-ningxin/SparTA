@@ -38,14 +38,21 @@ class LongformerSparseAttentionFunction(torch.autograd.Function):
     ):
         # Q, K, V have the same shape: [Batchsize, Headnum, Sequence length, hidden_n]
         # import ipdb; ipdb.set_trace()
+        long_globa_attention = global_atten.to(torch.long)
         static_qxk = longformer_dynamic_attention_cpp.batch_matmul_sdd(Q, K, static_bcsr_row_pos, static_bcsr_col, inter_result, block_h, block_w, block_nnz)
         # import ipdb; ipdb.set_trace()
         dynamic_cols = torch.index_select(K, 2, global_atten)
         dynamic_qxk = torch.einsum('bcxd,bcyd->bcxy', (Q, dynamic_cols))
         # directly rewrite the global attention parts
-        static_qxk[:,:,:,global_atten.to(torch.long)] = dynamic_qxk
+        static_qxk[:,:,:,long_globa_attention] = dynamic_qxk
         atten_scores = longformer_dynamic_attention_cpp.longformer_softmax(static_qxk, static_bcsr_row, static_bcsr_col, static_bcsr_val_mask, global_atten, extra_buffer, block_h, block_w, block_nnz)
-        return atten_scores        
+        g_atten = atten_scores[:,:,:,long_globa_attention]
+        g_v = V[:,:,long_globa_attention,:]
+        atten_scores.data[:,:,:,long_globa_attention] = 0.0
+        result_1 = torch.einsum('b h m n, b h n k -> b h m k', (g_atten, g_v))
+        result_2 = longformer_dynamic_attention_cpp.batch_matmul_dsd(atten_scores, V, static_bcsr_row, static_bcsr_col, block_h, block_w)
+
+        return result_1 + result_2        
 
     @staticmethod
     def backward(ctx, *grad_outputs):
@@ -200,10 +207,4 @@ class LongformerSparseAttention(SparseOPBase):
         ref_out = torch.einsum('b h m n, b h n k -> b h m k', attn, V)
 
         return ref_out
-        # added = torch.add(dots, add_mask)
-        # attn = added.softmax(dim=-1)
-        # nan_pos = torch.isnan(attn)
-        # attn[nan_pos] = 0.0
-        # ref_out = torch.einsum('b h m n, b h n k -> b h m k', attn, V)
 
-        # return ref_out

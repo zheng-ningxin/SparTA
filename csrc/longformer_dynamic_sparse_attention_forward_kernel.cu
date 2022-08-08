@@ -685,15 +685,16 @@ at::Tensor batch_matmul_block_sparse(
     torch::Tensor B,
     torch::Tensor row_ptr,
     torch::Tensor col_idx,
-    int M,
-    int K,
-    int N,
     int block_h,
     int block_w
 ){
     cudaSetDevice(A.get_device());
     int batch_size = A.size(0);
     int head_num = A.size(1);
+    int M = A.size(2);
+    int K = A.size(3);
+    int N = B.size(3);
+    // printf("M:%d N:%d\n", M, N);
     torch::Tensor output = torch::zeros({batch_size, head_num, M, N}, A.options());
     AT_DISPATCH_FLOATING_TYPES(A.type(), "longformer_batch_matmul_attenxV", ([&]
             { batch_matmul_block_sparse_kernel_launch(
@@ -709,5 +710,5 @@ at::Tensor batch_matmul_block_sparse(
                 batch_size,
                 block_h,
                 block_w); }));
-    return A;
+    return output;
 }

@@ -27,9 +27,6 @@ at::Tensor batch_matmul_block_sparse(
     torch::Tensor B,
     torch::Tensor row_ptr,
     torch::Tensor col_idx,
-    int M,
-    int K,
-    int N,
     int block_h,
     int block_n
 
