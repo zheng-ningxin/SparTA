@@ -126,13 +126,15 @@ class LongformerSparseAttention(SparseOPBase):
         self.static_bcsr_val_mask = None
         self.static_block_nnz = None
         
-        
+        if static_pattern is not None:
+            assert self.global_mode == False
         if not self.global_mode:
             assert isinstance(static_pattern, torch.Tensor)
             assert static_pattern.is_cuda
             self.static_bcsr_row, self.static_bcsr_col, self.static_bcsr_row_pos, self.static_bcsr_val_mask = \
-                LongformerSparseAttention.global_bcsr_converter(static_pattern)
-            self.static_block_nnz = self.static_bcsr_row[static_pattern.size(0)//LongformerSparseAttention.global_block_h]
+                LongformerSparseAttention.global_bcsr_converter(static_pattern, static_pattern.to(torch.float32), \
+                LongformerSparseAttention.global_static_block_h, LongformerSparseAttention.global_static_block_w)
+            self.static_block_nnz = self.static_bcsr_row[static_pattern.size(0)//LongformerSparseAttention.global_static_block_h]
         
     def forward(self, Q, K, V, dynamic_attention=None):
         """

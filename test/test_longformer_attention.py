@@ -5,6 +5,7 @@ import torch
 import random
 import copy
 import numpy as np
+import joblib
 from sparta.opset import *
 from sparta.opset.longformer_sparse_attention import LongformerSparseAttention
 
@@ -147,25 +148,44 @@ def test_random(HEAD_NUM, seq_len, hidden_dim, sparsity):
     test_correctness(spa, HEAD_NUM, M, K, device)
     # test_speed(spa, HEAD_NUM, M, K, device)
 
+def test_longformer():
+    head_num =  12
+    hidden_n = 64
+    seq_len =  4096
+    batch_size = 1
+    device = torch.device('cuda:0')
+    data = joblib.load('longformer_inputs.pkl')
+    dynamic_global_attention = data['dynamic']
+    static_local_attention = data['attention_mask'][0]
+    q, k, v = torch.randn(batch_size, head_num, seq_len, hidden_n, dtype=torch.float32, device=device), torch.randn(batch_size, head_num, seq_len,
+                        hidden_n, dtype=torch.float32, device=device), torch.randn(batch_size, head_num, seq_len, hidden_n, dtype=torch.float32, device=device)
+    spa = LongformerSparseAttention(True)
+    spa.set_global_static_attention(static_local_attention)
+    # test the correctness of the backward function
+    for run_id in range(1000):
+        spa.set_global_dynamic_attention(dynamic_global_attention)
+        spa(q, k, v)
 
 if __name__ == '__main__':
-    batch_size = 2
+    test_longformer()
+# if __name__ == '__main__':
+#     batch_size = 2
     
-    # test_random(20, 1024, 128, 0.999)
-    # exit()
-    torch.manual_seed(1)
-    random.seed(1)
-    seq_len = 2048
-    HEAD_NUM = 20
-    block_h, block_w = 32, 32
-    hidden_n = 128
-    device = torch.device('cuda:0')
-    for sparsity in np.arange(0.1, 1, 0.1):
+#     # test_random(20, 1024, 128, 0.999)
+#     # exit()
+#     torch.manual_seed(1)
+#     random.seed(1)
+#     seq_len = 2048
+#     HEAD_NUM = 20
+#     block_h, block_w = 32, 32
+#     hidden_n = 128
+#     device = torch.device('cuda:0')
+#     for sparsity in np.arange(0.1, 1, 0.1):
         
-        static_local_pattern =  random_sparse_pattern_block(seq_len, sparsity, block_h, block_w).cuda()
-        dynamic_global_attention = torch.tensor(random.sample(list(range(seq_len)), int(seq_len*sparsity*0.1))).to(torch.int32).cuda()
-        spa = LongformerSparseAttention(True, static_pattern=static_local_pattern)
-        # test_speed(spa, sp_pattern, HEAD_NUM, seq_len, hidden_n, device)
-        # dense_speed(spa, HEAD_NUM, seq_len, hidden_n, device)
-        test_correctness(spa, static_local_pattern, dynamic_global_attention, HEAD_NUM, seq_len, hidden_n, device)
+#         static_local_pattern =  random_sparse_pattern_block(seq_len, sparsity, block_h, block_w).cuda()
+#         dynamic_global_attention = torch.tensor(random.sample(list(range(seq_len)), int(seq_len*sparsity*0.1))).to(torch.int32).cuda()
+#         spa = LongformerSparseAttention(True, static_pattern=static_local_pattern)
+#         # test_speed(spa, sp_pattern, HEAD_NUM, seq_len, hidden_n, device)
+#         # dense_speed(spa, HEAD_NUM, seq_len, hidden_n, device)
+#         test_correctness(spa, static_local_pattern, dynamic_global_attention, HEAD_NUM, seq_len, hidden_n, device)
 
