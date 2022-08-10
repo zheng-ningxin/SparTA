@@ -385,7 +385,7 @@ __global__ void longformer_mixed_softmax_kernel_v3(float * A,
                                      int * row,
                                      int *col,
                                      float* val_mask,
-                                     int * global_attention,
+                                     float * global_attention,
                                      float* extra_buffer,
                                      int block_h,
                                      int block_w,
@@ -400,7 +400,7 @@ __global__ void longformer_mixed_softmax_kernel_v3(float * A,
     each row of blocks is dealt with a thread group
     each block is 32x32
     */
-    const int ROW_TILE = 4;
+    const int ROW_TILE = 1;
     assert(row_tile == ROW_TILE);
     const int ROW_MAX_SIZE = 1024;
     const int WARP_SIZE = 32;
@@ -427,11 +427,10 @@ __global__ void longformer_mixed_softmax_kernel_v3(float * A,
     Ms += ROW_MAX_SIZE * int(threadIdx.x/WARP_SIZE);
     // load from the global memory to the shared memory
     #pragma unroll
-    for(int i=bn; i<global_attention_size; i+=32){
-        A_index = (blockIdx.x * row_tile + bm) * N + global_attention[i];
-        As[i] = A[A_index];
+    for(int i=bn; i<global_attention_size; i+=WARP_SIZE){
+        A_index = (blockIdx.x * row_tile + bm) * global_attention_size + i;
+        As[i] = global_attention[A_index];
         Ms[i] = 1.0;
-        A[A_index] = -10000.0; // 
     }
     #pragma unroll
     for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
@@ -477,8 +476,9 @@ __global__ void longformer_mixed_softmax_kernel_v3(float * A,
         A[A_index] = As[shared_index] * Ms[shared_index]; 
     }
     for(int i=bn; i<global_attention_size; i+=32){
-        A_index = (blockIdx.x * row_tile + bm) * N + global_attention[i];
-        A[A_index] = As[i]; 
+        A_index = (blockIdx.x * row_tile + bm) * global_attention_size + i;
+        global_attention[A_index] = As[i];
+        // Ms[i] = 1.0;
     }
 
 }
@@ -539,6 +539,39 @@ void longformer_mixed_softmax_launch_v2(float * A,
                                                            col,
                                                            val_mask,
                                                            global_attention,
+                                                           extra_buffer,
+                                                           block_h,
+                                                           block_w,
+                                                           block_nnz,
+                                                           row_tile,
+                                                           M, N,
+                                                           global_attention_size
+                                                           );
+}
+void longformer_mixed_softmax_launch_v3(float * A,
+                                     int * row,
+                                     int *col,
+                                     float* val_mask,
+                                     int * global_attention,
+                                     float* extra_buffer,
+                                     int block_h,
+                                     int block_w,
+                                     int block_nnz,
+                                     int M,
+                                     int N,
+                                     int head_num,
+                                     int batch_size,
+                                     int global_attention_size
+)
+{
+    const int row_tile=1;
+    const dim3 blockDim(row_tile*32);
+    const dim3 gridDim(M/row_tile, head_num*batch_size);
+    longformer_mixed_softmax_kernel_v3<<<gridDim, blockDim>>>(A,
+                                                           row,
+                                                           col,
+                                                           val_mask,
+                                                           extra_buffer,
                                                            extra_buffer,
                                                            block_h,
                                                            block_w,
@@ -615,7 +648,7 @@ int main()
 
     CUDA_SAFE_CALL(cudaEventRecord(time_start));
     for(int runtime=0; runtime<10; runtime++){
-        longformer_mixed_softmax_launch_v2(dA,
+        longformer_mixed_softmax_launch_v3(dA,
                                     d_row,
                                     d_col,
                                     d_val,
