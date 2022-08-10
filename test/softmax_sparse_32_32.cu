@@ -427,7 +427,7 @@ void matmul_sparse_out_32_64_32(float * dA, float * dB, float *dC, int *row_inde
     // Note: need copy from the device to get the number of the number of the small block
     // CUDA_SAFE_CALL(cudaMemcpy(&SMALL_BLOCK_NUM, row_index+n_row, sizeof(int), cudaMemcpyDeviceToHost));
     const dim3 dimGrid(SMALL_BLOCK_NUM, 1);
-    printf("Small block number: %d \n", SMALL_BLOCK_NUM);
+    // printf("Small block number: %d \n", SMALL_BLOCK_NUM);
     // const int SPARSE_VAL_SIZE = SMALL_BLOCK_NUM * block_h * block_w;
     BLOCK_SPARSE_MATMUL_OUT_32_64_32<<<dimGrid, dimBlock>>>(dA, dB, dC, row_pos, col_index, M, K, N, SPARSE_VAL_SIZE);
 }
@@ -463,7 +463,7 @@ bool verify_matmul_sparse_out(float * ref_C, float * C_val, int * row_index, int
                     float ref_value =  ref_C[offset_ref+ i*w+j];
                     float our_value =  C_val[offset_c+i*block_w+j];
                     if(fabs(ref_value-our_value)>1e-5){
-                        printf("%f %f\n", ref_value, our_value);
+                        // printf("%f %f\n", ref_value, our_value);
                         flag = false;
                     }
                 }
@@ -545,8 +545,8 @@ __global__ void SPARSE_SOFTMAX(
         regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
     }
     regSum = __shfl_sync(FULL_MASK, regSum, 0);
-    if(threadIdx.x%32==1)
-        printf("Row %d Regsum %f  \n", block_inter_row + bm + blk_row_idx * block_h, regSum);
+    // if(threadIdx.x%32==1)
+    //     printf("Row %d Regsum %f  \n", block_inter_row + bm + blk_row_idx * block_h, regSum);
     for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
         uint index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
         regC = 0.0f;
@@ -582,7 +582,7 @@ void calculate_softmax_ref(float* tin, int* mask, int M, int N)
                 // printf("#### i:%d %f \n", mask[index], expf(tin[index]));
             }
         }
-        printf("Row: %d sum: %f\n", i, sum);
+        // printf("Row: %d sum: %f\n", i, sum);
         for(int j=0; j<N; j++){
             int index =  i *N + j;
             if(mask[index])
@@ -642,7 +642,7 @@ int main()
         data[i] = float(mask[i]);
         mask_nnz += mask[i];
     }
-    printf("Mask NNZ: %d \n", mask_nnz);
+    // printf("Mask NNZ: %d \n", mask_nnz);
     // init(data, M*N, 0);
     init(A, M*K, 0.95);
     init(B, N*K, 0.95);
@@ -668,7 +668,7 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(dB, B, sizeof(float)*K*N, cudaMemcpyHostToDevice));
 
     CUDA_SAFE_CALL(cudaEventRecord(time_start));
-    for(int runtime=0; runtime<1; runtime++){
+    for(int runtime=0; runtime<10; runtime++){
         convert_bcsr(d_mask, d_data, M, N, block_h, block_w, d_row, d_col, d_row_pos, d_val, extra_buffer);
         int n_row = M / block_h;
         int SMALL_BLOCK_NUM;

@@ -461,7 +461,7 @@ void longformer_mixed_softmax_launch(float * A,
                                      int global_attention_size
 )
 {
-    const int row_tile=8;
+    const int row_tile=32;
     const dim3 blockDim(row_tile*32);
     const dim3 gridDim(M/row_tile, head_num*batch_size);
     longformer_mixed_softmax_kernel<<<gridDim, blockDim>>>(A,

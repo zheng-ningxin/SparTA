@@ -45,7 +45,8 @@ class LongformerSparseAttentionFunction(torch.autograd.Function):
         dynamic_qxk = torch.einsum('bcxd,bcyd->bcxy', (Q, dynamic_cols))
         # directly rewrite the global attention parts
         static_qxk[:,:,:,long_globa_attention] = dynamic_qxk
-        atten_scores = longformer_dynamic_attention_cpp.longformer_softmax(static_qxk, static_bcsr_row, static_bcsr_col, static_bcsr_val_mask, global_atten, extra_buffer, block_h, block_w, block_nnz)
+        atten_scores = torch.softmax(static_qxk, dim=-1)
+        # atten_scores = longformer_dynamic_attention_cpp.longformer_softmax(static_qxk, static_bcsr_row, static_bcsr_col, static_bcsr_val_mask, global_atten, extra_buffer, block_h, block_w, block_nnz)
         g_atten = atten_scores[:,:,:,long_globa_attention]
         g_v = V[:,:,long_globa_attention,:]
         atten_scores.data[:,:,:,long_globa_attention] = 0.0
