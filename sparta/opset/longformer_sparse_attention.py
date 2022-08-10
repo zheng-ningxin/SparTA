@@ -44,12 +44,12 @@ class LongformerSparseAttentionFunction(torch.autograd.Function):
         dynamic_cols = torch.index_select(K, 2, global_atten)
         dynamic_qxk = torch.einsum('bcxd,bcyd->bcxy', (Q, dynamic_cols))
         # directly rewrite the global attention parts
-        static_qxk[:,:,:,long_globa_attention] = dynamic_qxk
-        atten_scores = torch.softmax(static_qxk, dim=-1)
-        # atten_scores = longformer_dynamic_attention_cpp.longformer_softmax(static_qxk, static_bcsr_row, static_bcsr_col, static_bcsr_val_mask, global_atten, extra_buffer, block_h, block_w, block_nnz)
-        g_atten = atten_scores[:,:,:,long_globa_attention]
+        static_qxk[:,:,:,long_globa_attention] = -1000.0
+        # atten_scores = torch.softmax(static_qxk, dim=-1)
+        atten_scores, g_atten = longformer_dynamic_attention_cpp.longformer_softmax(static_qxk, static_bcsr_row, static_bcsr_col, static_bcsr_val_mask, dynamic_qxk, block_h, block_w, global_atten.size(0))
+        # g_atten = atten_scores[:,:,:,long_globa_attention]
         g_v = V[:,:,long_globa_attention,:]
-        atten_scores.data[:,:,:,long_globa_attention] = 0.0
+        # atten_scores.data[:,:,:,long_globa_attention] = 0.0
         result_1 = torch.einsum('b h m n, b h n k -> b h m k', (g_atten, g_v))
         result_2 = longformer_dynamic_attention_cpp.batch_matmul_dsd(atten_scores, V, static_bcsr_row, static_bcsr_col, block_h, block_w)
 
@@ -174,9 +174,9 @@ class LongformerSparseAttention(SparseOPBase):
         if self.inter_result is None or self.inter_result.numel() < batch_size * head_num * max_seq_len * max_seq_len:
             self.inter_result = torch.zeros(batch_size, head_num, max_seq_len, max_seq_len,
                             dtype=torch.float32, device=Q.device)
-        if self.extra_buffer is None or self.extra_buffer.numel()< batch_size * head_num * dynamic_attention.size(0):
-            self.extra_buffer = torch.zeros(batch_size, head_num, max_seq_len, dynamic_attention.size(0),
-                            dtype=torch.float32, device=Q.device)
+        # if self.extra_buffer is None or self.extra_buffer.numel()< batch_size * head_num * dynamic_attention.size(0):
+        #     self.extra_buffer = torch.zeros(batch_size, head_num, max_seq_len, dynamic_attention.size(0),
+        #                     dtype=torch.float32, device=Q.device)
 
         result = LongformerSparseAttentionFunction.apply(Q, K, V,
                                                       self.inter_result,

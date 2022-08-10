@@ -16,7 +16,7 @@ using namespace std;
 #define FETCH_INT32(pointer) (reinterpret_cast<int *>(&(pointer))[0])
 #define MAX_BLOCK_THREAD_COUNT 1024
 #define FULL_MASK 0xffffffff
-
+#define SOFTMAX_ROW_TILE 4
 #define CUBLAS_SAFE_CALL(func)                                                                  \
     do                                                                                          \
     {                                                                                           \
@@ -358,6 +358,7 @@ at::Tensor batch_matmul_block_sparse_out(
     return output;
 }
 
+
 __global__ void longformer_mixed_softmax_kernel(float * A,
                                      int * row,
                                      int *col,
@@ -461,7 +462,7 @@ void longformer_mixed_softmax_launch(float * A,
                                      int global_attention_size
 )
 {
-    const int row_tile=32;
+    const int row_tile=SOFTMAX_ROW_TILE;
     const dim3 blockDim(row_tile*32);
     const dim3 gridDim(M/row_tile, head_num*batch_size);
     longformer_mixed_softmax_kernel<<<gridDim, blockDim>>>(A,
@@ -478,6 +479,172 @@ void longformer_mixed_softmax_launch(float * A,
                                                            global_attention_size
                                                            );
 }
+
+
+__global__ void longformer_mixed_softmax_kernel_v2(float * A,
+                                     int * row,
+                                     int *col,
+                                     float* val_mask,
+                                     float * global_attention,
+                                     int block_h,
+                                     int block_w,
+                                     int M,
+                                     int N,
+                                     int global_attention_size)
+{
+    /*
+    description:
+    each row of blocks is dealt with a thread group
+    each block is 32x32
+    */
+    
+    const int ROW_MAX_SIZE = 1024;
+    const int WARP_SIZE = 32;
+    __shared__ float shared_A[SOFTMAX_ROW_TILE*ROW_MAX_SIZE];
+    __shared__ float shared_M[SOFTMAX_ROW_TILE*ROW_MAX_SIZE];
+    float * As = shared_A;
+    float * Ms = shared_M;
+    A += M * N * blockIdx.y;
+    global_attention += M * global_attention_size * blockIdx.y;
+    // extra_buffer += M * global_attention_size * blockIdx.y;
+    uint blk_row_idx = blockIdx.x / (block_h/SOFTMAX_ROW_TILE) ;
+    int block_inter_row = (blockIdx.x % (block_h/SOFTMAX_ROW_TILE)) * SOFTMAX_ROW_TILE;
+    uint bm = threadIdx.x / WARP_SIZE;
+    uint bn = threadIdx.x % WARP_SIZE;
+    assert(block_w % WARP_SIZE==0);
+    float regC = 0.0f;
+    float regSum = 0.0f;
+    float regMax = -100000.0;
+    int block_seq_start = row[blk_row_idx];
+    int block_seq_end = row[blk_row_idx+1];
+    // printf("block_seq_start:%d block_seq_end:%d row_size: %d ROW_MAX_SIZE:%d\n", block_seq_start, block_seq_end, (block_seq_end-block_seq_start) * block_w + global_attention_size, ROW_MAX_SIZE);
+    assert((block_seq_end-block_seq_start) * block_w + global_attention_size < ROW_MAX_SIZE);
+    uint A_index, col_idx, mask_index, shared_index;
+    As += ROW_MAX_SIZE * int(threadIdx.x/WARP_SIZE);
+    Ms += ROW_MAX_SIZE * int(threadIdx.x/WARP_SIZE);
+    // load from the global memory to the shared memory
+    #pragma unroll
+    for(int i=bn; i<global_attention_size; i+=WARP_SIZE){
+        A_index = (blockIdx.x * SOFTMAX_ROW_TILE + bm) * global_attention_size + i;
+        As[i] = global_attention[A_index];
+        Ms[i] = 1.0;
+    }
+    #pragma unroll
+    for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
+        // FIXME: there need one more for loop to handle the WARP_SIZE -> BLOCK_W
+        mask_index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
+        A_index = (blockIdx.x * SOFTMAX_ROW_TILE + bm) * N + (col[block_seq] * block_w + bn);
+        As[global_attention_size + block_w * (block_seq - block_seq_start) + bn] = A[A_index];
+        Ms[global_attention_size + block_w * (block_seq - block_seq_start) + bn] = val_mask[mask_index];
+    }
+    // calculate the softmax in the shared memory
+    // calculate the regMax
+    #pragma unroll
+    for(int i =bn; i<global_attention_size+(block_seq_end-block_seq_start)*block_w; i+=WARP_SIZE){
+        regMax = max(regMax, As[i]*Ms[i]);
+    }
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        regMax = max(regMax, __shfl_down_sync(FULL_MASK, regMax, offset));
+    }
+    regMax = __shfl_sync(FULL_MASK, regMax, 0);    
+    // calculate the regSum
+    #pragma unroll
+    for(int i =bn; i<global_attention_size+(block_seq_end-block_seq_start)*block_w; i+=WARP_SIZE){
+        regSum += Ms[i] * expf(As[i]-regMax);
+    }
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
+    }
+    regSum = __shfl_sync(FULL_MASK, regSum, 0);
+    // calculate the corresponding value for each element
+    #pragma unroll
+    for(int i =bn; i<global_attention_size+(block_seq_end-block_seq_start)*block_w; i+=WARP_SIZE){
+        As[i] = expf(As[i] - regMax) / regSum;
+    }
+
+    // Write the results back to the global memory
+    #pragma unroll
+    for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
+        /// TODO FIXME: need one more loop from the BLOCK_W to the WARP_SIZE
+        A_index = (blockIdx.x * SOFTMAX_ROW_TILE + bm) * N + (col[block_seq] * block_w + bn);
+        shared_index = global_attention_size+(block_seq-block_seq_start) * block_w + bn;
+        A[A_index] = As[shared_index] * Ms[shared_index]; 
+    }
+    for(int i=bn; i<global_attention_size; i+=32){
+        A_index = (blockIdx.x * SOFTMAX_ROW_TILE + bm) * global_attention_size + i;
+        global_attention[A_index] = As[i];
+
+    }
+
+}
+
+
+void longformer_mixed_softmax_launch_v2(float * A,
+                                     int * row,
+                                     int *col,
+                                     float* val_mask,
+                                     float * global_attention,
+                                     int block_h,
+                                     int block_w,
+                                     int M,
+                                     int N,
+                                     int head_num,
+                                     int batch_size,
+                                     int global_attention_size
+)
+{
+    const int row_tile=SOFTMAX_ROW_TILE;
+    const dim3 blockDim(row_tile*32);
+    const dim3 gridDim(M/row_tile, head_num*batch_size);
+    longformer_mixed_softmax_kernel_v2<<<gridDim, blockDim>>>(A,
+                                                           row,
+                                                           col,
+                                                           val_mask,
+                                                           global_attention,
+                                                           block_h,
+                                                           block_w,
+                                                           M, N,
+                                                           global_attention_size
+                                                           );
+}
+
+
+std::vector<at::Tensor> longformer_mixed_softmax_v2(
+    torch::Tensor A,
+    torch::Tensor row,
+    torch::Tensor col,
+    torch::Tensor val_mask,
+    torch::Tensor global_attention,
+    int block_h,
+    int block_w,
+    int global_attention_size
+)
+{
+    cudaSetDevice(A.get_device());
+    int batch_size = A.size(0);
+    int head_num = A.size(1);
+    int M = A.size(2);
+    int N = A.size(3);
+    AT_DISPATCH_FLOATING_TYPES(A.type(), "longformer_mixed_softmax_v2", ([&]
+            { longformer_mixed_softmax_launch_v2(
+                    A.data_ptr<float>(),
+                    row.data_ptr<int>(),
+                    col.data_ptr<int>(),
+                    val_mask.data_ptr<float>(),
+                    global_attention.data_ptr<float>(),
+                    block_h,
+                    block_w,
+                    M,
+                    N,
+                    head_num,
+                    batch_size,
+                    global_attention_size
+                    ); }));
+    return vector<at::Tensor>({A, global_attention});
+}
+
 at::Tensor longformer_mixed_softmax(
     torch::Tensor A,
     torch::Tensor row,

@@ -180,11 +180,12 @@ if __name__ == '__main__':
 #     block_h, block_w = 32, 32
 #     hidden_n = 128
 #     device = torch.device('cuda:0')
-#     for sparsity in np.arange(0.1, 1, 0.1):
+#     for sparsity in [0.05, 0.1, 0.15]:
         
 #         static_local_pattern =  random_sparse_pattern_block(seq_len, sparsity, block_h, block_w).cuda()
 #         dynamic_global_attention = torch.tensor(random.sample(list(range(seq_len)), int(seq_len*sparsity*0.1))).to(torch.int32).cuda()
-#         spa = LongformerSparseAttention(True, static_pattern=static_local_pattern)
+#         spa = LongformerSparseAttention(True)
+#         # import ipdb; ipdb.set_trace()
 #         # test_speed(spa, sp_pattern, HEAD_NUM, seq_len, hidden_n, device)
 #         # dense_speed(spa, HEAD_NUM, seq_len, hidden_n, device)
 #         test_correctness(spa, static_local_pattern, dynamic_global_attention, HEAD_NUM, seq_len, hidden_n, device)

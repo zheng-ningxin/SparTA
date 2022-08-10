@@ -11,15 +11,26 @@ at::Tensor batch_matmul_block_sparse_out(
     int block_h, int block_w, int block_nnz
 );
 
-at::Tensor longformer_mixed_softmax(
+// at::Tensor longformer_mixed_softmax(
+//     torch::Tensor A,
+//     torch::Tensor row,
+//     torch::Tensor col,
+//     torch::Tensor val_mask,
+//     torch::Tensor global_attention,
+//     torch::Tensor extra_buffer,
+//     int block_h, int block_w, int block_nnz
+
+// );
+
+std::vector<at::Tensor> longformer_mixed_softmax_v2(
     torch::Tensor A,
     torch::Tensor row,
     torch::Tensor col,
     torch::Tensor val_mask,
     torch::Tensor global_attention,
-    torch::Tensor extra_buffer,
-    int block_h, int block_w, int block_nnz
-
+    int block_h,
+    int block_w,
+    int global_attention_size
 );
 
 at::Tensor batch_matmul_block_sparse(
@@ -35,6 +46,6 @@ at::Tensor batch_matmul_block_sparse(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("batch_matmul_sdd", &batch_matmul_block_sparse_out, "dynamic sparse attention forward");
-    m.def("longformer_softmax", &longformer_mixed_softmax, "sparse softmax for the longformer pattern");
+    m.def("longformer_softmax", &longformer_mixed_softmax_v2, "sparse softmax for the longformer pattern");
     m.def("batch_matmul_dsd", &batch_matmul_block_sparse, "attention score x V");
 }
