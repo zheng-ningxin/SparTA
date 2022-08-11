@@ -162,9 +162,14 @@ def test_longformer():
     spa = LongformerSparseAttention(True)
     spa.set_global_static_attention(static_local_attention)
     # test the correctness of the backward function
+    torch.cuda.synchronize()
+    t_start = time.time()
     for run_id in range(1000):
         spa.set_global_dynamic_attention(dynamic_global_attention)
         spa(q, k, v)
+    torch.cuda.synchronize()
+    t_end = time.time()
+    print(t_end-t_start)
 
 if __name__ == '__main__':
     test_longformer()
