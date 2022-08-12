@@ -300,8 +300,16 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
 
 
 
-void elastic_forward_function(float* activation, float* weight,
-                    float * bias, int ori_in_features, int ori_out_features, int M, int K, int N, int batchsize, float*output)
+void elastic_forward_function(float* activation,
+                                float* weight,
+                                float * bias,
+                                int ori_in_features,
+                                int ori_out_features,
+                                int M,
+                                int K,
+                                int N,
+                                int batchsize,
+                                float*output)
 {
 
     // dense x dense^T -> sparse output
@@ -351,17 +359,61 @@ at::Tensor elastic_sparse_linear_forward(
     return output;
 }
 
+void elastic_backward_function(float * activation,
+                                float * weight,
+                                float * grad_c,
+                                float * a_grad,
+                                float * w_grad,
+                                int M,
+                                int K,
+                                int N,
+                                int ori_in_features,
+                                int ori_out_features)
+{
+
+    
+}
+
 vector<at::Tensor> elastic_sparse_linear_backward(
     torch::Tensor activation,
     torch::Tensor weight,
-    torch::Tensor seqlens,
-    torch::Tensor grad_c)
+    torch::Tensor grad_c,
+    int in_features,
+    int out_features)
 {
+    /*
+    Compute the gradient of the Q, K, V.
+    A * B = C
+        |  backward()
+        V
+    Grad_A = Grad_C * B^T
+    Grad_B = A^T * Grad_C
+    */
     cudaSetDevice(activation.get_device());
-    // TODO: support backward in the future
-    // torch::Tensor a_grad = torch::zeros_like(activation);
-    // torch::Tensor w_grad = at::matmul(grad_c.t(), activation);
-    // vector<torch::Tensor> grads({a_grad, w_grad});
-    vector<torch::Tensor> grads({});
+    torch::Tensor a_grad = torch::empty_like(activation);
+    torch::Tensor w_grad = torch::zeros_like(weight);
+    int batch_size = activation.size(0);
+    int max_seq_len = activation.size(1);
+    int ori_in_features = weight.size(1);
+    int ori_out_features = weight.size(0);
+    int M = max_seq_len * batch_size;
+    int K = in_features;
+    int N = out_features;
+    assert(in_features % 64==0);
+    assert(out_features % 32==0);
+    AT_DISPATCH_FLOATING_TYPES(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
+                                {       elastic_backward_function(
+                                        activation.data_ptr<float>(),
+                                        weight.data_ptr<float>(),
+                                        grad_c.data_ptr<float>(),
+                                        a_grad.data_ptr<float>(),
+                                        w_grad.data_ptr<float>(),
+                                        M, K, N,
+                                        ori_in_features,
+                                        ori_out_features
+                                    ); }));
+    
+
+    vector<torch::Tensor> grads({a_grad, w_grad});
     return grads;
 }
