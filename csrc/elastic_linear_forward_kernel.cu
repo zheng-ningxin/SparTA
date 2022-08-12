@@ -84,146 +84,13 @@ __device__ __forceinline__ const float* add_ptr_f(const float* src, int offset) 
 __device__ __forceinline__ float2  _add(float2 x, float2 y) { float2 res; res.x = x.x + y.x; res.y = x.y + y.y; return res; }
 
 
-template <
-    const int BLOCK_SIZE_M, // 64
-    const int BLOCK_SIZE_K, // 8
-    const int BLOCK_SIZE_N, // 128
-    const int THREAD_SIZE_M, // 8
-    const int THREAD_SIZE_K, // 4
-    const int THREAD_SIZE_N  // 8
->
-__global__ void BLOCK_SPARSE_MATMUL_BIAS(float* A, float* W_val, int* W_row, int* W_col, float* C, float *bias, int M, int K, int N){
-    int by = blockIdx.y;
-    int bx = blockIdx.x;
-    int ty = threadIdx.y;
-    int tx = threadIdx.x;
-
-    __shared__ float As[BLOCK_SIZE_M * BLOCK_SIZE_K];
-    __shared__ float Bs[BLOCK_SIZE_N * BLOCK_SIZE_K];
-
-    float accum[THREAD_SIZE_N][THREAD_SIZE_M] = {0};
-    float a_frag[THREAD_SIZE_M][THREAD_SIZE_K];
-    float b_frag[THREAD_SIZE_N][THREAD_SIZE_K];
-
-    int A_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
-    int B_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
-
-    int bszy = BLOCK_SIZE_M / THREAD_SIZE_M;
-    int bszx = BLOCK_SIZE_N / THREAD_SIZE_N;
-
-    int THREADS_PER_BLOCK = bszy * bszx;
-
-    int A_TILE_ROW_STRIDE = THREADS_PER_BLOCK / A_THREAD_PER_ROW;
-    int B_TILE_ROW_STRIDE = THREADS_PER_BLOCK / B_THREAD_PER_ROW;
-
-    int tid = ty * bszx + tx;
-
-    int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
-    int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
-
-    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4;
-    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4;
-
-    int index_start = W_row[bx], index_end = W_row[bx+1];
-
-    const int vBLOCK_SIZE_M = BLOCK_SIZE_M / THREAD_SIZE_M;
-    const int vBLOCK_SIZE_N = BLOCK_SIZE_N / THREAD_SIZE_N;
-    float4 tmp_float4;
-    for(int tile_block_idx = index_start; tile_block_idx < index_end; tile_block_idx += 1){
-        int tile_idx = W_col[tile_block_idx] * BLOCK_SIZE_K;
-        #pragma unroll
-        for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
-            FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
-                FETCH_FLOAT4(A[OFFSET(by*BLOCK_SIZE_M+k+A_BLOCK_ROW_START, tile_idx+A_BLOCK_COL_START, K)]);
-        }
-        /*
-        for(int k = 0; k < BLOCK_SIZE_K; k += A_TILE_ROW_STRIDE){
-            FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_M)]) = 
-                FETCH_FLOAT4(A[OFFSET(tile_idx+k+A_BLOCK_ROW_START, by*BLOCK_SIZE_M+A_BLOCK_COL_START, M)]);
-        }
-        */
-
-        // #pragma unroll
-        // for(int k = 0; k < BLOCK_SIZE_K; k += B_TILE_ROW_STRIDE){
-        //     FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BLOCK_SIZE_N)]) = 
-        //         FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_N + B_BLOCK_COL_START]);
-        //         // FETCH_FLOAT4(B[OFFSET(tile_idx+k+B_BLOCK_ROW_START, bx*BLOCK_SIZE_N+B_BLOCK_COL_START, N)]);
-        // }
-
-        #pragma unroll
-        for(int k=0; k < BLOCK_SIZE_N; k+= B_TILE_ROW_STRIDE){
-            // transpose here
-            tmp_float4 =  FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_K + B_BLOCK_COL_START]);
-            Bs[OFFSET(B_BLOCK_COL_START, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.x;
-            Bs[OFFSET(B_BLOCK_COL_START+1, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.y;
-            Bs[OFFSET(B_BLOCK_COL_START+2, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.z;
-            Bs[OFFSET(B_BLOCK_COL_START+3, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.w;
-        }
-
-
-        __syncthreads();
-
-        #pragma unroll
-        for(int k = 0; k < BLOCK_SIZE_K; k += THREAD_SIZE_K){
-            #pragma unroll
-            for(int i = 0; i < THREAD_SIZE_K; i++){
-                #pragma unroll
-                for(int j = 0; j < THREAD_SIZE_M; j += 1){
-                    a_frag[j][i] = As[OFFSET(ty + vBLOCK_SIZE_M * j, k+i, BLOCK_SIZE_K)];
-                    //a_frag[j][i] = As[OFFSET(k+i, ty + vBLOCK_SIZE_M * j, BLOCK_SIZE_M)];
-                }
-            }
-
-            #pragma unroll
-            for(int i = 0; i < THREAD_SIZE_K; i++){
-                #pragma unroll
-                for(int j = 0; j < THREAD_SIZE_N; j += 1){
-                    b_frag[j][i] = Bs[OFFSET(k+i, tx + vBLOCK_SIZE_N * j, BLOCK_SIZE_N)];
-                }
-            }
-
-            #pragma unroll
-            for(int i = 0; i < THREAD_SIZE_N; i++){
-                #pragma unroll
-                for(int j = 0; j < THREAD_SIZE_M; j++){
-                    #pragma unroll
-                    for(int k_in = 0; k_in < THREAD_SIZE_K; k_in++){
-                        // accum[i][j] = fma(a_frag[j][k_in], b_frag[i][k_in], accum[i][j]);
-                        accum[i][j] += a_frag[j][k_in] * b_frag[i][k_in];
-                    }
-                }
-            }
-        }
-
-        __syncthreads();
-    }
-
-    float bias_local[THREAD_SIZE_N];
-    for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
-        bias_local[thread_x] = bias[BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N];
-    }
-
-    #pragma unroll
-    for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
-        #pragma unroll
-        for(int thread_y = 0; thread_y < THREAD_SIZE_M; thread_y+=1){
-            C[OFFSET(
-                BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
-                BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
-                N
-            )] = (accum[thread_x][thread_y]) + bias_local[thread_x];
-        }
-    }
-}
-
-
 
 __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
     float* A,
     float* B,
     float* bias,
-    int in_features,
-    int out_features,
+    int ori_in_features,
+    int ori_out_features,
     int GLOBAL_M,
     int GLOBAL_K,
     int GLOBAL_N,
@@ -240,13 +107,14 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
     const int BLOCK_SIZE_N = 32;  //128
     const int THREAD_SIZE_K = 64;
     const int M = GLOBAL_M;
-    const int K = in_features;
+    const int K = GLOBAL_K;
     const int N = GLOBAL_N;
 
-    A += M * K * blockIdx.z;
+    // A += M * K * blockIdx.z;
     // B += K * N * blockIdx.z;
-    output += M * N * blockIdx.z;
-    
+    // output += M * N * blockIdx.z;
+    // int batchid = blockIdx.z;
+    // int cur_seq_len = seqlens[batchid];
     assert(blockDim.x % 32 == 0);
     uint n_warp = 8; // blockDim.x / 32
     assert(THREAD_SIZE_K % n_warp == 0);
@@ -261,7 +129,7 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
     uint tid = threadIdx.x;
     uint bx = blockIdx.x;
     uint by = blockIdx.y;
-    // if(by * BLOCK_SIZE_M < out_features){
+    // if(by * BLOCK_SIZE_M < cur_seq_len){
         // if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
         //     printf("by:%d bx:%d bz:%d\n", by, bx, blockIdx.z);
         // }
@@ -277,8 +145,8 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
 
         uint ori_offsetA00 = (by * 32 + ty) * K + k;
         uint ori_offsetA16 = ori_offsetA00 + K * 16;
-        uint ori_offsetB00 = (bx * 32 + ty) * K + k;
-        uint ori_offsetB16 = ori_offsetB00 + K * 16;
+        uint ori_offsetB00 = (bx * 32 + ty) * ori_in_features + k;
+        uint ori_offsetB16 = ori_offsetB00 + ori_in_features * 16;
 
         uint tid224 = tid & 224;
         uint storAB = (tx * 32 * 4 + ty + tx * 2) * 4;
@@ -431,8 +299,9 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
 }
 
 
+
 void elastic_forward_function(float* activation, float* weight,
-                    float * bias, int in_features, int out_features, int M, int K, int N, int batchsize, float*output)
+                    float * bias, int ori_in_features, int ori_out_features, int M, int K, int N, int batchsize, float*output)
 {
 
     // dense x dense^T -> sparse output
@@ -440,10 +309,10 @@ void elastic_forward_function(float* activation, float* weight,
     const int BLOCK_SIZE_K = 64;
     const int BLOCK_SIZE_N = 32;
     
-    dim3 gridDim(out_features/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
+    dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
     dim3 blockDim(256);
     // printf("gridDim: %d %d %d")
-    BLOCK_SPARSE_MATMUL_BIAS_OPENAI<<<gridDim, blockDim>>>(activation, weight, bias, in_features, out_features, M, K, N, batchsize, output);
+    BLOCK_SPARSE_MATMUL_BIAS_OPENAI<<<gridDim, blockDim>>>(activation, weight, bias, ori_in_features, ori_out_features, M, K, N, batchsize, output);
     
 }
 
@@ -459,23 +328,23 @@ at::Tensor elastic_sparse_linear_forward(
     cudaSetDevice(activation.get_device());
     int batch_size = activation.size(0);
     int max_seq_len = activation.size(1);
-    int in_hidden = weight.size(1);
-    int out_hidden = weight.size(0);
+    int ori_in_features = weight.size(1);
+    int ori_out_features = weight.size(0);
     int M = max_seq_len * batch_size;
-    int K = in_hidden;
-    int N = out_hidden;
-    assert(in_hidden%64==0);
-    assert(out_hidden%32==0);
+    int K = in_features;
+    int N = out_features;
+    assert(in_features % 64==0);
+    assert(out_features % 32==0);
     // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
-    torch::Tensor output = torch::empty({batch_size, max_seq_len, out_hidden}, activation.options());
+    torch::Tensor output = torch::empty({batch_size, max_seq_len, out_features}, activation.options());
     
     AT_DISPATCH_FLOATING_TYPES(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
                             {       elastic_forward_function(
                                     activation.data_ptr<float>(),
                                     weight.data_ptr<float>(),
                                     bias.data_ptr<float>(),
-                                    in_features,
-                                    out_features,
+                                    ori_in_features,
+                                    ori_out_features,
                                     M, K, N, batch_size,
                                     output.data_ptr<float>()
                                 ); }));
@@ -493,6 +362,6 @@ vector<at::Tensor> elastic_sparse_linear_backward(
     // torch::Tensor a_grad = torch::zeros_like(activation);
     // torch::Tensor w_grad = at::matmul(grad_c.t(), activation);
     // vector<torch::Tensor> grads({a_grad, w_grad});
-    vector<torch::Tensor> grads();
+    vector<torch::Tensor> grads({});
     return grads;
 }
