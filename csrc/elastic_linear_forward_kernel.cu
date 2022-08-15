@@ -94,7 +94,6 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
     int GLOBAL_M,
     int GLOBAL_K,
     int GLOBAL_N,
-    int batchsize,
     float* output){
     /*
     description:
@@ -308,7 +307,6 @@ void elastic_forward_function(float* activation,
                                 int M,
                                 int K,
                                 int N,
-                                int batchsize,
                                 float*output)
 {
 
@@ -320,7 +318,7 @@ void elastic_forward_function(float* activation,
     dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
     dim3 blockDim(256);
     // printf("gridDim: %d %d %d")
-    BLOCK_SPARSE_MATMUL_BIAS_OPENAI<<<gridDim, blockDim>>>(activation, weight, bias, ori_in_features, ori_out_features, M, K, N, batchsize, output);
+    BLOCK_SPARSE_MATMUL_BIAS_OPENAI<<<gridDim, blockDim>>>(activation, weight, bias, ori_in_features, ori_out_features, M, K, N, output);
     
 }
 
@@ -338,12 +336,16 @@ at::Tensor elastic_sparse_linear_forward(
     int max_seq_len = activation.size(1);
     int ori_in_features = weight.size(1);
     int ori_out_features = weight.size(0);
-    int M = max_seq_len * batch_size;
+    int M = activation.numel()/in_features;
     int K = in_features;
     int N = out_features;
     assert(in_features % 64==0);
     assert(out_features % 32==0);
+    printf("M: %d K:%d N:%d\n", M, K, N);
+    printf("in_features:%d ori_in_features:%d\n", in_features, ori_in_features);
+    printf("out_features:%d ori_out_features:%d\n", out_features, ori_out_features);
     // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
+    
     torch::Tensor output = torch::empty({batch_size, max_seq_len, out_features}, activation.options());
     
     AT_DISPATCH_FLOATING_TYPES(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
@@ -353,7 +355,7 @@ at::Tensor elastic_sparse_linear_forward(
                                     bias.data_ptr<float>(),
                                     ori_in_features,
                                     ori_out_features,
-                                    M, K, N, batch_size,
+                                    M, K, N,
                                     output.data_ptr<float>()
                                 ); }));
     return output;
