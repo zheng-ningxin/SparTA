@@ -17,7 +17,7 @@ def reference_forward(ori_linear, activation, in_features, out_features):
 
 
 def test_correctness(e_linear, in_features, out_features):
-    data = torch.rand(32, 128, in_features)
+    data = torch.rand(8, 128, in_features)
     data_1 = data.clone().detach().cuda()
     data_2 = data.clone().detach().cuda()
     data_1.requires_grad_()
@@ -32,11 +32,11 @@ def test_correctness(e_linear, in_features, out_features):
     import ipdb; ipdb.set_trace()
     
 def test_speed(e_linear, in_features, out_features):
-    data = torch.rand(32, 128, in_features).cuda()
+    data = torch.rand(8, 128, in_features).cuda()
     data.requires_grad_()
     re = e_linear(data, in_features, out_features)
     tmp_grad = torch.rand_like(re)
-    run_time = 1000
+    run_time = 10000
     torch.cuda.synchronize()
     t_start = time.time()
     for _ in range(run_time):
@@ -51,7 +51,7 @@ def dense_speed(e_linear, in_features, out_features):
     data.requires_grad_()
     re = e_linear.reference_forward(data, in_features, out_features)
     tmp_grad = torch.rand_like(re)
-    run_time = 1000
+    run_time = 10000
     torch.cuda.synchronize()
     t_start = time.time()
     for _ in range(run_time):
@@ -63,11 +63,13 @@ def dense_speed(e_linear, in_features, out_features):
     
 
 if __name__ == '__main__':
-    M = 4096
-    K = 4096
-    N = 4096
+    M = 1024
+    K = 512
+    N = 512
     ori_linear = torch.nn.Linear(K, N, bias=True).cuda()
     elastic_linear = InOutElasticLinear(ori_linear)
     # test_correctness(elastic_linear, 1024, 512)
-    # test_speed(elastic_linear, 1024, 1024)
-    dense_speed(elastic_linear, 1024, 1024)
+    in_feature = 128 *3
+    out_feature = 128 *3
+    test_speed(elastic_linear, in_feature, out_feature)
+    dense_speed(elastic_linear, in_feature, out_feature)
