@@ -594,7 +594,7 @@ __global__ void grad_w_kernel(float* A,
                 c2[i] = _add(c2[i], c2[i+j]);
 
         // C_val += 16 * 32;
-        C += 16 * GLOBAL_N;
+        C += 16 * ori_in_feature;
         *(float2*)C = c2[0];
 
 
@@ -847,7 +847,9 @@ void elastic_backward_function(float * activation,
 
     */
     dim3 w_block_dim(256);
-    dim3 w_grid_dim(ori_in_features/BLOCK_SIZE_N, ori_out_features/BLOCK_SIZE_M);
+    // dim3 w_grid_dim(ori_in_features/BLOCK_SIZE_N, ori_out_features/BLOCK_SIZE_M);
+    dim3 w_grid_dim(K/BLOCK_SIZE_N, N/BLOCK_SIZE_M);
+
     grad_w_kernel<<<w_grid_dim, w_block_dim>>>(grad_c, activation, w_grad, N, M, K, ori_in_features, ori_out_features);
     /*
     grad_a = grad_c * weight 
