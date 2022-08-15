@@ -68,6 +68,7 @@ if __name__ == '__main__':
     N = 512
     ori_linear = torch.nn.Linear(K, N, bias=True).cuda()
     elastic_linear = InOutElasticLinear(ori_linear)
+    # only works on small size, WTF
     # test_correctness(elastic_linear, 1024, 512)
     in_feature = 128 *3
     out_feature = 128 *3
