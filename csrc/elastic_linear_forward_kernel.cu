@@ -341,9 +341,9 @@ at::Tensor elastic_sparse_linear_forward(
     int N = out_features;
     assert(in_features % 64==0);
     assert(out_features % 32==0);
-    printf("M: %d K:%d N:%d\n", M, K, N);
-    printf("in_features:%d ori_in_features:%d\n", in_features, ori_in_features);
-    printf("out_features:%d ori_out_features:%d\n", out_features, ori_out_features);
+    // printf("M: %d K:%d N:%d\n", M, K, N);
+    // printf("in_features:%d ori_in_features:%d\n", in_features, ori_in_features);
+    // printf("out_features:%d ori_out_features:%d\n", out_features, ori_out_features);
     // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
     
     torch::Tensor output = torch::empty({batch_size, max_seq_len, out_features}, activation.options());
@@ -622,7 +622,9 @@ __global__ void grad_a_kernel(float* A,
     const int M = GLOBAL_M;
     const int K = GLOBAL_K;
     const int N = GLOBAL_N;
-
+    if(blockIdx.x == 0 && blockIdx.y ==0 && threadIdx.x ==0){
+        printf("M:%d K:%d N:%d\n", M, K, N);
+    }
     // A += M * K * blockIdx.z;
     // B += K * N * blockIdx.z;
     // output += M * N * blockIdx.z;
@@ -662,7 +664,7 @@ __global__ void grad_a_kernel(float* A,
         // uint ori_offsetB16 = ori_offsetB00 + K * 16;
         // K x N -> ori_out_features, ori_in_features
         uint ori_offsetB00 = tid / (BLOCK_SIZE_N/4) * ori_in_features + bx * BLOCK_SIZE_N + (tid % (BLOCK_SIZE_N/4)) * 4;
-        uint ori_offsetB16 = ori_offsetB00 + N * 32;
+        uint ori_offsetB16 = ori_offsetB00 + ori_in_features * 32;
         uint storB = (tid * 4 + tid / (BLOCK_SIZE_N/4) / 4 *2) * 4; // (tid *4 + tid / (BLOCK_SIZE_N/4) / 4 * 2)*4
 
 
@@ -834,6 +836,7 @@ void elastic_backward_function(float * activation,
     const int BLOCK_SIZE_M = 32;
     const int BLOCK_SIZE_K = 64;
     const int BLOCK_SIZE_N = 32;
+    printf("In the ealstic backward function!!\n");
     /*
     // ori_out_features is on the M dim
     // ori_in_features is on the N dim
@@ -871,6 +874,7 @@ vector<at::Tensor> elastic_sparse_linear_backward(
     Grad_A = Grad_C * B^T
     Grad_B = A^T * Grad_C
     */
+    printf("in elastic_sparse_linear_backward\n");
     cudaSetDevice(activation.get_device());
     torch::Tensor a_grad = torch::empty_like(activation);
     torch::Tensor w_grad = torch::zeros_like(weight);
