@@ -622,9 +622,9 @@ __global__ void grad_a_kernel(float* A,
     const int M = GLOBAL_M;
     const int K = GLOBAL_K;
     const int N = GLOBAL_N;
-    if(blockIdx.x == 0 && blockIdx.y ==0 && threadIdx.x ==0){
-        printf("M:%d K:%d N:%d\n", M, K, N);
-    }
+    // if(blockIdx.x == 0 && blockIdx.y ==0 && threadIdx.x ==0){
+    //     printf("M:%d K:%d N:%d\n", M, K, N);
+    // }
     // A += M * K * blockIdx.z;
     // B += K * N * blockIdx.z;
     // output += M * N * blockIdx.z;
@@ -836,7 +836,7 @@ void elastic_backward_function(float * activation,
     const int BLOCK_SIZE_M = 32;
     const int BLOCK_SIZE_K = 64;
     const int BLOCK_SIZE_N = 32;
-    printf("In the ealstic backward function!!\n");
+    // printf("In the ealstic backward function!!\n");
     /*
     // ori_out_features is on the M dim
     // ori_in_features is on the N dim
@@ -876,7 +876,7 @@ vector<at::Tensor> elastic_sparse_linear_backward(
     Grad_A = Grad_C * B^T
     Grad_B = A^T * Grad_C
     */
-    printf("in elastic_sparse_linear_backward\n");
+    // printf("in elastic_sparse_linear_backward\n");
     cudaSetDevice(activation.get_device());
     torch::Tensor a_grad = torch::empty_like(activation);
     torch::Tensor w_grad = torch::zeros_like(weight);

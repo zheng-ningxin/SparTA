@@ -31,11 +31,43 @@ def test_correctness(e_linear, in_features, out_features):
     re2.backward(tmp_grad)
     import ipdb; ipdb.set_trace()
     
+def test_speed(e_linear, in_features, out_features):
+    data = torch.rand(32, 128, in_features).cuda()
+    data.requires_grad_()
+    re = e_linear(data, in_features, out_features)
+    tmp_grad = torch.rand_like(re)
+    run_time = 1000
+    torch.cuda.synchronize()
+    t_start = time.time()
+    for _ in range(run_time):
+        re = e_linear(data, in_features, out_features)
+        re.backward(tmp_grad)
+    torch.cuda.synchronize()
+    t_end = time.time()
+    print('Sparse per batch(ms):' , (t_end-t_start)*1000/run_time)
     
+def dense_speed(e_linear, in_features, out_features):
+    data = torch.rand(32, 128, in_features).cuda()
+    data.requires_grad_()
+    re = e_linear.reference_forward(data, in_features, out_features)
+    tmp_grad = torch.rand_like(re)
+    run_time = 1000
+    torch.cuda.synchronize()
+    t_start = time.time()
+    for _ in range(run_time):
+        re = e_linear.reference_forward(data, in_features, out_features)
+        re.backward(tmp_grad)
+    torch.cuda.synchronize()
+    t_end = time.time()
+    print('Dense per batch(ms):' , (t_end-t_start)*1000/run_time)
+    
+
 if __name__ == '__main__':
     M = 4096
     K = 4096
     N = 4096
     ori_linear = torch.nn.Linear(K, N, bias=True).cuda()
     elastic_linear = InOutElasticLinear(ori_linear)
-    test_correctness(elastic_linear, 1024, 512)
+    # test_correctness(elastic_linear, 1024, 512)
+    # test_speed(elastic_linear, 1024, 1024)
+    dense_speed(elastic_linear, 1024, 1024)
