@@ -114,7 +114,7 @@ void init_mask_blockwise(int * ptr, size_t M, size_t N, int block_h, int block_w
 __device__ __forceinline__ float2  _add(float2 x, float2 y) { float2 res; res.x = x.x + y.x; res.y = x.y + y.y; return res; }
 
 
-__global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
+__global__ void convert_bcsr_kernel_1_align_4(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
                                 int block_h, int block_w, int * row, int *col, int * row_pos,
                                 float * values, int * extra_buffer)
 {
@@ -135,6 +135,99 @@ __global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, float * __
         uint block_offset = _pos / (block_w / 4) * w + _pos % (block_w / 4) * 4;        
         int4 data = __ldg((const int4*)(add_ptr_u(mask, global_offset+block_offset)));
         flag += data.x + data.y + data.z + data.w;
+    }
+    reduce[tid] = flag;
+    __syncthreads();
+    // fast tree reduce accross the block
+    for(uint s=blockDim.x/2; s>32; s>>=1){
+        if(tid<s)
+            reduce[tid] += reduce[tid+s];
+        __syncthreads();
+    }
+    if(tid<32)
+        warpReduce(reduce, tid);
+    __syncthreads();
+    int pos_id;
+    if(tid==0 && reduce[0]>0){
+        pos_id= atomicAdd(&extra_buffer[by], 1);
+        atomicAdd(&extra_buffer[by+h], 1);
+        atomicAdd(&row[h/block_h], 1);
+        extra_buffer[2*h + gridDim.x * by + pos_id] = bx;
+    }
+
+}
+__global__ void convert_bcsr_kernel_2_align_4(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
+    int block_h, int block_w, int * row, int *col, int * row_pos,
+    float * values, int * extra_buffer)
+{
+    __shared__ int pos_id, prefix_count, ori_bx, ori_by;
+    __shared__ int prefix_sum[MAX_BLOCK_THREAD_COUNT];
+    uint by = blockIdx.y;
+    uint bx = blockIdx.x;
+    uint tid = threadIdx.x;
+
+    if (tid==0){
+        pos_id = -1;
+        prefix_count = 0;
+        // contend for the block
+
+        pos_id = atomicSub(&extra_buffer[by], 1);
+        pos_id-=1;
+        if (pos_id>=0){
+            for(int i=0; i<by;i++){
+                prefix_count +=  extra_buffer[h+i];
+            }
+            ori_by = by;
+            ori_bx = extra_buffer[ 2*h + by * gridDim.x + pos_id];       
+            
+            row[by] = prefix_count;
+            col[prefix_count+pos_id] = ori_bx;
+            row_pos[prefix_count+pos_id] = by;
+        }
+        else if(pos_id==-1){
+            for(int i=0; i<by;i++){
+                prefix_count +=  extra_buffer[h+i];
+            }            
+            row[by] = prefix_count;
+        }
+    }
+    __syncthreads();
+    if(pos_id>=0){
+        int global_offset =  (ori_by * block_h) * w + ori_bx * block_w;
+        int block_size = block_h * block_w;
+        int write_global_offset = (prefix_count + pos_id) * block_size;
+
+        for(int _pos=tid; _pos<block_size/4; _pos+=blockDim.x){
+            uint block_offset = _pos / (block_w / 4) * w + _pos % (block_w / 4) * 4;
+            float4 data = __ldg((const float4*)(add_ptr_f(dense, global_offset + block_offset)));
+            *(float4*)&values[write_global_offset+_pos*4] = data;
+        }
+        
+    }
+
+}
+
+
+__global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
+                                int block_h, int block_w, int * row, int *col, int * row_pos,
+                                float * values, int * extra_buffer)
+{
+
+    __shared__ int reduce[MAX_BLOCK_THREAD_COUNT];
+    assert(blockDim.x<=MAX_BLOCK_THREAD_COUNT);
+    // initial the shared flag
+    uint bx = blockIdx.x;
+    uint by = blockIdx.y;
+    uint tid = threadIdx.x;
+    int global_offset =  (by * block_h) * w + bx * block_w;
+    int block_size =  block_h * block_w;
+    // cannot handle the misalignment for now
+    int flag = 0;
+    for(int _pos = tid; _pos< block_size ; _pos+=blockDim.x){
+        uint block_offset = _pos / (block_w ) * w + _pos % (block_w );        
+        // int4 data = __ldg((const int4*)(add_ptr_u(mask, global_offset+block_offset)));
+        // flag += data.x + data.y + data.z + data.w;
+        flag += mask[global_offset+block_offset];
     }
     reduce[tid] = flag;
     __syncthreads();
@@ -197,30 +290,34 @@ __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __
         int block_size = block_h * block_w;
         int write_global_offset = (prefix_count + pos_id) * block_size;
 
-        for(int _pos=tid; _pos<block_size/4; _pos+=blockDim.x){
-            uint block_offset = _pos / (block_w / 4) * w + _pos % (block_w / 4) * 4;
-            float4 data = __ldg((const float4*)(add_ptr_f(dense, global_offset + block_offset)));
-            *(float4*)&values[write_global_offset+_pos*4] = data;
+        for(int _pos=tid; _pos<block_size; _pos+=blockDim.x){
+            uint block_offset = _pos / (block_w) * w + _pos % (block_w);
+            values[write_global_offset+_pos] = dense[global_offset + block_offset];
         }
         
     }
 
 }
 
+
 void convert_bcsr(int * mask, float * dense, int h, int w,
     int block_h, int block_w, int * row, int *col, int * row_pos,
     float*values, int * extra_buffer)
 {
-    // need reset the extra buffer here
-    assert(block_w % 4 == 0);
     CUDA_SAFE_CALL(cudaMemset((void*)extra_buffer, 0, sizeof(int)*(2*h+(h/block_h)*(w/block_w))) );
     CUDA_SAFE_CALL(cudaMemset((void*)row, 0, sizeof(int)*(1+(h/block_h))) );
-    dim3 block_dim(block_h*block_w/4);
-    dim3 grid_dim(w/block_w, h/block_h);
-    // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
-    convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
-    convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
+    // need reset the extra buffer here
+    if(block_w % 4 == 0){
+        
+        dim3 block_dim(block_h*block_w/4);
+        dim3 grid_dim(w/block_w, h/block_h);
+        // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
+        convert_bcsr_kernel_1_align_4<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
+        convert_bcsr_kernel_2_align_4<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
+    }else{
+        dim3 block_dim(block_h*block_w);
 
+    }
 
 }
 
@@ -230,11 +327,14 @@ int main()
     M = 1024;
     K = 1024;
     N = 1024;
+    const int n_iter = 1000;
     float sparsity_ratio = 0.8;
     const int BLOCK_H = 32;
-    const int BLOCK_W = 1;
+    const int BLOCK_W = 16;
     cudaEvent_t time_start, time_end;
-    float msceTotal = 0;
+    CUDA_SAFE_CALL(cudaEventCreate(&time_start));
+    CUDA_SAFE_CALL(cudaEventCreate(&time_end));
+    float msecTotal = 0;
     float * A, *B, *C, *val;
     float * dA, *dB, *dC, *d_val;
     int * mask, *d_mask, *row, *d_row, *row_pos, *d_row_pos, *col, *d_col, *d_extra_buffer;
@@ -248,16 +348,25 @@ int main()
         A[i] = A[i] * mask[i];
     }
     CUDA_SAFE_CALL(cudaMalloc(&d_mask, sizeof(int) * M * K));
-    CUDA_SAFE_CALL(cudaMalloc(&d_row, sizeof(int) * M));
+    CUDA_SAFE_CALL(cudaMalloc(&d_row, sizeof(int) * (M + 1)));
     CUDA_SAFE_CALL(cudaMalloc(&d_col, sizeof(int) * M * K / BLOCK_H / BLOCK_W));
+    CUDA_SAFE_CALL(cudaMalloc(&d_row_pos, sizeof(int) * M * K / BLOCK_H / BLOCK_W));
     CUDA_SAFE_CALL(cudaMalloc(&d_val, sizeof(float) * M * K));
     CUDA_SAFE_CALL(cudaMalloc(&dA, sizeof(float) * M * K));
     CUDA_SAFE_CALL(cudaMalloc(&dB, sizeof(float) * N * K));
     CUDA_SAFE_CALL(cudaMalloc(&dC, sizeof(float) * M * N));
+    CUDA_SAFE_CALL(cudaMalloc(&d_extra_buffer, sizeof(float) * M * K));
     
     CUDA_SAFE_CALL(cudaMemcpy(d_mask, mask, sizeof(int) * M * K, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(dA, A, sizeof(float)*M*K, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(dB, B, sizeof(float)*K*N, cudaMemcpyHostToDevice));
-    convert_bcsr(d_mask, dA, M, K, BLOCK_H, BLOCK_W, d_row, d_col, d_row_pos, d_val, d_extra_buffer);
+
+    CUDA_SAFE_CALL(cudaEventRecord(time_start));
+    for(int i=0;i<n_iter;i++)
+        convert_bcsr(d_mask, dA, M, K, BLOCK_H, BLOCK_W, d_row, d_col, d_row_pos, d_val, d_extra_buffer);
+    CUDA_SAFE_CALL(cudaEventRecord(time_end));
+    CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
+    CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));
+    printf("Convert tim cost = %f msec\n", msecTotal/n_iter);
     return 0;
 }
