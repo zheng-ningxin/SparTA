@@ -214,6 +214,7 @@ __global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, float * __
 {
 
     __shared__ int reduce[MAX_BLOCK_THREAD_COUNT];
+    // __shared__ int multi_tile[32];
     assert(blockDim.x<=MAX_BLOCK_THREAD_COUNT);
     // initial the shared flag
     uint bx = blockIdx.x;
@@ -307,17 +308,23 @@ void convert_bcsr(int * mask, float * dense, int h, int w,
     CUDA_SAFE_CALL(cudaMemset((void*)extra_buffer, 0, sizeof(int)*(2*h+(h/block_h)*(w/block_w))) );
     CUDA_SAFE_CALL(cudaMemset((void*)row, 0, sizeof(int)*(1+(h/block_h))) );
     // need reset the extra buffer here
-    if(block_w % 4 == 0){
+    // if(block_w % 4 == 0){
         
-        dim3 block_dim(block_h*block_w/4);
-        dim3 grid_dim(w/block_w, h/block_h);
-        // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
-        convert_bcsr_kernel_1_align_4<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
-        convert_bcsr_kernel_2_align_4<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
-    }else{
-        dim3 block_dim(block_h*block_w);
-
-    }
+    //     dim3 block_dim(block_h*block_w/4);
+    //     dim3 grid_dim(w/block_w, h/block_h);
+    //     // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
+    //     convert_bcsr_kernel_1_align_4<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
+    //     convert_bcsr_kernel_2_align_4<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
+    // }else{
+    //     dim3 block_dim(block_h*block_w);
+    //     dim3 grid_dim(w/block_w, h/block_h);
+    //     convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
+    //     convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
+    // }
+    dim3 block_dim(block_h*block_w);
+    dim3 grid_dim(w/block_w, h/block_h);
+    convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
+    convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
 
 }
 
@@ -330,7 +337,8 @@ int main()
     const int n_iter = 1000;
     float sparsity_ratio = 0.8;
     const int BLOCK_H = 32;
-    const int BLOCK_W = 16;
+    const int BLOCK_W = 32;
+    // const int BLOCK_W = 1;
     cudaEvent_t time_start, time_end;
     CUDA_SAFE_CALL(cudaEventCreate(&time_start));
     CUDA_SAFE_CALL(cudaEventCreate(&time_end));

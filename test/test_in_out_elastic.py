@@ -64,13 +64,13 @@ def dense_speed(e_linear, in_features, out_features):
 
 if __name__ == '__main__':
     M = 1024
-    K = 512
-    N = 512
+    K = 1024
+    N = 1024
     ori_linear = torch.nn.Linear(K, N, bias=True).cuda()
     elastic_linear = InOutElasticLinear(ori_linear)
     # only works on small size, WTF
     # test_correctness(elastic_linear, 1024, 512)
-    in_feature = 128 *3
-    out_feature = 128 *3
+    in_feature = 512
+    out_feature = 512
     test_speed(elastic_linear, in_feature, out_feature)
     dense_speed(elastic_linear, in_feature, out_feature)
