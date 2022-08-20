@@ -571,23 +571,261 @@ at::Tensor dynamic_sparse_attention_forward(
                                 ); }));
     return output;
 }
+template <
+    const int BLOCK_SIZE_M, // 64
+    const int BLOCK_SIZE_K, // 8
+    const int BLOCK_SIZE_N, // 128
+    const int THREAD_SIZE_M, // 8
+    const int THREAD_SIZE_K, // 4
+    const int THREAD_SIZE_N  // 8
+>
+__global__ void BATCH_MATMUL_SDD_TN(int* csr_row, int * csr_col, int * block_index, float* csr_val, float * B, float* C,  int M, int K, int N, int block_h, int block_w, int sparse_val_size)
+{
+
+    // block_index store the index of the block in the csr_val
+    int by = blockIdx.y; // M
+    int bx = blockIdx.x; // N
+    int bz = blockIdx.z;
+    int ty = threadIdx.y; 
+    int tx = threadIdx.x;
+    csr_val = csr_val + sparse_val_size * bz;
+    B = B + K * N * bz;
+    C = C + M * N * bz;
+
+    const int padding = 1;
+    __shared__ float As[BLOCK_SIZE_M * (padding+BLOCK_SIZE_K)];
+    __shared__ float Bs[BLOCK_SIZE_N * (padding+BLOCK_SIZE_K)];
+
+    float accum[THREAD_SIZE_N][THREAD_SIZE_M] = {0};
+    float a_frag[THREAD_SIZE_M][THREAD_SIZE_K];
+    float b_frag[THREAD_SIZE_N][THREAD_SIZE_K];
+
+    int A_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
+    int B_THREAD_PER_ROW = BLOCK_SIZE_N / 4;
+
+    int bszy = BLOCK_SIZE_M / THREAD_SIZE_M;
+    int bszx = BLOCK_SIZE_N / THREAD_SIZE_N;
+
+    int THREADS_PER_BLOCK = bszy * bszx;
+
+    int A_TILE_ROW_STRIDE = THREADS_PER_BLOCK / A_THREAD_PER_ROW;
+    int B_TILE_ROW_STRIDE = THREADS_PER_BLOCK / B_THREAD_PER_ROW;
+
+    int tid = ty * bszx + tx;
+
+    int index_start = csr_row[by], index_end = csr_row[by+1];
+
+    int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
+    int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
+
+    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4;
+    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4;
+    const int vBLOCK_SIZE_M = BLOCK_SIZE_M / THREAD_SIZE_M;
+    const int vBLOCK_SIZE_N = BLOCK_SIZE_N / THREAD_SIZE_N;
+
+    for(int tile_block_idx = index_start; tile_block_idx < index_end; tile_block_idx += 1){
+        int col_pos = csr_col[tile_block_idx] * BLOCK_SIZE_K;
+        int block_shift = block_index[csr_col[tile_block_idx] * gridDim.y + by];
+        if(threadIdx.x==0 && threadIdx.y==0 && bz==0){
+            printf("bx:%d by:%d col_pos:%d block_shift:%d\n gridDim:(%d, %d) tile_block_idx:%d", bx, by, csr_col[tile_block_idx], block_shift, gridDim.x, gridDim.y, tile_block_idx);
+        }
+        #pragma unroll
+        for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
+            FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
+                FETCH_FLOAT4(csr_val[block_shift * BLOCK_SIZE_M * BLOCK_SIZE_K + OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]);
+        }
+
+        #pragma unroll
+        for(int k = 0; k < BLOCK_SIZE_K; k += B_TILE_ROW_STRIDE){
+            FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BLOCK_SIZE_N)]) = 
+                FETCH_FLOAT4(B[OFFSET(col_pos+k+B_BLOCK_ROW_START, bx*BLOCK_SIZE_N + B_BLOCK_COL_START, N)]);
+                // FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+                // FETCH_FLOAT4(B[OFFSET(tile_idx+k+B_BLOCK_ROW_START, bx*BLOCK_SIZE_N+B_BLOCK_COL_START, N)]);
+        }
+
+        __syncthreads();
+
+        #pragma unroll
+        for(int k = 0; k < BLOCK_SIZE_K; k += THREAD_SIZE_K){
+            #pragma unroll
+            for(int i = 0; i < THREAD_SIZE_K; i++){
+                #pragma unroll
+                for(int j = 0; j < THREAD_SIZE_M; j += 1){
+                    // a_frag[j][i] = As[OFFSET(ty + vBLOCK_SIZE_M * j, k+i, BLOCK_SIZE_K)];
+                    a_frag[j][i] = As[OFFSET(k+i, ty + vBLOCK_SIZE_M * j, BLOCK_SIZE_M)];
+                }
+            }
+
+            #pragma unroll
+            for(int i = 0; i < THREAD_SIZE_K; i++){
+                #pragma unroll
+                for(int j = 0; j < THREAD_SIZE_N; j += 1){
+                    b_frag[j][i] = Bs[OFFSET(k+i, tx + vBLOCK_SIZE_N * j, BLOCK_SIZE_N)];
+                }
+            }
+
+            #pragma unroll
+            for(int i = 0; i < THREAD_SIZE_N; i++){
+                #pragma unroll
+                for(int j = 0; j < THREAD_SIZE_M; j++){
+                    #pragma unroll
+                    for(int k_in = 0; k_in < THREAD_SIZE_K; k_in++){
+                        // accum[i][j] = fma(a_frag[j][k_in], b_frag[i][k_in], accum[i][j]);
+                        accum[i][j] += a_frag[j][k_in] * b_frag[i][k_in];
+                    }
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+
+    #pragma unroll
+    for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
+        #pragma unroll
+        for(int thread_y = 0; thread_y < THREAD_SIZE_M; thread_y+=1){
+            C[OFFSET(
+                BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
+                N
+            )] = (accum[thread_x][thread_y]);
+        }
+    }
+
+
+}
+
+void dynamic_backward_function( float* grad_out,
+                                float* Q,
+                                float* K,
+                                float* V,
+                                float* inter_result,
+                                int * row_ptr,
+                                int * col_idx,
+                                int * row_pos,
+                                float * val_mask,
+                                int * block_index,
+                                int * grad_row_ptr,
+                                int * grad_col_idx,
+
+                                float* Q_grad,
+                                float* K_grad,
+                                float* V_grad,
+                                float* Attn_grad,
+                                float* Score_grad,
+                                int batchsize,
+                                int head_num,
+                                int hidden_dim,
+                                int q_seq_len,
+                                int k_seq_len,
+                                int block_h,
+                                int block_w,
+                                int sparse_val_size
+                                )
+{
+    // grad_v: Batch x Head x k_seq_len, hidden_dim
+    // Grad_V = Attn^T x grad_out
+    // Attn: q_seq_len, k_seq_len
+    const int BLOCK_SIZE_M = 32;
+    const int BLOCK_SIZE_K = 32;
+    const int BLOCK_SIZE_N = 64;
+    const int THREAD_SIZE_M = 4;
+    const int THREAD_SIZE_K = 4;
+    const int THREAD_SIZE_N = 4;
+
+    dim3 gradv_dimGrid(hidden_dim/BLOCK_SIZE_N, k_seq_len/BLOCK_SIZE_M, head_num * batchsize);
+    dim3 gradv_dimBlock(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M);
+    // const dim3 gradv_dimBlock(256);
+    // const dim3 gradv_dimGrid(hidden_dim/32, k_seq_len/32, head_num*batchsize);
+    BATCH_MATMUL_SDD_TN<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<gradv_dimGrid, gradv_dimBlock>>>(grad_row_ptr, grad_col_idx, block_index, inter_result, grad_out, V_grad, k_seq_len, q_seq_len, hidden_dim, 32, 32, sparse_val_size);
+
+
+}
 
 std::vector<at::Tensor> dynamic_sparse_attention_backward(
     torch::Tensor grad,
     torch::Tensor Q,
     torch::Tensor K,
     torch::Tensor V,
-    torch::Tensor gradv_row_idx,
-    torch::Tensor gradv_col_idx,
-    torch::Tensor gradv_subblock_idx,
-    torch::Tensor val,
-    torch::Tensor m_index,
-    torch::Tensor n_index,
-    torch::Tensor block_index,
-    torch::Tensor col_range_index,
+    torch::Tensor inter_result,
     torch::Tensor row_ptr,
-    torch::Tensor col_idx
+    torch::Tensor col_idx,
+    torch::Tensor row_pos,
+    torch::Tensor val_mask,
+    torch::Tensor block_index,
+    torch::Tensor grad_row_idx,
+    torch::Tensor grad_col_idx,
+    int block_nnz
+
     )
 {
+    /*
+        Compute the gradient of the Q, K, V.
+        A * B = C
+            |  backward()
+            V
+        Grad_A = Grad_C * B^T
+        Grad_B = A^T * Grad_C
 
+        Score = Q x K^T
+        Attn = softmax(Attn)
+        Out = Attn x V
+    The gradient calculation formulars are as following:
+    
+    Grad_V = Attn^T x grad_out
+    Grad_Attn = grad_out x V^T
+    Grad_Score = grad_soft(Grad_Attn)
+    Grad_Q = Grad_Score x K^T
+    Grad_K = Q^T * Grad_Score
+
+    // Grad_V = Sparse*dense kernel: (row_ptr, col_idx, val)^T * in_grad 
+    // Grad_val = output sparse kernel(sparse index row_ptr, col_idx, val): in_grad * V^T 
+    // Grad_Q = Grad_softmax * K^T
+    // Grad_K = Q^T * Grad_softmax
+    */
+    const int sparse_val_size =  block_nnz * 32* 32;
+    cudaSetDevice(Q.get_device());
+    // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
+    int batch_size = Q.size(0);
+    int head_num = Q.size(1);
+    int q_seq_length = Q.size(2);
+    int k_seq_length = K.size(2); // the sequence length of query and key may be different
+    // K, V should have the same sequence length
+    int hidden_dim = Q.size(3);
+    torch::Tensor Q_grad = torch::empty_like(Q);
+    torch::Tensor K_grad = torch::empty_like(K);
+    torch::Tensor V_grad = torch::empty_like(V);
+    torch::Tensor Attn_grad = torch::empty_like(inter_result);
+    torch::Tensor Score_grad = torch::empty_like(inter_result);
+    AT_DISPATCH_FLOATING_TYPES(Q.type(), "our_sparse_attention", ([&]
+    { dynamic_backward_function(
+            grad.data_ptr<float>(),
+            Q.data_ptr<float>(),
+            K.data_ptr<float>(),
+            V.data_ptr<float>(),
+            inter_result.data_ptr<float>(),
+            row_ptr.data_ptr<int>(),
+            col_idx.data_ptr<int>(),
+            row_pos.data_ptr<int>(),
+            val_mask.data_ptr<float>(),
+            block_index.data_ptr<int>(),
+            grad_row_idx.data_ptr<int>(),
+            grad_col_idx.data_ptr<int>(),
+            
+            Q_grad.data_ptr<float>(),
+            K_grad.data_ptr<float>(),
+            V_grad.data_ptr<float>(),
+            Attn_grad.data_ptr<float>(),
+            Score_grad.data_ptr<float>(),
+            batch_size,
+            head_num,
+            hidden_dim,
+            q_seq_length,
+            k_seq_length,
+            32,
+            32,
+            sparse_val_size
+        ); }));
+    return vector<at::Tensor>({Q_grad, K_grad, V_grad, Attn_grad, Score_grad});
 }

@@ -31,12 +31,26 @@ class DynamicSparseAttentionFunction(torch.autograd.Function):
         col_idx,
         row_pos,
         val_mask,
+        block_index,
+        grad_row_ptr,
+        grad_col_idx,
         block_nnz,
         head_num
     ):
-        # ctx.save_for_backward(
-        # )
-
+        ctx.save_for_backward(
+            Q,
+            K,
+            V,
+            inter_result,
+            row_ptr,
+            col_idx,
+            row_pos,
+            val_mask,
+            block_index,
+            grad_row_ptr,
+            grad_col_idx
+        )
+        ctx.block_nnz = block_nnz
         return dynamic_sparse_attention_cpp.forward(
             Q,
             K,
@@ -49,10 +63,38 @@ class DynamicSparseAttentionFunction(torch.autograd.Function):
             block_nnz,
             head_num
         )
-
+        
     @staticmethod
     def backward(ctx, *grad_outputs):
-        pass
+            Q, K, V, \
+            inter_result, \
+            row_ptr, \
+            col_idx, \
+            row_pos, \
+            val_mask, \
+            block_index, \
+            grad_row_ptr, \
+            grad_col_idx = ctx.saved_tensors
+            # import ipdb; ipdb.set_trace()
+            print(torch.sum(inter_result))
+            Q_grad, K_grad, V_grad, Attn_grad, Score_grad = dynamic_sparse_attention_cpp.backward(
+                grad_outputs[0],
+                Q,
+                K,
+                V,
+                inter_result,
+                row_ptr,
+                col_idx,
+                row_pos,
+                val_mask,
+                block_index,
+                grad_row_ptr,
+                grad_col_idx,
+                ctx.block_nnz
+            )
+            return Q_grad, K_grad, V_grad, None, None, None, None, None, None, None, None, None, None
+            
+        
 
 
 class DynamicSparseAttention(SparseOPBase):
@@ -63,25 +105,36 @@ class DynamicSparseAttention(SparseOPBase):
     # no need to convert the sparse pattern for each module. Set the global_mode
     # to be true when initialize the module
     global_sparse_pattern = None
+    t_global_sparse_pattern = None
     global_bcsr_row = None
     global_bcsr_col = None
     global_bcsr_row_pos = None
     global_bcsr_val_mask = None
     global_block_nnz = None
+    global_block_index = None
+    # grad_index
+    global_grad_bcsr_row = None
+    global_grad_bcsr_col = None
+    global_grad_bcsr_row_pos = None
+    global_grad_bcsr_val_mask = None
+    global_grad_bcsr_block_index = None
     global_converter = BcsrConverter()
     global_block_h = 32
     global_block_w = 32
-
+    
     @staticmethod
     def set_global_sparse_pattern(sparse_pattern):
         assert isinstance(sparse_pattern, torch.Tensor)
         assert sparse_pattern.dtype == torch.int32, "only support int32 type"
         DynamicSparseAttention.global_sparse_pattern = sparse_pattern
+        DynamicSparseAttention.t_global_sparse_pattern = sparse_pattern.t().contiguous()
         n_row = DynamicSparseAttention.global_sparse_pattern.size(0) // DynamicSparseAttention.global_block_h
         DynamicSparseAttention.global_bcsr_row, DynamicSparseAttention.global_bcsr_col, DynamicSparseAttention.global_bcsr_row_pos, \
-            DynamicSparseAttention.global_bcsr_val_mask = DynamicSparseAttention.global_converter(
-                DynamicSparseAttention.global_sparse_pattern, DynamicSparseAttention.global_sparse_pattern.to(torch.float), DynamicSparseAttention.global_block_h, DynamicSparseAttention.global_block_w)
-        # import pdb; pdb.set_trace()
+            DynamicSparseAttention.global_bcsr_val_mask, DynamicSparseAttention.global_block_index = DynamicSparseAttention.global_converter(
+            DynamicSparseAttention.global_sparse_pattern, DynamicSparseAttention.global_sparse_pattern.to(torch.float), DynamicSparseAttention.global_block_h, DynamicSparseAttention.global_block_w, True)
+        DynamicSparseAttention.global_grad_bcsr_row, DynamicSparseAttention.global_grad_bcsr_col, DynamicSparseAttention.global_grad_bcsr_row_pos, \
+            DynamicSparseAttention.global_grad_bcsr_val_mask, DynamicSparseAttention.global_grad_bcsr_block_index = DynamicSparseAttention.global_converter(
+            DynamicSparseAttention.t_global_sparse_pattern, DynamicSparseAttention.t_global_sparse_pattern.to(torch.float), DynamicSparseAttention.global_block_w, DynamicSparseAttention.global_block_h, True)
         DynamicSparseAttention.global_block_nnz = DynamicSparseAttention.global_bcsr_row[n_row].item()
 
     def __init__(self, global_mode=True):
@@ -119,12 +172,17 @@ class DynamicSparseAttention(SparseOPBase):
 
         if self.global_mode is not True:
             assert isinstance(sparse_mask, torch.Tensor)
-            csr_row, csr_col, csr_row_pos, csr_value_mask = self.converter(
-                sparse_mask, sparse_mask.to(torch.float), self.block_size_h, self.block_size_w)
+            csr_row, csr_col, csr_row_pos, csr_value_mask, csr_block_index = self.converter(
+                sparse_mask, sparse_mask.to(torch.float), self.block_size_h, self.block_size_w, True)
             n_row =  sparse_mask.size(0) // self.block_h
             block_nnz = csr_row[n_row].item()
         else:
-            csr_row, csr_col, csr_row_pos, csr_value_mask = DynamicSparseAttention.global_bcsr_row, DynamicSparseAttention.global_bcsr_col, DynamicSparseAttention.global_bcsr_row_pos, DynamicSparseAttention.global_bcsr_val_mask
+            csr_row, csr_col, csr_row_pos, csr_value_mask, csr_block_index= DynamicSparseAttention.global_bcsr_row,\
+                                                                            DynamicSparseAttention.global_bcsr_col,\
+                                                                            DynamicSparseAttention.global_bcsr_row_pos,\
+                                                                            DynamicSparseAttention.global_bcsr_val_mask,\
+                                                                            DynamicSparseAttention.global_block_index
+            grad_csr_row, grad_csr_col = DynamicSparseAttention.global_grad_bcsr_row, DynamicSparseAttention.global_grad_bcsr_col
             sparse_mask = DynamicSparseAttention.global_sparse_pattern
             block_nnz = DynamicSparseAttention.global_block_nnz
         # need create val each time
@@ -152,6 +210,9 @@ class DynamicSparseAttention(SparseOPBase):
                                                       csr_col,
                                                       csr_row_pos,
                                                       csr_value_mask,
+                                                      csr_block_index, # for backward
+                                                      grad_csr_row, # for backward
+                                                      grad_csr_col, # for backward
                                                       block_nnz,
                                                       head_num)
 
@@ -171,8 +232,9 @@ class DynamicSparseAttention(SparseOPBase):
         dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
         added = torch.add(dots, add_mask)
         attn = added.softmax(dim=-1)
-        nan_pos = torch.isnan(attn)
-        attn[nan_pos] = 0.0
+        # nan_pos = torch.isnan(attn)
+        # attn[nan_pos] = 0.0
+        print('reference attn sum:', torch.sum(attn))
         ref_out = torch.einsum('b h m n, b h n k -> b h m k', attn, V)
 
         return ref_out

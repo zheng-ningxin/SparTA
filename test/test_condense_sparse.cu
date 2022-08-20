@@ -460,7 +460,7 @@ int main()
     K = 1024;
     N = 1024;
     const int n_iter = 10000;
-    float sparsity_ratio = 0.8;
+    float sparsity_ratio = 0.95;
     const int BLOCK_H = 32;
     const int BLOCK_W = 1;
     // const int BLOCK_W = 1;
@@ -495,10 +495,10 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(dB, B, sizeof(float)*K*N, cudaMemcpyHostToDevice));
 
     CUDA_SAFE_CALL(cudaEventRecord(time_start));
-    // for(int i=0;i<n_iter;i++)
-    //     convert_bcsr(d_mask, dA, M, K, BLOCK_H, BLOCK_W, d_row, d_col, d_row_pos, d_val, d_extra_buffer);
     for(int i=0;i<n_iter;i++)
-        convert_bcsr_tile(d_mask, dA, M, K, BLOCK_H, BLOCK_W, d_row, d_col, d_row_pos, d_val, d_extra_buffer, 4);
+        convert_bcsr(d_mask, dA, M, K, BLOCK_H, BLOCK_W, d_row, d_col, d_row_pos, d_val, d_extra_buffer);
+    // for(int i=0;i<n_iter;i++)
+    //     convert_bcsr_tile(d_mask, dA, M, K, BLOCK_H, BLOCK_W, d_row, d_col, d_row_pos, d_val, d_extra_buffer, 4);
     CUDA_SAFE_CALL(cudaEventRecord(time_end));
     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
     CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));

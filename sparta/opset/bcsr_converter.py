@@ -25,8 +25,9 @@ class BcsrConverter(SparseOPBase):
         self.csr_col = None
         self.csr_value = None
         self.csr_row_pos = None
+        self.block_index = None
 
-    def forward(self, sparse_pattern, dense_values, block_size_h, block_size_w):
+    def forward(self, sparse_pattern, dense_values, block_size_h, block_size_w, need_block_index = False):
         """
         Q, K, V are the output tensors of the corresponding
         projection linear layers.
@@ -36,6 +37,8 @@ class BcsrConverter(SparseOPBase):
         # currently only support on the cuda devices
         assert(sparse_pattern.is_cuda)
         assert(dense_values.is_cuda)
-        self.csr_row, self.csr_col, self.csr_row_pos, self.csr_value = convert_bcsr_cpp.forward(sparse_pattern, dense_values, block_size_h, block_size_w)
-        return self.csr_row, self.csr_col, self.csr_row_pos, self.csr_value
-
+        self.csr_row, self.csr_col, self.csr_row_pos, self.csr_value, self.block_index = convert_bcsr_cpp.forward(sparse_pattern, dense_values, block_size_h, block_size_w)
+        if not need_block_index:
+            return self.csr_row, self.csr_col, self.csr_row_pos, self.csr_value
+        else:
+            return self.csr_row, self.csr_col, self.csr_row_pos, self.csr_value, self.block_index

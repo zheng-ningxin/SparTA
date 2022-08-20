@@ -102,8 +102,15 @@ class InOutElasticLinear(SparseOPBase):
         """
         Calculate the reference result the sparse attention to test the correctness.
         """
+        new_w = self.ori_linear.weight[:, :in_features]
+        new_w = new_w[:out_features]
         return torch.nn.functional.linear(
             activation,
-            self.ori_linear.weight[:out_features, :in_features],
+            new_w,
             None if self.ori_linear.bias is None else self.ori_linear.bias[:out_features],
         )
+        # return torch.nn.functional.linear(
+        #     activation,
+        #     self.ori_linear.weight,
+        #     None if self.ori_linear.bias is None else self.ori_linear.bias,
+        # )

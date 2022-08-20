@@ -135,7 +135,7 @@ __global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, float * __
 }
 __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
     int block_h, int block_w, int * row, int *col, int * row_pos,
-    float * values, int * extra_buffer)
+    float * values, int * extra_buffer, int * block_index)
 {
     __shared__ int pos_id, prefix_count, ori_bx, ori_by;
     __shared__ int prefix_sum[MAX_BLOCK_THREAD_COUNT];
@@ -160,6 +160,7 @@ __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __
             row[by] = prefix_count;
             col[prefix_count+pos_id] = ori_bx;
             row_pos[prefix_count+pos_id] = by;
+            block_index[by*gridDim.x+ori_bx] = prefix_count+pos_id;
         }
         else if(pos_id==-1){
             for(int i=0; i<by;i++){
@@ -186,7 +187,7 @@ __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __
 
 void convert_bcsr(int * mask, float * dense, int h, int w,
     int block_h, int block_w, int * row, int *col, int * row_pos,
-    float*values, int * extra_buffer)
+    float*values, int * extra_buffer, int *block_index)
 {
     // need reset the extra buffer here
     assert(block_w % 4 == 0);
@@ -196,8 +197,7 @@ void convert_bcsr(int * mask, float * dense, int h, int w,
     dim3 grid_dim(w/block_w, h/block_h);
     // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
     convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
-    convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
-
+    convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer, block_index);
 
 }
 
@@ -218,7 +218,7 @@ std::vector<at::Tensor> convert_bcsr_forward(
     torch::Tensor csr_row_pos = torch::zeros({n_total_block}, sparse_pattern.options());
     torch::Tensor csr_col = torch::zeros({n_total_block}, sparse_pattern.options());
     torch::Tensor ext_buffer = torch::zeros({2*h+n_total_block}, sparse_pattern.options());
-    
+    torch::Tensor block_index = torch::empty({h * w / block_h / block_w}, sparse_pattern.options());
     AT_DISPATCH_FLOATING_TYPES(dense_values.type(), "convert_bcsr", ([&]
         { convert_bcsr(
                 sparse_pattern.data_ptr<int>(),
@@ -228,8 +228,9 @@ std::vector<at::Tensor> convert_bcsr_forward(
                 csr_col.data_ptr<int>(),
                 csr_row_pos.data_ptr<int>(),
                 csr_values.data_ptr<float>(),
-                ext_buffer.data_ptr<int>()
+                ext_buffer.data_ptr<int>(),
+                block_index.data_ptr<int>()
             ); }));
-    std::vector<torch::Tensor> bcsr({csr_row, csr_col, csr_row_pos, csr_values});
+    std::vector<torch::Tensor> bcsr({csr_row, csr_col, csr_row_pos, csr_values, block_index});
     return bcsr;
 }

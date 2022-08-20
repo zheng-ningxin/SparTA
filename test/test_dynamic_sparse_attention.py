@@ -122,9 +122,10 @@ def test_correctness(sparse_attention, HEAD_NUM, seq_len, hidden_n, device):
     out_2 = sparse_attention.reference_forward(q2, k2, v2)
     in_grad = torch.rand_like(out_2)
     out = sparse_attention(q1, k1, v1)
+    out.backward(in_grad)
+    out_2.backward(in_grad)
 
-
-    
+    import ipdb; ipdb.set_trace()
     if not torch.allclose(out, out_2, rtol=1e-08, atol=1e-04):
         import pdb
         pdb.set_trace()
@@ -150,7 +151,7 @@ def test_random(HEAD_NUM, seq_len, hidden_dim, sparsity):
 
 
 if __name__ == '__main__':
-    batch_size = 16
+    batch_size = 4
     
     # test_random(20, 1024, 128, 0.999)
     # exit()
@@ -160,7 +161,7 @@ if __name__ == '__main__':
     block_h, block_w = 32, 32
     hidden_n = 128
     device = torch.device('cuda:0')
-    for sparsity in np.arange(0.1, 1, 0.1):
+    for sparsity in np.arange(0.5, 1, 0.1):
         
         sp_pattern =  random_sparse_pattern_block(seq_len, sparsity, block_h, block_w).cuda()
         spa = DynamicSparseAttention(True)

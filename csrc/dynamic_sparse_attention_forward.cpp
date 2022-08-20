@@ -19,16 +19,15 @@ std::vector<at::Tensor> dynamic_sparse_attention_backward(
     torch::Tensor Q,
     torch::Tensor K,
     torch::Tensor V,
-    torch::Tensor gradv_row_idx,
-    torch::Tensor gradv_col_idx,
-    torch::Tensor gradv_subblock_idx,
-    torch::Tensor val,
-    torch::Tensor m_index,
-    torch::Tensor n_index,
-    torch::Tensor block_index,
-    torch::Tensor col_range_index,
+    torch::Tensor inter_result,
     torch::Tensor row_ptr,
-    torch::Tensor col_idx
+    torch::Tensor col_idx,
+    torch::Tensor row_pos,
+    torch::Tensor val_mask,
+    torch::Tensor block_index,
+    torch::Tensor grad_row_idx,
+    torch::Tensor grad_col_idx,
+    int block_nnz
     );
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

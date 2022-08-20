@@ -32,11 +32,11 @@ def test_correctness(e_linear, in_features, out_features):
     import ipdb; ipdb.set_trace()
     
 def test_speed(e_linear, in_features, out_features):
-    data = torch.rand(8, 128, in_features).cuda()
+    data = torch.rand(batch, seq_len, in_features).cuda()
     data.requires_grad_()
     re = e_linear(data, in_features, out_features)
     tmp_grad = torch.rand_like(re)
-    run_time = 10000
+    run_time = 1000
     torch.cuda.synchronize()
     t_start = time.time()
     for _ in range(run_time):
@@ -47,11 +47,11 @@ def test_speed(e_linear, in_features, out_features):
     print('Sparse per batch(ms):' , (t_end-t_start)*1000/run_time)
     
 def dense_speed(e_linear, in_features, out_features):
-    data = torch.rand(32, 128, in_features).cuda()
+    data = torch.rand(batch, seq_len, in_features).cuda()
     data.requires_grad_()
     re = e_linear.reference_forward(data, in_features, out_features)
     tmp_grad = torch.rand_like(re)
-    run_time = 10000
+    run_time = 1000
     torch.cuda.synchronize()
     t_start = time.time()
     for _ in range(run_time):
@@ -63,14 +63,18 @@ def dense_speed(e_linear, in_features, out_features):
     
 
 if __name__ == '__main__':
-    M = 1024
-    K = 1024
-    N = 1024
-    ori_linear = torch.nn.Linear(K, N, bias=True).cuda()
+    batch = 8
+    seq_len = 256
+    hidden = 768
+    # M = 64 *256 #batch . seq , head* hidden
+    # K = 768
+    # N = 768
+    ori_linear = torch.nn.Linear(hidden, hidden, bias=True).cuda()
     elastic_linear = InOutElasticLinear(ori_linear)
     # only works on small size, WTF
     # test_correctness(elastic_linear, 1024, 512)
-    in_feature = 512
-    out_feature = 512
-    test_speed(elastic_linear, in_feature, out_feature)
+    in_feature = 768
+    out_feature = 768
+    # test_speed(elastic_linear, in_feature, out_feature)
+    
     dense_speed(elastic_linear, in_feature, out_feature)
