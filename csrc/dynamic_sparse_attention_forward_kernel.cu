@@ -16,6 +16,7 @@ using namespace std;
 #define FETCH_INT4(pointer) (reinterpret_cast<int4*>(&(pointer))[0])
 #define FETCH_INT32(pointer) (reinterpret_cast<int*>(&(pointer))[0])
 #define MAX_BLOCK_THREAD_COUNT 1024
+#define SOFTMAX_ROW_TILE 1
 #define FULL_MASK 0xffffffff
 
 #define CUBLAS_SAFE_CALL(func)                                                                  \
@@ -696,6 +697,194 @@ __global__ void BATCH_MATMUL_SDD_TN(int* csr_row, int * csr_col, int * block_ind
 
 }
 
+
+template <
+    const int BLOCK_SIZE_M, // 64
+    const int BLOCK_SIZE_K, // 8
+    const int BLOCK_SIZE_N, // 128
+    const int THREAD_SIZE_M, // 8
+    const int THREAD_SIZE_K, // 4
+    const int THREAD_SIZE_N  // 8
+>
+__global__ void BATCH_MATMUL_SDD_NT(int* csr_row, int * csr_col, float* csr_val, float * B, float* C,  int M, int K, int N, int block_h, int block_w, int sparse_val_size)
+{
+    int by = blockIdx.y; // M
+    int bx = blockIdx.x; // N
+    int bz = blockIdx.z;
+    int ty = threadIdx.y; 
+    int tx = threadIdx.x;
+    csr_val = csr_val + sparse_val_size * bz;
+    B = B + K * N * bz;
+    C = C + M * N * bz;
+
+    const int padding = 1;
+    __shared__ float As[BLOCK_SIZE_M * (padding+BLOCK_SIZE_K)];
+    __shared__ float Bs[BLOCK_SIZE_N * (padding+BLOCK_SIZE_K)];
+
+    float accum[THREAD_SIZE_N][THREAD_SIZE_M] = {0};
+    float a_frag[THREAD_SIZE_M][THREAD_SIZE_K];
+    float b_frag[THREAD_SIZE_N][THREAD_SIZE_K];
+
+    int A_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
+    int B_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
+
+    int bszy = BLOCK_SIZE_M / THREAD_SIZE_M;
+    int bszx = BLOCK_SIZE_N / THREAD_SIZE_N;
+
+    int THREADS_PER_BLOCK = bszy * bszx;
+
+    int A_TILE_ROW_STRIDE = THREADS_PER_BLOCK / A_THREAD_PER_ROW;
+    int B_TILE_ROW_STRIDE = THREADS_PER_BLOCK / B_THREAD_PER_ROW;
+
+    int tid = ty * bszx + tx;
+
+    int index_start = csr_row[by], index_end = csr_row[by+1];
+
+    int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
+    int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
+
+    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4;
+    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4;
+    const int vBLOCK_SIZE_M = BLOCK_SIZE_M / THREAD_SIZE_M;
+    const int vBLOCK_SIZE_N = BLOCK_SIZE_N / THREAD_SIZE_N;
+
+    for(int tile_block_idx = index_start; tile_block_idx < index_end; tile_block_idx += 1){
+        int col_pos = csr_col[tile_block_idx] * BLOCK_SIZE_K;
+        #pragma unroll
+        for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
+            FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
+                FETCH_FLOAT4(csr_val[tile_block_idx * BLOCK_SIZE_M * BLOCK_SIZE_K + OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]);
+        }
+
+        #pragma unroll
+        for(int k = 0; k < BLOCK_SIZE_N; k += B_TILE_ROW_STRIDE){
+            FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BLOCK_SIZE_K)]) = 
+                FETCH_FLOAT4(B[OFFSET(bx*BLOCK_SIZE_N+k+B_BLOCK_ROW_START, col_pos + B_BLOCK_COL_START, K)]);
+                // FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+                // FETCH_FLOAT4(B[OFFSET(tile_idx+k+B_BLOCK_ROW_START, bx*BLOCK_SIZE_N+B_BLOCK_COL_START, N)]);
+        }
+
+        __syncthreads();
+
+        #pragma unroll
+        for(int k = 0; k < BLOCK_SIZE_K; k += THREAD_SIZE_K){
+            #pragma unroll
+            for(int j = 0; j < THREAD_SIZE_M; j += 1){
+                #pragma unroll        
+                for(int i = 0; i < THREAD_SIZE_K; i++){
+                    a_frag[j][i] = As[OFFSET(ty + vBLOCK_SIZE_M * j, k+i, BLOCK_SIZE_K)];
+                    //a_frag[j][i] = As[OFFSET(k+i, ty + vBLOCK_SIZE_M * j, BLOCK_SIZE_M)];
+                }
+            }
+            #pragma unroll
+            for(int j = 0; j < THREAD_SIZE_N; j += 1){
+                #pragma unroll
+                for(int i = 0; i < THREAD_SIZE_K; i++){
+                    // b_frag[j][i] = Bs[OFFSET(k+i, tx + vBLOCK_SIZE_N * j, BLOCK_SIZE_N)];
+                    b_frag[j][i] = Bs[OFFSET( tx + vBLOCK_SIZE_N * j, k+i, BLOCK_SIZE_K)];
+                }
+            }
+
+            #pragma unroll
+            for(int i = 0; i < THREAD_SIZE_N; i++){
+                #pragma unroll
+                for(int j = 0; j < THREAD_SIZE_M; j++){
+                    #pragma unroll
+                    for(int k_in = 0; k_in < THREAD_SIZE_K; k_in++){
+                        // accum[i][j] = fma(a_frag[j][k_in], b_frag[i][k_in], accum[i][j]);
+                        accum[i][j] += a_frag[j][k_in] * b_frag[i][k_in];
+                    }
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+
+    #pragma unroll
+    for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
+        #pragma unroll
+        for(int thread_y = 0; thread_y < THREAD_SIZE_M; thread_y+=1){
+            C[OFFSET(
+                BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
+                N
+            )] = (accum[thread_x][thread_y]);
+        }
+    }
+
+}
+
+
+
+__global__ void SPARSE_SOFTMAX_BACKWARD(int * row_ptr, int * col_idx, float * inter_result, float *attn_grad, float* score_grad, int M, int N, int block_h, int block_w, int SPARSE_VAL_SIZE)
+{
+    // grad[i] = sum(-grad[j]*out[j]*out[i] if i!=j else grad[j]*(1-out[j])*out[j])
+    
+    const int ROW_MAX_SIZE = 4096;
+    const int WARP_SIZE = 32;
+    __shared__ float shared_v[SOFTMAX_ROW_TILE*ROW_MAX_SIZE];
+    __shared__ float shared_g[SOFTMAX_ROW_TILE*ROW_MAX_SIZE];
+    
+    float * vs = shared_v;
+    float * gs = shared_g;
+    inter_result += blockIdx.y * SPARSE_VAL_SIZE;
+    attn_grad += blockIdx.y * SPARSE_VAL_SIZE;
+    score_grad += blockIdx.y * SPARSE_VAL_SIZE;
+    
+    uint blk_row_idx = blockIdx.x / (block_h/SOFTMAX_ROW_TILE) ;
+    int block_inter_row = (blockIdx.x % (block_h/SOFTMAX_ROW_TILE)) * SOFTMAX_ROW_TILE;
+    uint bm = threadIdx.x / WARP_SIZE;
+    uint bn = threadIdx.x % WARP_SIZE;
+    assert(block_w % WARP_SIZE==0);
+    float regC = 0.0f;
+    float regSum = 0.0f;
+
+    int block_seq_start = row_ptr[blk_row_idx];
+    int block_seq_end = row_ptr[blk_row_idx+1];
+    // printf("block_seq_start:%d block_seq_end:%d row_size: %d ROW_MAX_SIZE:%d\n", block_seq_start, block_seq_end, (block_seq_end-block_seq_start) * block_w + global_attention_size, ROW_MAX_SIZE);
+    assert((block_seq_end-block_seq_start) * block_w < ROW_MAX_SIZE);
+    // uint A_index, col_idx, mask_index, shared_index;
+    vs += ROW_MAX_SIZE * int(threadIdx.x/WARP_SIZE);
+    gs += ROW_MAX_SIZE * int(threadIdx.x/WARP_SIZE);
+    // load from the global memory to the shared memory
+    #pragma unroll
+    for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
+        // FIXME: there need one more for loop to handle the WARP_SIZE -> BLOCK_W
+        int _index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
+        gs[ block_w * (block_seq - block_seq_start) + bn] = attn_grad[_index];
+        vs[ block_w * (block_seq - block_seq_start) + bn] = inter_result[_index];
+    }
+
+    // calculate the regSum
+    #pragma unroll
+    for(int i =bn; i<(block_seq_end-block_seq_start)*block_w; i+=WARP_SIZE){
+        regSum += gs[i] * vs[i];
+    }
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
+    }
+    regSum = __shfl_sync(FULL_MASK, regSum, 0);
+    // calculate the corresponding value for each element
+    #pragma unroll
+    for(int i =bn; i<(block_seq_end-block_seq_start)*block_w; i+=WARP_SIZE){
+        vs[i] = vs[i] * gs[i] - regSum* vs[i];
+    }
+
+    // Write the results back to the global memory
+
+    #pragma unroll
+    for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
+        // FIXME: there need one more for loop to handle the WARP_SIZE -> BLOCK_W
+        int _index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
+        // gs[ block_w * (block_seq - block_seq_start) + bn] = attn_grad[_index];
+        score_grad[_index] = vs[ block_w * (block_seq - block_seq_start) + bn];
+    }
+
+
+}
 void dynamic_backward_function( float* grad_out,
                                 float* Q,
                                 float* K,
@@ -721,7 +910,8 @@ void dynamic_backward_function( float* grad_out,
                                 int k_seq_len,
                                 int block_h,
                                 int block_w,
-                                int sparse_val_size
+                                int sparse_val_size,
+                                int block_nnz
                                 )
 {
     // grad_v: Batch x Head x k_seq_len, hidden_dim
@@ -740,6 +930,28 @@ void dynamic_backward_function( float* grad_out,
     // const dim3 gradv_dimGrid(hidden_dim/32, k_seq_len/32, head_num*batchsize);
     BATCH_MATMUL_SDD_TN<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<gradv_dimGrid, gradv_dimBlock>>>(grad_row_ptr, grad_col_idx, block_index, inter_result, grad_out, V_grad, k_seq_len, q_seq_len, hidden_dim, 32, 32, sparse_val_size);
 
+
+    // Calculate the Attn_grad
+    // Grad_Attn = grad_out x V^T
+    // batch head q_seq k_seq = batch head q_seq hidden x (batch head k_seq hiddeh) 
+    dim3 attn_dimGrid(block_nnz, batchsize*head_num);
+    const dim3 attn_dimBlock(256);
+    BLOCK_SPARSE_MATMUL_OUT_32_64_32<<<attn_dimGrid, attn_dimBlock>>>(grad_out, V, Attn_grad, row_pos, col_idx, q_seq_len, hidden_dim, k_seq_len, block_h*block_w*block_nnz);
+    
+    // Calculate the Score_grad
+    const dim3 softmax_dimBlock(SOFTMAX_ROW_TILE*32);
+    const dim3 softmax_dimGrid(q_seq_len/SOFTMAX_ROW_TILE, head_num * batchsize);
+    SPARSE_SOFTMAX_BACKWARD<<<softmax_dimGrid, softmax_dimBlock>>>(row_ptr, col_idx, inter_result, Attn_grad, Score_grad, q_seq_len, k_seq_len, block_h, block_w, sparse_val_size);
+
+    // Calculate the Q_grad
+    // Grad_Q = Grad_softmax * K^T
+    // (q_seq_len x k_seq_len) x (k_seq_len x hidden_dim)
+    dim3 gradq_dimGrid(hidden_dim/BLOCK_SIZE_N, q_seq_len/BLOCK_SIZE_M, head_num * batchsize);
+    dim3 gradq_dimBlock(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M);
+    BLOCK_SPARSE_MATMUL_SDD<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<gradq_dimGrid, gradq_dimBlock>>>(row_ptr, col_idx, Score_grad, K, Q_grad, q_seq_len, k_seq_len, hidden_dim, block_h, block_w, sparse_val_size);
+   
+    // Calculate the K_grad
+    // Grad_K = Q^T * Grad_Score
 
 }
 
@@ -776,7 +988,7 @@ std::vector<at::Tensor> dynamic_sparse_attention_backward(
     Grad_V = Attn^T x grad_out
     Grad_Attn = grad_out x V^T
     Grad_Score = grad_soft(Grad_Attn)
-    Grad_Q = Grad_Score x K^T
+    Grad_Q = Grad_Score x K^T^T
     Grad_K = Q^T * Grad_Score
 
     // Grad_V = Sparse*dense kernel: (row_ptr, col_idx, val)^T * in_grad 
@@ -825,7 +1037,8 @@ std::vector<at::Tensor> dynamic_sparse_attention_backward(
             k_seq_length,
             32,
             32,
-            sparse_val_size
+            sparse_val_size,
+            block_nnz
         ); }));
     return vector<at::Tensor>({Q_grad, K_grad, V_grad, Attn_grad, Score_grad});
 }
