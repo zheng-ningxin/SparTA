@@ -627,9 +627,9 @@ __global__ void BATCH_MATMUL_SDD_TN(int* csr_row, int * csr_col, int * block_ind
     for(int tile_block_idx = index_start; tile_block_idx < index_end; tile_block_idx += 1){
         int col_pos = csr_col[tile_block_idx] * BLOCK_SIZE_K;
         int block_shift = block_index[csr_col[tile_block_idx] * gridDim.y + by];
-        if(threadIdx.x==0 && threadIdx.y==0 && bz==0){
-            printf("bx:%d by:%d col_pos:%d block_shift:%d\n gridDim:(%d, %d) tile_block_idx:%d", bx, by, csr_col[tile_block_idx], block_shift, gridDim.x, gridDim.y, tile_block_idx);
-        }
+        // if(threadIdx.x==0 && threadIdx.y==0 && bz==0){
+        //     printf("bx:%d by:%d col_pos:%d block_shift:%d\n gridDim:(%d, %d) tile_block_idx:%d", bx, by, csr_col[tile_block_idx], block_shift, gridDim.x, gridDim.y, tile_block_idx);
+        // }
         #pragma unroll
         for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
             FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =

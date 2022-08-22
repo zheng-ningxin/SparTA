@@ -75,8 +75,6 @@ class DynamicSparseAttentionFunction(torch.autograd.Function):
             block_index, \
             grad_row_ptr, \
             grad_col_idx = ctx.saved_tensors
-            # import ipdb; ipdb.set_trace()
-            print(torch.sum(inter_result))
             Q_grad, K_grad, V_grad, Attn_grad, Score_grad = dynamic_sparse_attention_cpp.backward(
                 grad_outputs[0],
                 Q,
@@ -234,7 +232,7 @@ class DynamicSparseAttention(SparseOPBase):
         attn = added.softmax(dim=-1)
         # nan_pos = torch.isnan(attn)
         # attn[nan_pos] = 0.0
-        print('reference attn sum:', torch.sum(attn))
+        # print('reference attn sum:', torch.sum(attn))
         ref_out = torch.einsum('b h m n, b h n k -> b h m k', attn, V)
 
         return ref_out
