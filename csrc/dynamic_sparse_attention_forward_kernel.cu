@@ -951,8 +951,11 @@ void dynamic_backward_function( float* grad_out,
     BLOCK_SPARSE_MATMUL_SDD<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<gradq_dimGrid, gradq_dimBlock>>>(row_ptr, col_idx, Score_grad, K, Q_grad, q_seq_len, k_seq_len, hidden_dim, block_h, block_w, sparse_val_size);
    
     // Calculate the K_grad
-    // Grad_K = Q^T * Grad_Score
-
+    // Grad_K = Grad_Score^T X Q
+    dim3 gradk_dimGrid(hidden_dim/BLOCK_SIZE_N, k_seq_len/BLOCK_SIZE_M, head_num * batchsize);
+    dim3 gradk_dimBlock(BLOCK_SIZE_N/THREAD_SIZE_N, BLOCK_SIZE_M/THREAD_SIZE_M);
+    BATCH_MATMUL_SDD_TN<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, THREAD_SIZE_M, THREAD_SIZE_K, THREAD_SIZE_N><<<gradk_dimGrid, gradk_dimBlock>>>(grad_row_ptr, grad_col_idx, block_index, Score_grad, Q, K_grad, k_seq_len, q_seq_len, hidden_dim, 32, 32, sparse_val_size);
+    
 }
 
 std::vector<at::Tensor> dynamic_sparse_attention_backward(
@@ -994,7 +997,7 @@ std::vector<at::Tensor> dynamic_sparse_attention_backward(
     // Grad_V = Sparse*dense kernel: (row_ptr, col_idx, val)^T * in_grad 
     // Grad_val = output sparse kernel(sparse index row_ptr, col_idx, val): in_grad * V^T 
     // Grad_Q = Grad_softmax * K^T
-    // Grad_K = Q^T * Grad_softmax
+    // Grad_K = (Q^T * Grad_softmax)^T = Grad_softmax^TxQ
     */
     const int sparse_val_size =  block_nnz * 32* 32;
     cudaSetDevice(Q.get_device());
