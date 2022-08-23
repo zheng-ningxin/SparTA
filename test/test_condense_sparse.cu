@@ -94,7 +94,7 @@ void init_mask_blockwise(int * ptr, size_t M, size_t N, int block_h, int block_w
 {
     int m_block_n = M / block_h;
     int n_block_n = N / block_w;
-
+    int block_nnz = 0;
     for (int i = 0; i < m_block_n; i++)
     {
         for(int j=0; j < n_block_n; j++){
@@ -107,10 +107,13 @@ void init_mask_blockwise(int * ptr, size_t M, size_t N, int block_h, int block_w
             else
             {
                 ptr[pos] = 1;
+                block_nnz++;
             }
         }
         
     }
+    printf("random %d blocks in init_mask_blockwise\n", block_nnz);
+
 }
 __device__ __forceinline__ float2  _add(float2 x, float2 y) { float2 res; res.x = x.x + y.x; res.y = x.y + y.y; return res; }
 
@@ -453,6 +456,38 @@ void convert_bcsr_tile(int * mask, float * dense, int h, int w,
     convert_bcsr_kernel_2_tile<<<grid_dim_2, block_dim_2>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
 
 }
+bool verify_bcsr(int * mask, float * data, int h, int w, int block_h, int block_w, int* row, int * col, float* values)
+{
+    for(int rid=0; rid<h/block_h; rid++){
+        // printf("row-%d: %d row-%d : %d\n", rid, row[rid], rid+1, row[rid+1]);
+        int _start = row[rid];
+        int _end = row[rid+1];
+        for(int _pos=_start; _pos<_end; _pos++){
+            int cid = col[_pos];
+            for(int i=0;i<block_h;i++){
+                for(int j=0;j<block_w;j++){
+                    int offset = (rid * block_h+i) * w + cid * block_w + j;
+                    int csr_offset = _pos * block_h * block_w + i * block_w + j;
+                    if (mask[offset]>0){
+                        // printf("%f %f\n", data[offset], values[csr_offset]);
+                        if(abs(data[offset]-values[csr_offset])>1e-8)
+                        {
+                            return false;
+                        }
+                        mask[offset]= 0;
+                    }
+                }
+            }
+        }
+    }
+    printf("%d blocks remained\n", row[h/block_h]);
+    printf("Blockwise sparsity %f \n", 1.0-1.0*row[h/block_h]/(h/block_w)/(w/block_w));
+    for(int i=0;i<block_h*block_w;i++)
+        if(mask[i])
+            return false;
+    return true;
+}
+
 int main()
 {
     int M, K, N;
@@ -462,7 +497,7 @@ int main()
     const int n_iter = 10000;
     float sparsity_ratio = 0.95;
     const int BLOCK_H = 32;
-    const int BLOCK_W = 1;
+    const int BLOCK_W = 32;
     // const int BLOCK_W = 1;
     cudaEvent_t time_start, time_end;
     CUDA_SAFE_CALL(cudaEventCreate(&time_start));
@@ -475,6 +510,9 @@ int main()
     B = (float*) malloc(sizeof(float) * K * N);
     C = (float*) malloc(sizeof(float) * M * N);
     mask = (int*) malloc(sizeof(int) * M * K);
+    row = (int*) malloc(sizeof(int) * (M+1));
+    col = (int*) malloc(sizeof(int) *  M * K / BLOCK_H / BLOCK_W);
+    val = (float*) malloc(sizeof(float) * M * K);
     init_mask_blockwise(mask, M, K, BLOCK_H, BLOCK_W, sparsity_ratio);
     // apply mask
     for(int i=0; i< M*K; i++){
@@ -499,10 +537,19 @@ int main()
         convert_bcsr(d_mask, dA, M, K, BLOCK_H, BLOCK_W, d_row, d_col, d_row_pos, d_val, d_extra_buffer);
     // for(int i=0;i<n_iter;i++)
     //     convert_bcsr_tile(d_mask, dA, M, K, BLOCK_H, BLOCK_W, d_row, d_col, d_row_pos, d_val, d_extra_buffer, 4);
+    
     CUDA_SAFE_CALL(cudaEventRecord(time_end));
     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
     CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));
+    CUDA_SAFE_CALL(cudaMemcpy(row, d_row, sizeof(int) * (M + 1), cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(col, d_col, sizeof(int) * M * K / BLOCK_H / BLOCK_W, cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(val, d_val, sizeof(float) * M * K, cudaMemcpyDeviceToHost));
     // CUDA_SAFE_CALL(cudaMem)
     printf("Convert tim cost = %f msec\n", msecTotal/n_iter);
+    if(verify_bcsr(mask, A, M, K, BLOCK_H, BLOCK_W, row, col, val)){
+        printf("Bcsr format verification success\n");
+    }else{
+        printf("Bcsr format check failed!\n");
+    }
     return 0;
 }

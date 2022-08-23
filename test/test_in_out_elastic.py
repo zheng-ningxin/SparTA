@@ -46,6 +46,29 @@ def test_speed(e_linear, in_features, out_features):
     t_end = time.time()
     print('Sparse per batch(ms):' , (t_end-t_start)*1000/run_time)
     
+def dense_profile(e_linear, in_features, out_features):
+    data = torch.rand(batch, seq_len, in_features).cuda()
+    data.requires_grad_()
+    re = e_linear.reference_forward(data, in_features, out_features)
+    tmp_grad = torch.rand_like(re)
+    run_time = 1000
+    # torch.cuda.synchronize()
+    t_start = time.time()
+    with torch.profiler.profile(
+        schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=100),
+        on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/IO_Elastic_Linear_v2'),
+        record_shapes=True,
+        profile_memory=True,
+        with_stack=True
+    ) as prof:
+        for _ in range(run_time):
+            re = e_linear.reference_forward(data, in_features, out_features)
+            re.backward(tmp_grad)
+            prof.step()
+    # torch.cuda.synchronize()
+    t_end = time.time()
+    print('Dense per batch(ms):' , (t_end-t_start)*1000/run_time)
+    
 def dense_speed(e_linear, in_features, out_features):
     data = torch.rand(batch, seq_len, in_features).cuda()
     data.requires_grad_()
@@ -57,13 +80,14 @@ def dense_speed(e_linear, in_features, out_features):
     for _ in range(run_time):
         re = e_linear.reference_forward(data, in_features, out_features)
         re.backward(tmp_grad)
+        torch.sum(e_linear.ori_linear.weight.grad)
     torch.cuda.synchronize()
     t_end = time.time()
     print('Dense per batch(ms):' , (t_end-t_start)*1000/run_time)
-    
+    # import ipdb; ipdb.set_trace()
 
 if __name__ == '__main__':
-    batch = 8
+    batch = 4
     seq_len = 256
     hidden = 768
     # M = 64 *256 #batch . seq , head* hidden
@@ -78,3 +102,4 @@ if __name__ == '__main__':
     # test_speed(elastic_linear, in_feature, out_feature)
     
     dense_speed(elastic_linear, in_feature, out_feature)
+    # dense_profile(elastic_linear, in_feature, out_feature)
