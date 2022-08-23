@@ -35,6 +35,10 @@ def _setup():
                                                             'csrc/convert_bcsr_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(bcsr_ext)
+        bcsr_trans_ext = CUDAExtension(name='convert_bcsr_transpose_cpp', sources=['csrc/convert_bcsr_transpose_forward.cpp',
+                                                            'csrc/convert_bcsr_transpose_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-O3'])
+        ext_modules.append(bcsr_trans_ext)
         dynamic_attention_ext = CUDAExtension(name='dynamic_sparse_attention_cpp', sources=['csrc/dynamic_sparse_attention_forward.cpp',
                                                             'csrc/dynamic_sparse_attention_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
