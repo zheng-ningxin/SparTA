@@ -65,6 +65,10 @@ def _setup():
                                                                 'csrc/elastic_linear_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(in_out_elastic_linear_ext)
+        openai_bmm_ext = CUDAExtension(name='openai_bmm_cpp', sources=['csrc/openai_bmm_forward.cpp',\
+                                                                'csrc/openai_bmm_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-O3'])
+        ext_modules.append(openai_bmm_ext)
         # cusparse_ext = CUDAExtension(name='our_sparse_attention', sources=[
         #                             'csrc/sparse_attention.cpp', 'csrc/sparse_attention_kernel.cu'],
         #                             extra_compile_args=['-std=c++14', '-O3'])
