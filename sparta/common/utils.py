@@ -107,7 +107,7 @@ def verify_bcsr_transpose(ori_mask, value, csr_row, csr_col, csr_val, block_h, b
     assert isinstance(csr_row, torch.Tensor)
     assert isinstance(csr_col, torch.Tensor)
     assert isinstance(csr_val, torch.Tensor)
-
+    import ipdb; ipdb.set_trace()
     value = value.cpu()
     csr_row = csr_row.cpu()
     csr_col = csr_col.cpu()
@@ -131,6 +131,7 @@ def verify_bcsr_transpose(ori_mask, value, csr_row, csr_col, csr_val, block_h, b
                         assert(torch.abs(value[_r_start+i][_c_start+j]-csr_val[_pos*block_h*block_w+j*block_h+i])<1e-6)
                         
                         mask[_r_start+i][_c_start+j] = 0
+    import ipdb; ipdb.set_trace()
     if torch.sum(mask) > 0:
         return False
     return True

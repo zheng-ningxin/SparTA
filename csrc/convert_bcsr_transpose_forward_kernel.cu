@@ -62,7 +62,11 @@ __device__ void warpReduce(volatile int* sdata, int tid) {
     sdata[tid] += sdata[tid + 2]; 
     sdata[tid] += sdata[tid + 1]; 
 }
-
+__device__ void warpReduce_size(volatile int* sdata, int tid, int size) {
+    for(int i=size; i>=1; i++){
+        sdata[tid] += sdata[tid+i];
+    }
+}
 __device__ __forceinline__ const int* add_ptr_u(const int* src, int offset)      \
 {                                                                            \
     const int* dst;                                                            \
@@ -116,19 +120,22 @@ __global__ void convert_bcsr_kernel_transpose_1(const int * __restrict__  mask, 
     reduce[tid] = flag;
     __syncthreads();
     // fast tree reduce accross the block
-    for(uint s=blockDim.x/2; s>32; s>>=1){
+    for(uint s=blockDim.x/2; s>=1; s>>=1){
         if(tid<s)
             reduce[tid] += reduce[tid+s];
         __syncthreads();
     }
-    if(tid<32)
-        warpReduce(reduce, tid);
+ 
     __syncthreads();
+    // if(tid==0)
+    //     printf("reduce[0]:%d bx:%d by:%d tid:%d\n", reduce[0], bx, by, tid);
+
     int pos_id;
     if(tid==0 && reduce[0]>0){
         pos_id= atomicAdd(&extra_buffer[bx], 1);
         atomicAdd(&extra_buffer[bx+w], 1);
         atomicAdd(&row[w/block_w], 1);
+        // printf("block nnz: %d\n", tmp);
         // extra_buffer[2*w + gridDim.x * by + pos_id] = bx;
         extra_buffer[2*w + gridDim.y * bx + pos_id] = by;
     }
@@ -196,6 +203,7 @@ void convert_bcsr_transpose(int * mask, float * dense, int h, int w,
     CUDA_SAFE_CALL(cudaMemset((void*)row, 0, sizeof(int)*(1+(h/block_h))) );
     dim3 block_dim(block_h*block_w/4);
     dim3 grid_dim(w/block_w, h/block_h);
+    // printf("h:%d w:%d block_h:%d block_w:%d\n", h, w, block_h, block_w);
     // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
     convert_bcsr_kernel_transpose_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
     convert_bcsr_kernel_transpose_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer, block_index);

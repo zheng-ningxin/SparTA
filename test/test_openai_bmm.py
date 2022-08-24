@@ -20,6 +20,7 @@ if __name__ == '__main__':
     sparsity_ratio = 0.0
     RUNTIME = 10000
     A = torch.rand(batchsize, M, K).cuda()
+    A_copy = A.clone().detach()
     B = torch.rand(batchsize, K, N).cuda()
     mask = torch.ones(M, K).cuda()
     block_wise_weight = torch.rand(M//block_h, K//block_w, dtype=torch.float32).cuda()
@@ -47,7 +48,10 @@ if __name__ == '__main__':
     converter_2 = BcsrConverter(True)
     t_block_wise_weight = torch.rand(M//new_block_h, K//new_block_w, dtype=torch.float32).cuda()
     t_block_mask = (t_block_wise_weight > sparsity_ratio).to(torch.int32)
+    print("Block-wise sparsity ratio:", torch.sum(t_block_mask)/t_block_mask.numel())
     t_full_mask = convert_to_full_mask(t_block_mask, (new_block_h, new_block_w))
     # print(torch.squeeze(A).size())
     t_row_ptr, t_col_idx, t_row_pos, t_vals = converter_2(t_full_mask, torch.squeeze(A), new_block_h, new_block_w)
+    t_block_nnz = t_row_ptr[M//new_block_h]
+    condense_out = openai_bmm_cpp.forward_condense(t_row_ptr, t_col_idx, t_vals, B, M, K, N, new_block_h, new_block_w, batchsize, t_block_nnz)
     import ipdb; ipdb.set_trace()

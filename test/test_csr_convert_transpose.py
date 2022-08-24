@@ -11,8 +11,8 @@ from sparta.common.utils import convert_bcsr, convert_bcsr_transpose, verify_bcs
 def test_dense():
     h = 1024
     w = 2048
-    block_h = 64
-    block_w = 32
+    block_h = 32
+    block_w = 1
     sparsity = 0.0
     device = torch.device('cuda')
     dense_value = torch.rand(h, w).to(device)
@@ -26,13 +26,14 @@ def test_dense():
     row, col, row_pos, value = converter(mask, dense_value, block_h, block_w)
     row_ref, col_ref, val_ref = convert_bcsr_transpose(mask, dense_value, block_h, block_w)
     # import ipdb; ipdb.set_trace()
-    verify_bcsr_transpose(mask, dense_value, row, col, value, block_h, block_w)
-
+    import ipdb; ipdb.set_trace()
+    assert verify_bcsr_transpose(mask, dense_value, row, col, value, block_h, block_w)
+    import ipdb; ipdb.set_trace()
 def test_empty_line():
     h = 1024
     w = 2048
-    block_h = 64
-    block_w = 32
+    block_h = 32
+    block_w = 1
     sparsity = 0.0
     device = torch.device('cuda')
     dense_value = torch.rand(h, w).to(device)
@@ -47,9 +48,9 @@ def test_empty_line():
     row, col, row_pos, value = converter(mask, dense_value, block_h, block_w)
     row_ref, col_ref, val_ref = convert_bcsr_transpose(mask, dense_value, block_h, block_w)
     # import ipdb; ipdb.set_trace()
-    verify_bcsr_transpose(mask, dense_value, row, col, value, block_h, block_w)
+    assert verify_bcsr_transpose(mask, dense_value, row, col, value, block_h, block_w)
 
 
 if __name__ == '__main__':
     test_dense()
-    test_empty_line()
+    # test_empty_line()

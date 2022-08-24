@@ -306,6 +306,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_CONDENSE(float* A_val, int* A_row, int
     C += M * N * blockIdx.z;
 
     assert(blockDim.x % 32 == 0);
+    assert(BLOCK_SIZE_K % BLOCK_W==0);
     uint n_warp = 8; // blockDim.x / 32
     assert(THREAD_SIZE_K % n_warp == 0);
     // THREAD_SIZE_K: one loop k
@@ -324,14 +325,16 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_CONDENSE(float* A_val, int* A_row, int
     assert(THREAD_SIZE_K % 16 == 0);
     uint k = tx * 4;
 
-    uint ori_offsetB00 = tid / (BLOCK_SIZE_N/4) * N + by * BLOCK_SIZE_N + (tid % (BLOCK_SIZE_N/4)) * 4;
-    uint ori_offsetB16 = ori_offsetB00 + N * 32;
+    // uint ori_offsetB00 = tid / (BLOCK_SIZE_N/4) * N + by * BLOCK_SIZE_N + (tid % (BLOCK_SIZE_N/4)) * 4;
+    // uint ori_offsetB16 = ori_offsetB00 + N * 32;
     uint storB = (tid * 4 + tid / (BLOCK_SIZE_N/4) / 4 *2) * 4; // (tid *4 + tid / (BLOCK_SIZE_N/4) / 4 * 2)*4
 
     // B is stored in sparse format, thus, should be dealt with differently
-    uint offsetA00 = A_row[bx] * BLOCK_SIZE_M * BLOCK_SIZE_K + ty * BLOCK_SIZE_K + k;
-    uint offsetA16 = offsetA00 + BLOCK_SIZE_K * 16;
-
+    // uint offsetA00 = A_row[bx] * BLOCK_SIZE_M * BLOCK_SIZE_K + ty * BLOCK_SIZE_K + k;
+    // uint offsetA16 = offsetA00 + BLOCK_SIZE_K * 16;
+    uint ori_offset_A00 = A_row[bx] * BLOCK_SIZE_M * BLOCK_W + tid % (BLOCK_SIZE_M/4) * 4 + BLOCK_SIZE_M * (tid/(BLOCK_SIZE_M/4));
+    uint ori_offset_A32 = ori_offset_A00 + 32 * BLOCK_SIZE_M;
+    uint ori_offset_B00 = tid / (BLOCK_SIZE_N/4) * N + by * BLOCK_SIZE_N + (tid % (BLOCK_SIZE_N/4)) * 4;
     uint tid224 = tid & 224;
     uint storAB = (tx * 32 * 4 + ty + tx * 2) * 4;
     uint loadA = (((tid & 16) >> 3) | (tid & 1)) << 4;
@@ -352,32 +355,53 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_CONDENSE(float* A_val, int* A_row, int
     // bx means in index of this thread block on N dimonsion
     // index_start and index_end is block index on column
     int index_start = A_row[bx], index_end = A_row[bx+1];
-
-    for(int bcsr_col_idx = index_start; bcsr_col_idx < index_end; bcsr_col_idx += 1)
+    float4 const0 = {0};
+    int round = (index_end - index_start-1+BLOCK_SIZE_K/BLOCK_W)/(BLOCK_SIZE_K/BLOCK_W);
+    for(int rid =0; rid<round;rid++)
+    // for(int bcsr_col_idx = index_start; bcsr_col_idx < index_end; bcsr_col_idx += 1)
     {
-        uint offsetB00 = ori_offsetB00 + 64 * A_col[bcsr_col_idx] * N;
-        uint offsetB16 = ori_offsetB16 + 64 * A_col[bcsr_col_idx] * N;
+        uint k_offset = tid / (BLOCK_SIZE_N/4) + rid * BLOCK_SIZE_K;
+        uint k_offset32 = k_offset + 32;
+        uint offsetA00 = offsetA00 + BLOCK_SIZE_K * BLOCK_SIZE_M; 
+        uint offsetA32 = offsetA32 + BLOCK_SIZE_K * BLOCK_SIZE_M;
+        uint _pos = (k_offset / BLOCK_W);
+        uint _pos32 = (k_offset32/BLOCK_W);
+        uint offsetB00 = (A_col[index_start+_pos]+k_offset%BLOCK_W) * N + ori_offset_B00;
+        uint offsetB32 = (A_col[index_start+_pos32]+k_offset32%BLOCK_W) * N + ori_offset_B00;
+        // uint offsetB00 = ori_offsetB00 + 64 * A_col[bcsr_col_idx] * N;
+        // uint offsetB16 = ori_offsetB16 + 64 * A_col[bcsr_col_idx] * N;
 
         float4 a00 = {0}, a16 = {0};
         float4 b00 = {0}, b16 = {0};
-        a00 = __ldg((const float4*)(add_ptr_f(A_val, offsetA00)));
-        a16 = __ldg((const float4*)(add_ptr_f(A_val, offsetA16)));
-        b00 = __ldg((const float4*)(add_ptr_f(B, offsetB00)));
-        b16 = __ldg((const float4*)(add_ptr_f(B, offsetB16)));
-
-        offsetA00 += BLOCK_SIZE_M * BLOCK_SIZE_K;
-        offsetA16 += BLOCK_SIZE_M * BLOCK_SIZE_K;
+        if(_pos<index_end-index_start){
+            a00 = __ldg((const float4*)(add_ptr_f(A_val, offsetA00)));
+            b00 = __ldg((const float4*)(add_ptr_f(B, offsetB00)));
+        }
+        if(_pos32<index_end-index_start){
+            a16 = __ldg((const float4*)(add_ptr_f(A_val, offsetA32)));
+            b16 = __ldg((const float4*)(add_ptr_f(B, offsetB32)));
+        }
+        // offsetA00 += BLOCK_SIZE_M * BLOCK_SIZE_K;
+        // offsetA16 += BLOCK_SIZE_M * BLOCK_SIZE_K;
 
         __syncthreads();
 
-        *(float*)&bShare[storAB + (0*32 +  0 + 0*65*32)*4] = a00.x;
-        *(float*)&bShare[storAB + (1*32 +  0 + 0*65*32)*4] = a00.y;
-        *(float*)&bShare[storAB + (2*32 +  0 + 0*65*32)*4] = a00.z;
-        *(float*)&bShare[storAB + (3*32 +  0 + 0*65*32)*4] = a00.w;
-        *(float*)&bShare[storAB + (0*32 + 16 + 0*65*32)*4] = a16.x;
-        *(float*)&bShare[storAB + (1*32 + 16 + 0*65*32)*4] = a16.y;
-        *(float*)&bShare[storAB + (2*32 + 16 + 0*65*32)*4] = a16.z;
-        *(float*)&bShare[storAB + (3*32 + 16 + 0*65*32)*4] = a16.w;
+        // *(float*)&bShare[storAB + (0*32 +  0 + 0*65*32)*4] = a00.x;
+        // *(float*)&bShare[storAB + (1*32 +  0 + 0*65*32)*4] = a00.y;
+        // *(float*)&bShare[storAB + (2*32 +  0 + 0*65*32)*4] = a00.z;
+        // *(float*)&bShare[storAB + (3*32 +  0 + 0*65*32)*4] = a00.w;
+        // *(float*)&bShare[storAB + (0*32 + 16 + 0*65*32)*4] = a16.x;
+        // *(float*)&bShare[storAB + (1*32 + 16 + 0*65*32)*4] = a16.y;
+        // *(float*)&bShare[storAB + (2*32 + 16 + 0*65*32)*4] = a16.z;
+        // *(float*)&bShare[storAB + (3*32 + 16 + 0*65*32)*4] = a16.w;
+        *(float*)&bShare[storB + (0*65*32)*4] = a00.x;
+        *(float*)&bShare[storB + (0*65*32 + 1)*4] = a00.y;
+        *(float*)&bShare[storB + (0*65*32 + 2)*4] = a00.z;
+        *(float*)&bShare[storB + (0*65*32 + 3)*4] = a00.w;
+        *(float*)&bShare[storB + (32*32 + 8*2 + 0*65*32)*4] = a16.x;
+        *(float*)&bShare[storB + (32*32 + 8*2 + 0*65*32 + 1)*4] = a16.y;
+        *(float*)&bShare[storB + (32*32 + 8*2 + 0*65*32 + 2)*4] = a16.z;
+        *(float*)&bShare[storB + (32*32 + 8*2 + 0*65*32 + 3)*4] = a16.w;
 
         *(float*)&bShare[storB + (1*65*32)*4] = b00.x;
         *(float*)&bShare[storB + (1*65*32 + 1)*4] = b00.y;
