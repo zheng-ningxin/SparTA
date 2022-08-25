@@ -74,20 +74,37 @@ def dense_speed(e_linear, in_features, out_features):
     data.requires_grad_()
     re = e_linear.reference_forward(data, in_features, out_features)
     tmp_grad = torch.rand_like(re)
-    run_time = 1000
+    run_time = 10000
     torch.cuda.synchronize()
     t_start = time.time()
     for _ in range(run_time):
         re = e_linear.reference_forward(data, in_features, out_features)
-        re.backward(tmp_grad)
-        torch.sum(e_linear.ori_linear.weight.grad)
+        # re.backward(tmp_grad)
+        # torch.sum(e_linear.ori_linear.weight.grad)
     torch.cuda.synchronize()
     t_end = time.time()
     print('Dense per batch(ms):' , (t_end-t_start)*1000/run_time)
     # import ipdb; ipdb.set_trace()
 
+def dense_speed_v2(in_features, out_features):
+    data = torch.rand(batch, seq_len, in_features).cuda()
+    data.requires_grad_()
+    dense_linear = torch.nn.Linear(in_features, out_features).cuda()
+    re = dense_linear(data)
+    tmp_grad = torch.rand_like(re)
+    run_time = 10000
+    torch.cuda.synchronize()
+    t_start = time.time()
+    for _ in range(run_time):
+        re = dense_linear(data)
+        # re.backward(tmp_grad)
+        # torch.sum(dense_linear.weight.grad)
+    torch.cuda.synchronize()
+    t_end = time.time()
+    print('Dense_v2 per batch(ms):' , (t_end-t_start)*1000/run_time)
+
 if __name__ == '__main__':
-    batch = 4
+    batch = 1
     seq_len = 256
     hidden = 768
     # M = 64 *256 #batch . seq , head* hidden
@@ -97,9 +114,10 @@ if __name__ == '__main__':
     elastic_linear = InOutElasticLinear(ori_linear)
     # only works on small size, WTF
     # test_correctness(elastic_linear, 1024, 512)
-    in_feature = 768
-    out_feature = 768
+    in_feature = 512
+    out_feature = 512
     # test_speed(elastic_linear, in_feature, out_feature)
     
     dense_speed(elastic_linear, in_feature, out_feature)
+    dense_speed_v2(in_feature, out_feature)
     # dense_profile(elastic_linear, in_feature, out_feature)
