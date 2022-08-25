@@ -100,8 +100,8 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL(float* A_val, int* A_row, int* A_col, 
     const int BLOCK_SIZE_N = 32;  //128
     const int THREAD_SIZE_K = 64;
     const int M = GLOBAL_M;
-    const int K = GLOBAL_N;
-    const int N = GLOBAL_K;
+    const int K = GLOBAL_K;
+    const int N = GLOBAL_N;
 
     A_val += SPARSE_VAL_SIZE * blockIdx.z;
     B += K * N * blockIdx.z;
@@ -298,8 +298,8 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_CONDENSE(float* A_val, int* A_row, int
     const int BLOCK_SIZE_N = 32;  //128
     const int THREAD_SIZE_K = 64;
     const int M = GLOBAL_M;
-    const int K = GLOBAL_N;
-    const int N = GLOBAL_K;
+    const int K = GLOBAL_K;
+    const int N = GLOBAL_N;
 
     A_val += SPARSE_VAL_SIZE * blockIdx.z;
     B += K * N * blockIdx.z;
@@ -332,9 +332,10 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_CONDENSE(float* A_val, int* A_row, int
     // B is stored in sparse format, thus, should be dealt with differently
     // uint offsetA00 = A_row[bx] * BLOCK_SIZE_M * BLOCK_SIZE_K + ty * BLOCK_SIZE_K + k;
     // uint offsetA16 = offsetA00 + BLOCK_SIZE_K * 16;
-    uint ori_offset_A00 = A_row[bx] * BLOCK_SIZE_M * BLOCK_W + tid % (BLOCK_SIZE_M/4) * 4 + BLOCK_SIZE_M * (tid/(BLOCK_SIZE_M/4));
-    uint ori_offset_A32 = ori_offset_A00 + 32 * BLOCK_SIZE_M;
-    uint ori_offset_B00 = tid / (BLOCK_SIZE_N/4) * N + by * BLOCK_SIZE_N + (tid % (BLOCK_SIZE_N/4)) * 4;
+    uint offsetA00 = A_row[bx] * BLOCK_SIZE_M * BLOCK_W + tid % (BLOCK_SIZE_M/4) * 4 + BLOCK_SIZE_M * (tid/(BLOCK_SIZE_M/4));
+    uint offsetA32 = offsetA00 + 32 * BLOCK_SIZE_M;
+    // uint ori_offset_B00 = tid / (BLOCK_SIZE_N/4) * N + by * BLOCK_SIZE_N + (tid % (BLOCK_SIZE_N/4)) * 4;
+    uint ori_offset_B00 = by * BLOCK_SIZE_N + (tid % (BLOCK_SIZE_N/4)) * 4;
     uint tid224 = tid & 224;
     uint storAB = (tx * 32 * 4 + ty + tx * 2) * 4;
     uint loadA = (((tid & 16) >> 3) | (tid & 1)) << 4;
@@ -357,22 +358,26 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_CONDENSE(float* A_val, int* A_row, int
     int index_start = A_row[bx], index_end = A_row[bx+1];
     float4 const0 = {0};
     int round = (index_end - index_start-1+BLOCK_SIZE_K/BLOCK_W)/(BLOCK_SIZE_K/BLOCK_W);
+    // if(threadIdx.x==0)
+    //     printf("bx:%d by:%d round:%d\n", bx, by, round);
     for(int rid =0; rid<round;rid++)
     // for(int bcsr_col_idx = index_start; bcsr_col_idx < index_end; bcsr_col_idx += 1)
     {
         uint k_offset = tid / (BLOCK_SIZE_N/4) + rid * BLOCK_SIZE_K;
         uint k_offset32 = k_offset + 32;
-        uint offsetA00 = offsetA00 + BLOCK_SIZE_K * BLOCK_SIZE_M; 
-        uint offsetA32 = offsetA32 + BLOCK_SIZE_K * BLOCK_SIZE_M;
+        // offsetA00 = offsetA00 + BLOCK_SIZE_K * BLOCK_SIZE_M; 
+        // offsetA32 = offsetA32 + BLOCK_SIZE_K * BLOCK_SIZE_M;
         uint _pos = (k_offset / BLOCK_W);
         uint _pos32 = (k_offset32/BLOCK_W);
         uint offsetB00 = (A_col[index_start+_pos]+k_offset%BLOCK_W) * N + ori_offset_B00;
         uint offsetB32 = (A_col[index_start+_pos32]+k_offset32%BLOCK_W) * N + ori_offset_B00;
         // uint offsetB00 = ori_offsetB00 + 64 * A_col[bcsr_col_idx] * N;
         // uint offsetB16 = ori_offsetB16 + 64 * A_col[bcsr_col_idx] * N;
-
-        float4 a00 = {0}, a16 = {0};
-        float4 b00 = {0}, b16 = {0};
+        // if(bx==0 && by == 0 &&  threadIdx.x==0){
+        //     printf("_pos:%d _pos32:%d index_end-index_start:%d\n", _pos, _pos32, index_end-index_start);
+        // }
+        float4 a00 = {0,0,0,0}, a16 = {0,0,0,0};
+        float4 b00 = {0,0,0,0}, b16 = {0,0,0,0};
         if(_pos<index_end-index_start){
             a00 = __ldg((const float4*)(add_ptr_f(A_val, offsetA00)));
             b00 = __ldg((const float4*)(add_ptr_f(B, offsetB00)));
@@ -381,8 +386,8 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_CONDENSE(float* A_val, int* A_row, int
             a16 = __ldg((const float4*)(add_ptr_f(A_val, offsetA32)));
             b16 = __ldg((const float4*)(add_ptr_f(B, offsetB32)));
         }
-        // offsetA00 += BLOCK_SIZE_M * BLOCK_SIZE_K;
-        // offsetA16 += BLOCK_SIZE_M * BLOCK_SIZE_K;
+        offsetA00 += BLOCK_SIZE_M * BLOCK_SIZE_K;
+        offsetA32 += BLOCK_SIZE_M * BLOCK_SIZE_K;
 
         __syncthreads();
 
