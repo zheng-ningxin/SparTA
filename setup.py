@@ -73,6 +73,10 @@ def _setup():
         #                             'csrc/sparse_attention.cpp', 'csrc/sparse_attention_kernel.cu'],
         #                             extra_compile_args=['-std=c++14', '-O3'])
         # ext_modules.append(cusparse_ext)
+        blockwise_sparse_linear = CUDAExtension(name='blockwise_sparse_linear', sources=['csrc/blockwise_dynamic_sparse_linear.cpp',\
+                                                                'csrc/blockwise_dynamic_sparse_linear_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-O3'])
+        ext_modules.append(blockwise_sparse_linear)
     print(rootdir)
     setup(
         name='SparTA',
