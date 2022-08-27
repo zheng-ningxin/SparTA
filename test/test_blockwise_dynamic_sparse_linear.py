@@ -33,13 +33,22 @@ def random_sparse_pattern_block(M, N, sparsity, block_h, block_w):
     return pattern
 
 def test_corressness(data, block_mask, ori_linear, b_linear, block_h=32, block_w=64):
+    data_1 = data.clone().detach()
+    data_1.requires_grad_()
+    data_2 = data.clone().detach()
+    data_2.requires_grad_()
+    
     full_mask = convert_to_full_mask(block_mask, (block_h, block_w))
     ori_linear.weight.data *= full_mask.data
-    ref_out = ori_linear(data)
-    out = b_linear(data, block_mask)
+    ref_out = ori_linear(data_1)
+    out = b_linear(data_2, block_mask)
+    tmp_grad = torch.rand_like(ref_out)
+    ref_out.backward(tmp_grad)
+    out.backward(tmp_grad)
+    import ipdb; ipdb.set_trace()
     # import ipdb; ipdb.set_trace()
     assert torch.allclose(out, ref_out, rtol=1e-08, atol=1e-03)
-    
+    assert torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
 
 def dense_speed(linear, data):
     run_time = 1000
