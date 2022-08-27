@@ -337,7 +337,7 @@ at::Tensor blockwise_dynamic_sparse_linear_forward(
     int in_hidden = activation.size(2);
     assert(in_hidden==weight.size(1));
     int out_hidden = weight.size(0);
-    torch::Tensor output = torch::zeros({batch_size, seq_len, out_hidden}, activation.options());
+    torch::Tensor output = torch::empty({batch_size, seq_len, out_hidden}, activation.options());
     AT_DISPATCH_FLOATING_TYPES(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
                             {       forward_function(
                                     activation.data_ptr<float>(),
@@ -352,6 +352,28 @@ at::Tensor blockwise_dynamic_sparse_linear_forward(
     return output;
 }
 
+void backward_function( float * activation,
+                        float * weight,
+                        float * grad_out,
+                        int * block_mask,
+                        int M,
+                        int K,
+                        int N,
+                        float * a_grad,
+                        float * w_grad
+                        )
+{
+    const int BLOCK_SIZE_M = 32;
+    const int BLOCK_SIZE_K = 64;
+    const int BLOCK_SIZE_N = 32;
+    // a_grad(M*K) = grad_c(M*N) * weight(N*K) 
+
+    dim3 gridDim(K/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
+    dim3 blockDim(256);
+    // BLOCK_SPARSE_MATMUL_NN_OPENAI<<<gridDim, blockDim>>>(activation, weight, bias, block_mask, M, K, N, output);
+     
+}
+
 std::vector<at::Tensor> blockwise_dynamic_sparse_linear_backward(
     torch::Tensor activation,
     torch::Tensor weight,
@@ -359,8 +381,25 @@ std::vector<at::Tensor> blockwise_dynamic_sparse_linear_backward(
     torch::Tensor blockwise_mask
 )
 {
+    // a_grad(M*K) = grad_c(M*N) * weight(N*K) 
     torch::Tensor a_grad = torch::zeros_like(activation);
+    // w_grad(N*K) = grad_c^T(N*M) X activation(M*K)
     torch::Tensor w_grad = torch::zeros_like(weight);
+    int batch_size = activation.size(0);
+    int seq_len = activation.size(1);
+    int in_hidden = activation.size(2);
+    assert(in_hidden==weight.size(1));
+    int out_hidden = weight.size(0);
+    AT_DISPATCH_FLOATING_TYPES(activation.type(), "dynamic_sparse_linear", ([&]
+        { backward_function(
+                activation.data_ptr<float>(),
+                weight.data_ptr<float>(),
+                grad_c.data_ptr<float>(),
+                blockwise_mask.data_ptr<int>(),
+                batch_size * seq_len, in_hidden, out_hidden,
+                a_grad.data_ptr<float>(),
+                w_grad.data_ptr<float>()
+            ); }));
     vector<torch::Tensor> grads({a_grad, w_grad});
     return grads;
 }
