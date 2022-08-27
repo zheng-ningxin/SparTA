@@ -129,11 +129,16 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
     uint by = blockIdx.y; // M
     if(tid < GLOBAL_K/BLOCK_SIZE_K){
         k_dim_mask[tid] = block_mask[bx * (GLOBAL_K / BLOCK_SIZE_K) + tid];
+        // if(k_dim_mask[tid]!=1){
+        //     printf("k_dim_mask:%d tid:%d bx:%d by:%d\n", k_dim_mask[tid], tid, bx, by);
+        // }
     }
 
     if(tid<BLOCK_SIZE_N){
         bias_share[tid] = bias[bx * BLOCK_SIZE_N + tid %32]; 
     }
+    __syncthreads();
+
     uint tx = tid % 16;
     uint ty = tid / 16;
     assert(THREAD_SIZE_K % 16 == 0);
@@ -163,6 +168,9 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_OPENAI(
 
     for (int k_seq = 0; k_seq < (int)(K/64); k_seq++)
     {
+        // if(k_dim_mask[k_seq]!=1 && tid==0){
+        //     printf("k_dim_mask:%d tid:%d bx:%d by:%d\n", k_dim_mask[tid], tid, bx, by);
+        // }
         if(k_dim_mask[k_seq]>0){
             uint offsetA00 = ori_offsetA00 + 64 * k_seq;
             uint offsetA16 = ori_offsetA16 + 64 * k_seq;
@@ -329,7 +337,7 @@ at::Tensor blockwise_dynamic_sparse_linear_forward(
     int in_hidden = activation.size(2);
     assert(in_hidden==weight.size(1));
     int out_hidden = weight.size(0);
-    torch::Tensor output = torch::empty({batch_size, seq_len, out_hidden}, activation.options());
+    torch::Tensor output = torch::zeros({batch_size, seq_len, out_hidden}, activation.options());
     AT_DISPATCH_FLOATING_TYPES(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
                             {       forward_function(
                                     activation.data_ptr<float>(),
