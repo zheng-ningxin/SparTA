@@ -40,15 +40,21 @@ def test_corressness(data, block_mask, ori_linear, b_linear, block_h=32, block_w
     
     full_mask = convert_to_full_mask(block_mask, (block_h, block_w))
     ori_linear.weight.data *= full_mask.data
+    b_linear.weight.data *= full_mask.data
     ref_out = ori_linear(data_1)
     out = b_linear(data_2, block_mask)
     tmp_grad = torch.rand_like(ref_out)
     ref_out.backward(tmp_grad)
     out.backward(tmp_grad)
-    import ipdb; ipdb.set_trace()
     # import ipdb; ipdb.set_trace()
-    assert torch.allclose(out, ref_out, rtol=1e-08, atol=1e-03)
-    assert torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
+    # import ipdb; ipdb.set_trace()
+    flag = True
+    flag = flag and torch.allclose(out, ref_out, rtol=1e-08, atol=1e-03)
+    flag = flag and torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
+    flag = flag and torch.allclose(ori_linear.weight.grad.data * full_mask, b_linear.weight.grad, rtol=1e-08, atol=1e-03)
+    if not flag:
+        import ipdb;
+        ipdb.set_trace()
 
 def dense_speed(linear, data):
     run_time = 1000
