@@ -58,22 +58,34 @@ def test_corressness(data, block_mask, ori_linear, b_linear, block_h=32, block_w
 
 def dense_speed(linear, data):
     run_time = 1000
+    data.requires_grad_()
     torch.cuda.synchronize()
     t_start = time.time()
+    _tmp = linear(data)
+    grad = torch.rand_like(_tmp)
     for _ in range(run_time):
         re = linear(data)
+        re.backward(grad)
     torch.cuda.synchronize()
     t_end = time.time()
+    assert data.grad is not None
+    assert linear.weight.grad is not None
     print('Dense per batch(ms):' , (t_end-t_start)*1000/run_time)
 
 def test_speed(b_linear, block_mask, data):
     run_time = 1000
+    data.requires_grad_()
+    _tmp = b_linear(data, block_mask)
+    grad = torch.rand_like(_tmp)
     torch.cuda.synchronize()
     t_start = time.time()
     for _ in range(run_time):
         re = b_linear(data, block_mask)
+        re.backward(grad)
     torch.cuda.synchronize()
     t_end = time.time()
+    assert data.grad is not None
+    assert b_linear.weight.grad is not None
     print('Sparse per batch(ms):' , (t_end-t_start)*1000/run_time)
     
 
@@ -94,6 +106,6 @@ if __name__ == '__main__':
         # ori_linear.weight.data[:] = 1
         # ori_linear.bias.data[:] = 0
         b_linear = BlockwiseSparseLinear(ori_linear)
-        test_corressness(data, block_mask, ori_linear, b_linear)
-        dense_speed(ori_linear, data)
+        # test_corressness(data, block_mask, ori_linear, b_linear)
+        # dense_speed(ori_linear, data)
         test_speed(b_linear, block_mask, data)
