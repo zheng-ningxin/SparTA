@@ -791,6 +791,136 @@ __global__ void grad_w_kernel(
 
 // }
 }
+template <
+    const int BLOCK_SIZE_M, // 64
+    const int BLOCK_SIZE_K, // 8
+    const int BLOCK_SIZE_N, // 128
+    const int THREAD_SIZE_M, // 8
+    const int THREAD_SIZE_K, // 4
+    const int THREAD_SIZE_N  // 8
+>
+__global__ void BLOCK_SPARSE_MATMUL_DSD(float * A, float * B, float* C,  int M, int K, int N, int * block_mask){
+
+    int by = blockIdx.y; // M
+    int bx = blockIdx.x; // N
+    // int bz = blockIdx.z;
+    int ty = threadIdx.y; 
+    int tx = threadIdx.x;
+    // csr_val = csr_val + sparse_val_size * bz;
+    // B = B + K * N * bz;
+    // C = C + M * N * bz;
+
+    const int padding = 1;
+    __shared__ float As[BLOCK_SIZE_M * (padding+BLOCK_SIZE_K)];
+    __shared__ float Bs[BLOCK_SIZE_N * (padding+BLOCK_SIZE_K)];
+    __shared__ int k_dim_mask[MAX_K_BLOCK];
+    // printf("BLOCK_SIZE_KL:%d MAX_K_BLOCK:%d K:%d\n", BLOCK_SIZE_K, MAX_K_BLOCK, K);
+    assert(BLOCK_SIZE_K * MAX_K_BLOCK>=K);
+    float accum[THREAD_SIZE_N][THREAD_SIZE_M] = {0};
+    float a_frag[THREAD_SIZE_M][THREAD_SIZE_K];
+    float b_frag[THREAD_SIZE_N][THREAD_SIZE_K];
+
+    int A_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
+    int B_THREAD_PER_ROW = BLOCK_SIZE_N / 4;
+
+    int bszy = BLOCK_SIZE_M / THREAD_SIZE_M;
+    int bszx = BLOCK_SIZE_N / THREAD_SIZE_N;
+
+    int THREADS_PER_BLOCK = bszy * bszx;
+
+    int A_TILE_ROW_STRIDE = THREADS_PER_BLOCK / A_THREAD_PER_ROW;
+    int B_TILE_ROW_STRIDE = THREADS_PER_BLOCK / B_THREAD_PER_ROW;
+
+    int tid = ty * bszx + tx;
+
+    // int index_start = csr_row[by], index_end = csr_row[by+1];
+
+    int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
+    int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
+
+    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4;
+    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4;
+    const int vBLOCK_SIZE_M = BLOCK_SIZE_M / THREAD_SIZE_M;
+    const int vBLOCK_SIZE_N = BLOCK_SIZE_N / THREAD_SIZE_N;
+    assert(blockDim.x * blockDim.y >= K/BLOCK_SIZE_K);
+    if(tid < K/BLOCK_SIZE_K){
+        // block_mask should be stores in NxK format
+        k_dim_mask[tid] = block_mask[bx * (K / BLOCK_SIZE_K) + tid];
+    }
+    __syncthreads();
+    for(int col_pos = 0; col_pos < K / BLOCK_SIZE_K; col_pos += 1){
+        if(k_dim_mask[col_pos]>0){
+            #pragma unroll
+            for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
+                FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
+                    FETCH_FLOAT4(A[OFFSET(by*BLOCK_SIZE_M + k + A_BLOCK_ROW_START, col_pos * BLOCK_SIZE_K + A_BLOCK_COL_START, K)]);
+                    // FETCH_FLOAT4(csr_val[tile_block_idx * BLOCK_SIZE_M * BLOCK_SIZE_K + OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]);
+
+            }
+
+            #pragma unroll
+            for(int k = 0; k < BLOCK_SIZE_K; k += B_TILE_ROW_STRIDE){
+                FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BLOCK_SIZE_N)]) = 
+                    FETCH_FLOAT4(B[OFFSET(col_pos * BLOCK_SIZE_K + k + B_BLOCK_ROW_START, bx*BLOCK_SIZE_N + B_BLOCK_COL_START, N)]);
+            }
+
+            __syncthreads();
+
+            #pragma unroll
+            for(int k = 0; k < BLOCK_SIZE_K; k += THREAD_SIZE_K){
+                #pragma unroll
+                for(int i = 0; i < THREAD_SIZE_K; i++){
+                    #pragma unroll
+                    for(int j = 0; j < THREAD_SIZE_M; j += 1){
+                        a_frag[j][i] = As[OFFSET(ty + vBLOCK_SIZE_M * j, k+i, BLOCK_SIZE_K)];
+                        //a_frag[j][i] = As[OFFSET(k+i, ty + vBLOCK_SIZE_M * j, BLOCK_SIZE_M)];
+                    }
+                }
+
+                #pragma unroll
+                for(int i = 0; i < THREAD_SIZE_K; i++){
+                    #pragma unroll
+                    for(int j = 0; j < THREAD_SIZE_N; j += 1){
+                        b_frag[j][i] = Bs[OFFSET(k+i, tx + vBLOCK_SIZE_N * j, BLOCK_SIZE_N)];
+                    }
+                }
+
+                #pragma unroll
+                for(int i = 0; i < THREAD_SIZE_N; i++){
+                    #pragma unroll
+                    for(int j = 0; j < THREAD_SIZE_M; j++){
+                        #pragma unroll
+                        for(int k_in = 0; k_in < THREAD_SIZE_K; k_in++){
+                            // accum[i][j] = fma(a_frag[j][k_in], b_frag[i][k_in], accum[i][j]);
+                            accum[i][j] += a_frag[j][k_in] * b_frag[i][k_in];
+                        }
+                    }
+                }
+            }
+            
+            __syncthreads();
+        }
+
+    }
+
+
+    #pragma unroll
+    for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
+        #pragma unroll
+        for(int thread_y = 0; thread_y < THREAD_SIZE_M; thread_y+=1){
+            C[OFFSET(
+                BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
+                N
+            )] = (accum[thread_x][thread_y]);
+        }
+    }
+
+
+}
+
+
+
 void backward_function( float * activation,
                         float * weight,
                         float * grad_out,
@@ -806,16 +936,26 @@ void backward_function( float * activation,
     const int BLOCK_SIZE_M = 32;
     const int BLOCK_SIZE_K = 64;
     const int BLOCK_SIZE_N = 32;
+    //w_grad(N*K) = grad_c^T(N*M) X activation(M*K)
+    dim3 w_block_dim(256);
+    dim3 w_grid_dim(K/BLOCK_SIZE_N, N/BLOCK_SIZE_M);
+    grad_w_kernel<<<w_grid_dim, w_block_dim>>>(grad_out, activation, w_grad, N, M, K, block_mask);
+
     // a_grad(M*K) = grad_c(M*N) * weight(N*K) 
     // the block_size of t_blockmask is also transposed, we cannot use
     // the 32x64x32 openai tile here
     // dim3 gridDim(K/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
     // dim3 blockDim(256);
     // BLOCK_SPARSE_MATMUL_NN_OPENAI<<<gridDim, blockDim>>>(grad_out, weight, a_grad, t_blockmask, M, N, K);
-    //w_grad(N*K) = grad_c^T(N*M) X activation(M*K)
-    dim3 w_block_dim(256);
-    dim3 w_grid_dim(K/BLOCK_SIZE_N, N/BLOCK_SIZE_M);
-    grad_w_kernel<<<w_grid_dim, w_block_dim>>>(grad_out, activation, w_grad, N, M, K, block_mask);
+    const int A_GRAD_BLOCK_SIZE_M = 64;
+    const int A_GRAD_BLOCK_SIZE_K = 32; // the block size is also transposed here
+    const int A_GRAD_BLOCK_SIZE_N = 64;
+    const int A_GRAD_THREAD_SIZE_M = 4;
+    const int A_GRAD_THREAD_SIZE_K = 4;
+    const int A_GRAD_THREAD_SIZE_N = 4;
+    dim3 a_grid_dim(K/A_GRAD_BLOCK_SIZE_N, M/A_GRAD_BLOCK_SIZE_M);
+    dim3 a_block_dim(A_GRAD_BLOCK_SIZE_N/A_GRAD_THREAD_SIZE_N, A_GRAD_BLOCK_SIZE_M/A_GRAD_THREAD_SIZE_M);
+    BLOCK_SPARSE_MATMUL_DSD<A_GRAD_BLOCK_SIZE_M, A_GRAD_BLOCK_SIZE_K, A_GRAD_BLOCK_SIZE_N, A_GRAD_THREAD_SIZE_M, A_GRAD_THREAD_SIZE_K, A_GRAD_THREAD_SIZE_N><<<a_grid_dim, a_block_dim>>>(grad_out, weight, a_grad, M, N, K, t_blockmask);
 }
 
 std::vector<at::Tensor> blockwise_dynamic_sparse_linear_backward(
@@ -826,8 +966,8 @@ std::vector<at::Tensor> blockwise_dynamic_sparse_linear_backward(
 )
 {
     // a_grad(M*K) = grad_c(M*N) * weight(N*K) 
-    // torch::Tensor a_grad = torch::zeros_like(activation);
-    torch::Tensor a_grad = at::matmul(grad_c, weight);
+    torch::Tensor a_grad = torch::empty_like(activation);
+    // torch::Tensor a_grad = at::matmul(grad_c, weight);
     // w_grad(N*K) = grad_c^T(N*M) X activation(M*K)
     torch::Tensor w_grad = torch::zeros_like(weight);
     torch::Tensor t_blockwise_mask = blockwise_mask.t().contiguous();
