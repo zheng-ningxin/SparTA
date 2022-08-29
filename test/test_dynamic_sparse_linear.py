@@ -13,7 +13,7 @@ from sparta.opset.bcsr_converter import BcsrConverter
 
 
 def test_speed(spl, input, mask):
-    runtime = 100
+    runtime = 2000
     tmp_grad = torch.rand_like(input)
     input.requires_grad_()
     torch.cuda.synchronize()
@@ -21,13 +21,16 @@ def test_speed(spl, input, mask):
     for rid in range(runtime):
         spl.update_mask(mask)
         out = spl(input)
-        # out.backward(tmp_grad)
+        out.backward(tmp_grad)
     torch.cuda.synchronize()
     end = time.time()
+    total_block_nnz = spl.ori_linear.weight.numel() / spl.block_h / spl.block_w 
+    print('Forward Sparsity:{} Backward Sparsity:{}'.format(spl.csr_row[-1]/total_block_nnz, spl.grad_csr_row[-1]/total_block_nnz))
+    print('csr_row_size:{} grad_csr_size:{}'.format(spl.csr_row.size(), spl.grad_csr_row.size()))
     print("Sparse speed: ", (end-st)/runtime*1000)
         
 def dense_speed(linear, input):
-    runtime = 100
+    runtime = 1000
     tmp_grad = torch.rand_like(input)
     input.requires_grad_()
 
@@ -35,7 +38,7 @@ def dense_speed(linear, input):
     st = time.time()
     for rid in range(runtime):
         out = linear(input)
-        # out.backward(tmp_grad)
+        out.backward(tmp_grad)
     torch.cuda.synchronize()
     end = time.time()
     print("Dense speed: ", (end-st)/runtime*1000)
@@ -93,16 +96,20 @@ def test_correctness():
     print("test correctness passed")
     
 if __name__ == '__main__':
-    in_dim = 2048
-    out_dim = 2048
-    batch_size = 2048
+    in_dim = 1024
+    out_dim = 1024
+    batch_size = 1024
     block_h = 64
     block_w = 32
     ori_linear = torch.nn.Linear(in_dim, out_dim, bias=True).cuda()
     d_linear = DynamicSparseLinear(ori_linear)
     data = torch.rand(batch_size, in_dim).cuda()
-    for sparsity_ratio in np.arange(0.1, 1, 0.1):
+    # for sparsity_ratio in np.arange(0.1, 1, 0.1):
+    dense_speed(ori_linear, data) # warm up
+    for sparsity_ratio in [0.05]:
         sp_pattern = random_sparse_pattern_block(out_dim, in_dim, sparsity_ratio, block_h, block_w).cuda()
         print('Sparsity ratio:', sparsity_ratio)
         test_speed(d_linear, data, sp_pattern)
-        dense_speed(ori_linear, data)
+        # dense_speed(ori_linear, data)
+        # test_correctness()
+        # dense_speed(ori_linear, data)

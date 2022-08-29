@@ -374,7 +374,7 @@ void dynamic_backward_function(float* grad_in, int * row_ptr, int *col_idx, floa
 {
         // sparse x dense
     // M: seq_length K: seq_length N:hidden dim
-    const int BLOCK_SIZE_M = 32;
+    const int BLOCK_SIZE_M = 64;
     const int BLOCK_SIZE_K = 32;
     const int BLOCK_SIZE_N = 64;
     const int THREAD_SIZE_M = 4;
