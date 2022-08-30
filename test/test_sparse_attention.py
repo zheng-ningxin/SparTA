@@ -3,7 +3,7 @@
 import time
 import torch
 import random
-from SparTA.OPs import *
+from sparta.opset.sparse_attention import *
 
 
 def compute_distance_to_token(ATTN_H, ATTN_W, FRAME_W):
