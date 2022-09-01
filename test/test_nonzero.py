@@ -4,6 +4,7 @@ if __name__ == '__main__':
     runtime = 10000
     M = 1024
     mask = torch.ones(M, dtype=torch.int32).cuda()
+    mask[:512]=0
     torch.cuda.synchronize()
     t_start = time.time()
     for i in range(runtime):
