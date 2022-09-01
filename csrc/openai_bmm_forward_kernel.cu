@@ -602,7 +602,16 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_CONDENSE_DIM_M(float* A_val, int* A_ro
 
         // Load the A_global to A_shared
         __syncthreads();
-
+        uint offsetA00 = 0;
+        uint offsetA16 = 0;
+        if(ty<index_end-index_start){
+            offsetA00 =(bx * BLOCK_SIZE_M + ty) * BLOCK_H * BLOCK_SIZE_K  + ori_offset_A00;
+            a00 = __ldg((const float4*)(add_ptr_f(A_val, offsetA00)));
+        }
+        if(ty+16<index_end-index_start){
+            offsetA16 = (bx * BLOCK_SIZE_M + ty + 16) * BLOCK_H * BLOCK_SIZE_K  + ori_offset_A00;
+            a16 = __ldg((const float4*)(add_ptr_f(A_val, offsetA16)));
+        }
 
         for(int block_n_id =0; block_n_id < N/BLOCK_SIZE_N; block_n_id++)
         {
@@ -610,16 +619,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_CONDENSE_DIM_M(float* A_val, int* A_ro
             for (int i = 0; i < 8; i++)
                 for (int j = 0; j < 4; j++)
                     regC[i][j] = 0.0f;
-            uint offsetA00 = 0;
-            uint offsetA16 = 0;
-            if(ty<index_end-index_start){
-                offsetA00 =(bx * BLOCK_SIZE_M + ty) * BLOCK_H * BLOCK_SIZE_K  + ori_offset_A00;
-                a00 = __ldg((const float4*)(add_ptr_f(A_val, offsetA00)));
-            }
-            if(ty+16<index_end-index_start){
-                offsetA16 = (bx * BLOCK_SIZE_M + ty + 16) * BLOCK_H * BLOCK_SIZE_K  + ori_offset_A00;
-                a16 = __ldg((const float4*)(add_ptr_f(A_val, offsetA16)));
-            }
+
             *(float*)&bShare[storAB + (0*32 +  0 + 0*65*32)*4] = a00.x;
             *(float*)&bShare[storAB + (1*32 +  0 + 0*65*32)*4] = a00.y;
             *(float*)&bShare[storAB + (2*32 +  0 + 0*65*32)*4] = a00.z;
@@ -753,8 +753,6 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_CONDENSE_DIM_M(float* A_val, int* A_ro
                 atomicAdd(wC, c2[0].x);
                 atomicAdd(wC+1, c2[0].y);
             }
-
-            
             __syncthreads();
             *(float4*)&fShare[storC + 0*32*8] = *(float4*)regC[4];
             *(float4*)&fShare[storC + 1*32*8] = *(float4*)regC[5];
@@ -879,7 +877,6 @@ at::Tensor openai_bmm_32_64_32_condense_dim_m(
     int block_nnz)
 {
     int sparse_val_size = block_nnz * block_h * block_w;
-    printf("block_nnz:%d\n", block_nnz);
     torch::Tensor output= torch::zeros({batchsize, M, N}, B.options());
     AT_DISPATCH_FLOATING_TYPES(B.type(), "openai_bmm_forward_dim_m", ([&]
                             { 
