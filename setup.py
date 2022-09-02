@@ -77,6 +77,9 @@ def _setup():
                                                                 'csrc/blockwise_dynamic_sparse_linear_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(blockwise_sparse_linear_ext)
+        dim_dynamic_sparse_linear_ext = CUDAExtension(name='dim_dynamic_sparse_linear_cpp', sources=['csrc/dim_dynamic_sparse_linear_forward.cpp', \
+                                                                'csrc/dim_dynamic_sparse_linear_forward_kernel.cu'])
+        ext_modules.append(dim_dynamic_sparse_linear_ext)
     print(rootdir)
     setup(
         name='SparTA',
