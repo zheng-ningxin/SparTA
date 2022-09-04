@@ -11,6 +11,7 @@ at::Tensor outdim_dynamic_sparse_linear_forward(
 std::vector<at::Tensor> outdim_dynamic_sparse_linear_backward(
     torch::Tensor activation,
     torch::Tensor weight,
+    torch::Tensor grad_c,
     torch::Tensor index
 );
 
