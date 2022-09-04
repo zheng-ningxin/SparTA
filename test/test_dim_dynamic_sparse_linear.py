@@ -20,8 +20,8 @@ def test_correctness(d_linear, data, mask):
     out.backward(tmp_grad)
     flag = torch.allclose(ref_out, out, rtol=1e-08, atol=1e-03)
     # import ipdb; ipdb.set_trace()
-    flag = flag and torch.allclose(d_linear.weight.grad, d_linear2.weight.grad, rtol=1e-08, atol=1e-03)
-    flag = flag and torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
+    # flag = flag and torch.allclose(d_linear.weight.grad, d_linear2.weight.grad, rtol=1e-08, atol=1e-03)
+    # flag = flag and torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
     if not flag:
         import ipdb; ipdb.set_trace()
 
@@ -64,16 +64,28 @@ if __name__ == '__main__':
     ori_linear = torch.nn.Linear(K, N).cuda()
     # ori_linear.weight.data[:] = 1
     # ori_linear.bias.data[:] = 0
-    d_linear = DimDynamicLinear(ori_linear, 0)
+    # d_linear = DimDynamicLinear(ori_linear, 0)
+    
+    # for sparsity_ratio in [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]:
+    # # for sparsity_ratio in [0]:
+    #     print('Sparsity ratio:', sparsity_ratio)
+    #     data = torch.rand(batch_size, seq_len, K).cuda()
+    #     # mask_w = torch.rand(N).cuda()
+    #     # c_mask = (mask_w > sparsity_ratio).to(torch.int32)
+    #     c_mask = random_mask_64(N, sparsity_ratio)
+    #     # print(torch.sum(c_mask)%64)
+    #     test_correctness(d_linear, data, c_mask)
+    #     # test_speed(d_linear, data, c_mask)
+    #     # dense_speed(d_linear, data, c_mask)
+    
+    d_linear = DimDynamicLinear(ori_linear, 1)
     
     for sparsity_ratio in [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]:
     # for sparsity_ratio in [0]:
         print('Sparsity ratio:', sparsity_ratio)
-        data = torch.rand(batch_size, seq_len, K).cuda()
-        # mask_w = torch.rand(N).cuda()
-        # c_mask = (mask_w > sparsity_ratio).to(torch.int32)
         c_mask = random_mask_64(N, sparsity_ratio)
-        # print(torch.sum(c_mask)%64)
+        data = torch.rand(batch_size, seq_len, torch.sum(c_mask)).cuda()
+
         test_correctness(d_linear, data, c_mask)
         # test_speed(d_linear, data, c_mask)
         # dense_speed(d_linear, data, c_mask)
