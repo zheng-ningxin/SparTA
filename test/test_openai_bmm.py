@@ -17,15 +17,27 @@ if __name__ == '__main__':
     # K = 1024
     # N = 1024
     M = 4096
-    K = 64
+    K = 128
     N = 4096
     block_h = 32
     block_w = 64
     RUNTIME = 10000
     
-    for sparsity_ratio in [0.0, 0.1,0.2,0.3,0.4,0.5,0.6 ,0.7 ,0.8 ,0.9 ,0.95 ,0.99]:
+    for sparsity_ratio in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]:
     # for sparsity_ratio in [0.5]:
     # sparsity_ratio = 0.0
+        #########################################################################
+        # measure the dense baseline time
+        A = torch.rand(batchsize, M, K).cuda()
+        B = torch.rand(K, N).cuda()
+        torch.cuda.synchronize()
+        t_start = time.time()
+        for _ in range(RUNTIME):
+            C = torch.matmul(A, B)
+        torch.cuda.synchronize()
+        t_end = time.time()
+        print('Dense time baseline latency(ms):', (t_end-t_start)*1000/RUNTIME)
+        
         # #######################################################################
         # # original openai sparse kernel
         A = torch.rand(batchsize, M, K).cuda()
