@@ -33,4 +33,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("outdim_forward", &outdim_dynamic_sparse_linear_forward, "dynamic sparse linear forward");
     m.def("outdim_backward", &outdim_dynamic_sparse_linear_backward, "dynamic sparse linear backward");
     m.def("indim_forward", &indim_dynamic_sparse_linear_forward, "in dim sparse dynamic linear");
+    m.def("indim_backward", &indim_dynamic_sparse_linear_backward, "in dim sparse dynamic linear backward");
 }

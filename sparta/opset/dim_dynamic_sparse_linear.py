@@ -36,7 +36,10 @@ class InDimDynamicLinearSparseFunction(torch.autograd.Function):
         return dim_dynamic_sparse_linear_cpp.indim_forward(data, weight, index, bias)
     @staticmethod
     def backward(ctx, *grad_out):
-        return None, None, None, None
+        data, weight, index = ctx.saved_tensors
+        a_grad, w_grad = dim_dynamic_sparse_linear_cpp.indim_backward(data, weight, grad_out[0], index)
+        return a_grad, w_grad, None, None
+
 
 class DimDynamicLinear(torch.nn.Module):
     def __init__(self, ori_linear, in_or_out):

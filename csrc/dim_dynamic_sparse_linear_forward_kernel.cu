@@ -1164,6 +1164,31 @@ at::Tensor indim_dynamic_sparse_linear_forward(
 
 }
 
+void indim_backward_function( float * activation,
+                        float * weight,
+                        float * grad_out,
+                        int * index,
+                        int M,
+                        int K,
+                        int N,
+                        int ori_in_features,
+                        float * a_grad,
+                        float * w_grad
+                        )
+{
+    const int BLOCK_SIZE_M = 32;
+    const int BLOCK_SIZE_K = 64;
+    const int BLOCK_SIZE_N = 32;
+    //w_grad(K*N) = activation^T(K*M) * grad_c(M*N)
+    dim3 w_block_dim(256);
+    // the size of w is K x N
+    dim3 w_grid_dim(N/BLOCK_SIZE_N, K/BLOCK_SIZE_M);
+    grad_w_kernel<<<w_grid_dim, w_block_dim>>>(activation, grad_out, w_grad, K, M, N, index);
+    // //a_grad(M*K) = grad_c(MxN) * weight(NxK)
+    // dim3 a_grid_dim(K/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
+    // BLOCK_SPARSE_MATMUL_NN_OPENAI<<<a_grid_dim, w_block_dim>>>(grad_out, weight, a_grad, index, M, N, K);
+}
+
 std::vector<at::Tensor> indim_dynamic_sparse_linear_backward(
     torch::Tensor activation,
     torch::Tensor weight,
@@ -1171,5 +1196,29 @@ std::vector<at::Tensor> indim_dynamic_sparse_linear_backward(
     torch::Tensor index
 )
 {
+    cudaSetDevice(activation.get_device());   
+    int batch_size = activation.size(0);
+    int seq_len = activation.size(1);
+    int in_hidden = activation.size(2);
+    assert(in_hidden==index.size(0));
+    int out_hidden = weight.size(1); // NOTE: the weight has been transposed
+    int ori_in_hidden = weight.size(0);
+    torch::Tensor w_grad = torch::zeros_like(weight);
+    torch::Tensor a_grad = torch::empty_like(activation);
+    AT_DISPATCH_FLOATING_TYPES(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
+    {       indim_backward_function(
+            activation.data_ptr<float>(),
+            weight.data_ptr<float>(),
+            grad_c.data_ptr<float>(),
+            index.data_ptr<int>(),
+            batch_size * seq_len,
+            in_hidden,
+            out_hidden,
+            ori_in_hidden,
+            a_grad.data_ptr<float>(),
+            w_grad.data_ptr<float>()
+        ); }));
+    std::vector<at::Tensor> grads({a_grad, w_grad});
+    return grads;
 
 }

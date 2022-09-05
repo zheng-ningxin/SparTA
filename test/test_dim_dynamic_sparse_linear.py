@@ -20,8 +20,9 @@ def test_correctness(d_linear, data, mask):
     out.backward(tmp_grad)
     flag = torch.allclose(ref_out, out, rtol=1e-08, atol=1e-03)
     # import ipdb; ipdb.set_trace()
-    # flag = flag and torch.allclose(d_linear.weight.grad, d_linear2.weight.grad, rtol=1e-08, atol=1e-03)
+    flag = flag and torch.allclose(d_linear.weight.grad, d_linear2.weight.grad, rtol=1e-08, atol=1e-03)
     # flag = flag and torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
+    import ipdb; ipdb.set_trace()
     if not flag:
         import ipdb; ipdb.set_trace()
 
