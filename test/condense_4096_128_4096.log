@@ -1,0 +1,144 @@
+Dense time baseline latency(ms): 0.49440855979919435
+Block-wise sparsity ratio: tensor(1., device='cuda:0')
+Original openai bmm latency(ms): 0.7990936517715455
+Block-wise sparsity ratio: tensor(1., device='cuda:0')
+Condense openai bmm latency(ms): 0.8627482414245605
+Block-wise sparsity ratio: tensor(1., device='cuda:0')
+Condense openai bmm on dim m latency(ms): 1.1633145570755006
+Block-wise sparsity ratio: tensor(1., device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 1.072843813896179
+##############################
+
+
+Dense time baseline latency(ms): 0.4257894277572632
+Block-wise sparsity ratio: tensor(0.9102, device='cuda:0')
+Original openai bmm latency(ms): 0.7482650756835938
+Block-wise sparsity ratio: tensor(0.8972, device='cuda:0')
+Condense openai bmm latency(ms): 0.8507515668869019
+Block-wise sparsity ratio: tensor(0.9016, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 1.1563446998596192
+Block-wise sparsity ratio: tensor(0.9003, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.9804521083831788
+##############################
+
+
+Dense time baseline latency(ms): 0.4257902383804321
+Block-wise sparsity ratio: tensor(0.8047, device='cuda:0')
+Original openai bmm latency(ms): 0.6856605768203735
+Block-wise sparsity ratio: tensor(0.8004, device='cuda:0')
+Condense openai bmm latency(ms): 0.8364311933517456
+Block-wise sparsity ratio: tensor(0.7985, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 1.0633174180984497
+Block-wise sparsity ratio: tensor(0.7902, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.8736749410629272
+##############################
+
+
+Dense time baseline latency(ms): 0.4257749080657959
+Block-wise sparsity ratio: tensor(0.7070, device='cuda:0')
+Original openai bmm latency(ms): 0.6290786027908325
+Block-wise sparsity ratio: tensor(0.7044, device='cuda:0')
+Condense openai bmm latency(ms): 0.8247424840927124
+Block-wise sparsity ratio: tensor(0.7012, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 0.9055868625640869
+Block-wise sparsity ratio: tensor(0.7069, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.797215485572815
+##############################
+
+
+Dense time baseline latency(ms): 0.42580361366271974
+Block-wise sparsity ratio: tensor(0.6133, device='cuda:0')
+Original openai bmm latency(ms): 0.572941780090332
+Block-wise sparsity ratio: tensor(0.6008, device='cuda:0')
+Condense openai bmm latency(ms): 0.8145958662033081
+Block-wise sparsity ratio: tensor(0.5958, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 0.8995818614959716
+Block-wise sparsity ratio: tensor(0.6011, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.7011298418045044
+##############################
+
+
+Dense time baseline latency(ms): 0.42580997943878174
+Block-wise sparsity ratio: tensor(0.4961, device='cuda:0')
+Original openai bmm latency(ms): 0.5076342821121216
+Block-wise sparsity ratio: tensor(0.4956, device='cuda:0')
+Condense openai bmm latency(ms): 0.6440577745437622
+Block-wise sparsity ratio: tensor(0.4952, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 0.7606158494949341
+Block-wise sparsity ratio: tensor(0.4972, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.6063196420669555
+##############################
+
+
+Dense time baseline latency(ms): 0.4258296489715576
+Block-wise sparsity ratio: tensor(0.3516, device='cuda:0')
+Original openai bmm latency(ms): 0.42606182098388673
+Block-wise sparsity ratio: tensor(0.3975, device='cuda:0')
+Condense openai bmm latency(ms): 0.5336391210556031
+Block-wise sparsity ratio: tensor(0.3999, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 0.7532736301422119
+Block-wise sparsity ratio: tensor(0.4106, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.5186135530471802
+##############################
+
+
+Dense time baseline latency(ms): 0.42579922676086424
+Block-wise sparsity ratio: tensor(0.3203, device='cuda:0')
+Original openai bmm latency(ms): 0.4088870048522949
+Block-wise sparsity ratio: tensor(0.3041, device='cuda:0')
+Condense openai bmm latency(ms): 0.5193020582199097
+Block-wise sparsity ratio: tensor(0.2999, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 0.6879294157028198
+Block-wise sparsity ratio: tensor(0.2990, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.42022945880889895
+##############################
+
+
+Dense time baseline latency(ms): 0.42583255767822265
+Block-wise sparsity ratio: tensor(0.2031, device='cuda:0')
+Original openai bmm latency(ms): 0.3428887605667114
+Block-wise sparsity ratio: tensor(0.1951, device='cuda:0')
+Condense openai bmm latency(ms): 0.49603495597839353
+Block-wise sparsity ratio: tensor(0.1974, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 0.6719553232192993
+Block-wise sparsity ratio: tensor(0.2089, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.33218989372253416
+##############################
+
+
+Dense time baseline latency(ms): 0.4257676601409912
+Block-wise sparsity ratio: tensor(0.0977, device='cuda:0')
+Original openai bmm latency(ms): 0.2829680204391479
+Block-wise sparsity ratio: tensor(0.1004, device='cuda:0')
+Condense openai bmm latency(ms): 0.4873420000076294
+Block-wise sparsity ratio: tensor(0.1012, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 0.6684816598892211
+Block-wise sparsity ratio: tensor(0.1017, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.23726444244384765
+##############################
+
+
+Dense time baseline latency(ms): 0.42514278888702395
+Block-wise sparsity ratio: tensor(0.0391, device='cuda:0')
+Original openai bmm latency(ms): 0.24869232177734374
+Block-wise sparsity ratio: tensor(0.0495, device='cuda:0')
+Condense openai bmm latency(ms): 0.48251559734344485
+Block-wise sparsity ratio: tensor(0.0502, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 0.49973795413970945
+Block-wise sparsity ratio: tensor(0.0504, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.19276156425476074
+##############################
+
+
+Dense time baseline latency(ms): 0.4251433849334717
+Block-wise sparsity ratio: tensor(0.0078, device='cuda:0')
+Original openai bmm latency(ms): 0.23076443672180175
+Block-wise sparsity ratio: tensor(0.0104, device='cuda:0')
+Condense openai bmm latency(ms): 0.4172159433364868
+Block-wise sparsity ratio: tensor(0.0111, device='cuda:0')
+Condense openai bmm on dim m latency(ms): 0.5090224027633667
+Block-wise sparsity ratio: tensor(0.0085, device='cuda:0')
+Condense openai bmm on dim m latency v2(ms): 0.15620617866516112
+##############################
+
+
