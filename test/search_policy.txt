@@ -1,0 +1,19 @@
+Function is_legal_mapping(data_tile, computation_tile):
+    /*return whether the data tile can be mapped to the
+      given computation tile*/
+    return has_one_same_dim(data_tile, computation_tile)    
+
+Function try_optimize(P):
+    /*
+    P: optimization policy
+    Search for the appropriate tile sizes
+    */
+    data_tile_set, compute_tile_set = load_from_tileDB()
+    P.init_space(data_tile_set, compute_tile_set) 
+    while(P.has_time_budgut()){
+        data_tile, compute_tile = P.get_next_tiles()
+        if(is_legal_mapping(data_tile, compute_tile)){
+            P.record_perf(data_tile, compute_tile)
+        }
+    }
+    return P.best_data_tile, P.best_compute_tile
