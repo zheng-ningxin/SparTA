@@ -26,10 +26,14 @@ def _setup():
         # cusparse need cuda version higher than 11.1
         cuda_version = torch.version.cuda
         if cuda_version > '11.1':
-            cusparse_ext = CUDAExtension(name='cusparse_linear', sources=[
+            cusparse_linear_ext = CUDAExtension(name='cusparse_linear', sources=[
                                     'csrc/cusparse_linear_forward.cpp', 'csrc/cusparse_linear_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-lcusparse', '-O3'])
-            ext_modules.append(cusparse_ext)
+            ext_modules.append(cusparse_linear_ext)
+            cusparse_csr_ext =  CUDAExtension(name='cusparse_csr_cpp', sources=[
+                                    'csrc/cusparse_csr_convert_forward.cpp', 'csrc/cusparse_csr_convert_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-lcusparse', '-O3'])
+            ext_modules.append(cusparse_csr_ext)
         # the bcsr convert kernel
         bcsr_ext = CUDAExtension(name='convert_bcsr_cpp', sources=['csrc/convert_bcsr_forward.cpp',
                                                             'csrc/convert_bcsr_forward_kernel.cu'],
