@@ -126,3 +126,77 @@ std::vector<at::Tensor> cusparse_convert_forward(
     std::vector<at::Tensor> csr({csr_row, csr_col, csr_val});
     return csr;
 }
+
+void cusparse_csr_sparse_to_dense(int num_rows,
+                                  int num_cols,
+                                  int nnz,
+                                  int * d_csr_offsets,
+                                  int * d_csr_columns,
+                                  float * d_csr_values,
+                                  float * d_dense
+                                    )
+{
+    // // CUSPARSE APIs
+    // int num_rows = dense_shape[0];
+    // int num_cols = dense_shape[1];
+
+    cusparseHandle_t     handle = NULL;
+    cusparseSpMatDescr_t matA;
+    cusparseDnMatDescr_t matB;
+    void*                dBuffer    = NULL;
+    size_t               bufferSize = 0;
+    CUSPARSE_SAFE_CALL( cusparseCreate(&handle) );
+    // Create sparse matrix A in CSR format
+    CUSPARSE_SAFE_CALL( cusparseCreateCsr(&matA, num_rows, num_cols, nnz,
+                                      d_csr_offsets, d_csr_columns,
+                                      d_csr_values, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) );
+    // Create dense matrix B
+    CUSPARSE_SAFE_CALL( cusparseCreateDnMat(&matB, num_rows, num_cols, num_cols, d_dense,
+                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) );
+    // allocate an external buffer if needed
+    CUSPARSE_SAFE_CALL( cusparseSparseToDense_bufferSize(
+                                        handle, matA, matB,
+                                        CUSPARSE_SPARSETODENSE_ALG_DEFAULT,
+                                        &bufferSize) );
+    CUDA_SAFE_CALL( cudaMalloc(&dBuffer, bufferSize) );
+
+    // execute Sparse to Dense conversion
+    CUSPARSE_SAFE_CALL( cusparseSparseToDense(handle, matA, matB,
+                                          CUSPARSE_SPARSETODENSE_ALG_DEFAULT,
+                                          dBuffer) );
+    // destroy matrix/vector descriptors
+    CUDA_SAFE_CALL( cudaFree(dBuffer) );
+    CUSPARSE_SAFE_CALL( cusparseDestroySpMat(matA) );
+    CUSPARSE_SAFE_CALL( cusparseDestroyDnMat(matB) );
+    CUSPARSE_SAFE_CALL( cusparseDestroy(handle) );
+
+}
+
+at::Tensor cusparse_convert_backward(
+    torch::Tensor csr_row,
+    torch::Tensor csr_col,
+    torch::Tensor csr_val,
+    int n_row,
+    int n_col,
+    int nnz
+){
+    cudaSetDevice(csr_row.get_device());
+    // the weight shape should be KxN
+    // assert( n_row == csr_row.size(0));
+    torch::Tensor dense_out = torch::empty({n_row, n_col}, csr_val.options());
+    AT_DISPATCH_FLOATING_TYPES(csr_val.type(), "cusparse convert_csr", ([&]
+    { cusparse_csr_sparse_to_dense(
+            n_row,
+            n_col,
+            nnz,
+            csr_row.data_ptr<int>(),
+            csr_col.data_ptr<int>(),
+            csr_val.data_ptr<float>(),
+            dense_out.data_ptr<float>()
+        ); }));
+    
+    return dense_out;
+
+}
