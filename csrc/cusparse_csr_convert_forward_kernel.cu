@@ -7,18 +7,7 @@
 using namespace std;
 // Macro definition for the cuda and cusparse
 // cuSparse SPMM interface
-int cusparse_spmm(
-    int M,
-    int K,
-    int N,
-    int * row_idx,
-    int * col_idx,
-    float * values,
-    float * MB,
-    float * MC,
-    float * alpha,
-    float * beta
-);
+
 #define CUBLAS_SAFE_CALL(func)                                                                  \
     do                                                                                          \
     {                                                                                           \
