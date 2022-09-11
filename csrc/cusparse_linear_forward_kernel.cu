@@ -78,19 +78,19 @@ int cusparse_spmm(
     MC: Output tensor, Shape M*N
     */
     cusparseHandle_t cusparse_handle;
-    printf("M:%d K:%d, N:%d \n", M,K,N);
+    // printf("M:%d K:%d, N:%d \n", M,K,N);
 
     CUSPARSE_SAFE_CALL(cusparseCreate(&cusparse_handle));
     static size_t bufferSize = 0;
     static float *dBuffer = NULL;
     cusparseSpMatDescr_t sp_weight;
     cusparseDnMatDescr_t in_activation, output_m;
-    printf("M:%d K:%d, N:%d \n", M,K,N);
+    // printf("M:%d K:%d, N:%d \n", M,K,N);
 
     // printf("%d\n", row_index[K-1]);
     // printf("%d\n", row_index[K]);
     // int nnz = col_index[row_index[K]];
-    printf("nnz:%d\n",nnz);
+    // printf("nnz:%d\n",nnz);
     CUSPARSE_SAFE_CALL(cusparseCreateCsr(&sp_weight,
                                          K,
                                          N,
@@ -136,7 +136,8 @@ at::Tensor cusparse_linear_forward(
     torch::Tensor row_index,
     torch::Tensor col_index,
     torch::Tensor values,
-    std::vector<int> weight_shape)
+    std::vector<int> weight_shape,
+    int nnz)
 {   
     cudaSetDevice(input.get_device());
     // the weight shape should be KxN
@@ -152,9 +153,9 @@ at::Tensor cusparse_linear_forward(
     output_shape.push_back(out_features);
     c10::ArrayRef<int64_t> _out_size(output_shape.data(), output_shape.data() + output_shape.size());
     torch::Tensor output = torch::empty(_out_size, input.options());
-    printf("row index size: %d\n", row_index.size(0));
-    printf("m:%d, k:%d, n:%d\n",batch_size, in_features, out_features);
-    int nnz = values.size(0);
+    // printf("row index size: %d\n", row_index.size(0));
+    // printf("m:%d, k:%d, n:%d\n",batch_size, in_features, out_features);
+    // int nnz = values.size(0);
     AT_DISPATCH_FLOATING_TYPES(input.type(), "cusparse_linear_forward", ([&]
                                                                            { cusparse_spmm(
                                                                                  batch_size,

@@ -5,7 +5,8 @@ at::Tensor cusparse_linear_forward(
     torch::Tensor row_index,
     torch::Tensor col_index,
     torch::Tensor values,
-    std::vector<int> weight_shape);
+    std::vector<int> weight_shape,
+    int nnz);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
