@@ -12,11 +12,13 @@ class CusparseDynamicLinear(torch.nn.Module):
 
     def update_mask(self, mask):
         self.mask = mask
-        self.csr_row, self.csr_col, self.csr_val = cusparse_csr_cpp.forward((mask*self.weight).t().contiguous())
+        # self.csr_row, self.csr_col, self.csr_val = cusparse_csr_cpp.forward((mask*self.weight).t().contiguous())
+        self.csr_row, self.csr_col, self.csr_val = cusparse_csr_cpp.forward((mask*self.weight).contiguous())
     
     def forward(self, data):
         # import ipdb; ipdb.set_trace()
-        out = cusparse_linear.forward(data, self.csr_row, self.csr_col, self.csr_val, self.weight.t().size(), self.csr_row[-1]) 
+        # out = cusparse_linear.forward(data, self.csr_row, self.csr_col, self.csr_val, self.weight.t().size(), self.csr_row[-1]) 
+        out = cusparse_linear.forward(data, self.csr_row, self.csr_col, self.csr_val, self.weight.size(), self.csr_row[-1]) 
         if self.bias is not None:
             out += self.bias
         return out

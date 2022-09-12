@@ -5,7 +5,7 @@ from sparta.opset.cusparse_dynamic_linear import CusparseDynamicLinear
 if __name__ == '__main__':
     M = 1024
     K = 2048
-    N = 1024
+    N = 4096
     ori_linear = torch.nn.Linear(K, N, bias=True).cuda()
     c_linear = CusparseDynamicLinear(ori_linear)
     for sparsity_ratio in [0,1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:

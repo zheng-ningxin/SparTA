@@ -85,15 +85,15 @@ int cusparse_spmm(
     static float *dBuffer = NULL;
     cusparseSpMatDescr_t sp_weight;
     cusparseDnMatDescr_t in_activation, output_m;
-    // printf("M:%d K:%d, N:%d \n", M,K,N);
+    // printf("M:%d K:%d, N:%d \n", M, K, N);
 
     // printf("%d\n", row_index[K-1]);
     // printf("%d\n", row_index[K]);
     // int nnz = col_index[row_index[K]];
     // printf("nnz:%d\n",nnz);
     CUSPARSE_SAFE_CALL(cusparseCreateCsr(&sp_weight,
-                                         K,
                                          N,
+                                         K,
                                          nnz,
                                          (void *)row_index,
                                          (void *)col_index,
@@ -102,8 +102,8 @@ int cusparse_spmm(
                                          CUSPARSE_INDEX_32I,
                                          CUSPARSE_INDEX_BASE_ZERO,
                                          CUDA_R_32F));
-    CUSPARSE_SAFE_CALL(cusparseCreateDnMat(&in_activation, K, M, K, MA,
-                                           CUDA_R_32F, CUSPARSE_ORDER_COL));
+    CUSPARSE_SAFE_CALL(cusparseCreateDnMat(&in_activation, M, K, K, MA,
+                                           CUDA_R_32F, CUSPARSE_ORDER_ROW));
     CUSPARSE_SAFE_CALL(cusparseCreateDnMat(&output_m, N, M, N, MC,
                                            CUDA_R_32F, CUSPARSE_ORDER_COL));
     if (dBuffer == NULL)
@@ -111,16 +111,16 @@ int cusparse_spmm(
         // allocate the worksparce buffer if this is the first call
         CUSPARSE_SAFE_CALL(cusparseSpMM_bufferSize(
             cusparse_handle,
-            CUSPARSE_OPERATION_TRANSPOSE,
             CUSPARSE_OPERATION_NON_TRANSPOSE,
+            CUSPARSE_OPERATION_TRANSPOSE,
             &alpha, sp_weight, in_activation, &beta, output_m, CUDA_R_32F,
             CUSPARSE_SPMM_CSR_ALG2, &bufferSize));
         CUDA_SAFE_CALL(cudaMalloc(&dBuffer, bufferSize));
     }
     // Execute the forward matmul
     CUSPARSE_SAFE_CALL(cusparseSpMM(cusparse_handle,
-                                    CUSPARSE_OPERATION_TRANSPOSE,
                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                    CUSPARSE_OPERATION_TRANSPOSE,
                                     &alpha, sp_weight, in_activation, &beta, output_m, CUDA_R_32F,
                                     CUSPARSE_SPMM_CSR_ALG2, dBuffer));
     // destroy matrix/vector descriptors
@@ -149,7 +149,8 @@ at::Tensor cusparse_linear_forward(
     std::vector<int64_t> output_shape;
     for(int i=0; i<n_dim-1; i++) output_shape.push_back(input_sizes[i]);
     assert(weight_shape.size()==2);
-    int out_features = weight_shape[1];
+    // int out_features = weight_shape[1];
+    int out_features = weight_shape[0];
     output_shape.push_back(out_features);
     c10::ArrayRef<int64_t> _out_size(output_shape.data(), output_shape.data() + output_shape.size());
     torch::Tensor output = torch::empty(_out_size, input.options());
@@ -174,8 +175,9 @@ at::Tensor cusparse_linear_forward(
 
 void backward_function()
 {
-    //a_grad(M*K) = grad_out(M*N) * N*K
-    //w_grad(K*N) = activation(M*K) * grad_out(M*N) 
+    // a_grad(M*K) = grad_out(M*N) * N*K
+    // w_grad(N*K) = grad_out^T(N*M) x activation(M*K) 
+    
 }
 
 std::vector<at::Tensor> cusparse_linear_backward(
