@@ -171,3 +171,27 @@ at::Tensor cusparse_linear_forward(
                                                                                  0); }));
     return output;
 }
+
+void backward_function()
+{
+    //a_grad(M*K) = grad_out(M*N) * N*K
+    //w_grad(K*N) = activation(M*K) * grad_out(M*N) 
+}
+
+std::vector<at::Tensor> cusparse_linear_backward(
+    torch::Tensor activation,
+    torch::Tensor row_index,
+    torch::Tensor col_index,
+    torch::Tensor csr_val,
+    torch::Tensor grad_out,
+    std::vector<int> weight_shape,
+    int nnz)
+{
+    cudaSetDevice(activation.get_device());
+    torch::Tensor a_grad = torch::empty_like(activation);
+    torch::Tensor w_grad = torch::empty_like(csr_val);
+    int n_row = weight_shape[0];
+    int n_col = weight_shape[1];
+    std::vector<at::Tensor> grads({a_grad, w_grad});
+    return grads;
+}
