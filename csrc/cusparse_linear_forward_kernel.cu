@@ -173,11 +173,94 @@ at::Tensor cusparse_linear_forward(
     return output;
 }
 
-void backward_function()
+int cusparse_a_grad(
+    float * grad_out,
+    int * row_index,
+    int * col_index,
+    float * values,
+    int nnz,
+    float * a_grad,
+    int M, int K, int N
+)
 {
-    // a_grad(M*K) = grad_out(M*N) * N*K
+    /*
+    MA: In activation tensor, Shape: M*K
+    NOTE: weight need to be transposed if the weight is stores as NxK
+    row_index, col_index, values: Weight in CSR format, Shape: K*N
+    MC: Output tensor, Shape M*N
+    */
+    cusparseHandle_t cusparse_handle;
+
+    CUSPARSE_SAFE_CALL(cusparseCreate(&cusparse_handle));
+    static size_t bufferSize = 0;
+    static float *dBuffer = NULL;
+    cusparseSpMatDescr_t sp_weight;
+    cusparseDnMatDescr_t in_activation, output_m;
+    // printf("M:%d K:%d, N:%d \n", M, K, N);
+    float alpha = 1.0;
+    float beta = 0.0;
+    // printf("%d\n", row_index[K-1]);
+    // printf("%d\n", row_index[K]);
+    // int nnz = col_index[row_index[K]];
+    // printf("nnz:%d\n",nnz);
+    CUSPARSE_SAFE_CALL(cusparseCreateCsr(&sp_weight,
+                                         N,
+                                         K,
+                                         nnz,
+                                         (void *)row_index,
+                                         (void *)col_index,
+                                         (void *)values,
+                                         CUSPARSE_INDEX_32I,
+                                         CUSPARSE_INDEX_32I,
+                                         CUSPARSE_INDEX_BASE_ZERO,
+                                         CUDA_R_32F));
+    CUSPARSE_SAFE_CALL(cusparseCreateDnMat(&in_activation, M, N, N, grad_out,
+                                           CUDA_R_32F, CUSPARSE_ORDER_ROW));
+    CUSPARSE_SAFE_CALL(cusparseCreateDnMat(&output_m, K, M, K, a_grad,
+                                           CUDA_R_32F, CUSPARSE_ORDER_COL));
+    if (dBuffer == NULL)
+    {
+        // allocate the worksparce buffer if this is the first call
+        CUSPARSE_SAFE_CALL(cusparseSpMM_bufferSize(
+            cusparse_handle,
+            CUSPARSE_OPERATION_TRANSPOSE,
+            CUSPARSE_OPERATION_TRANSPOSE,
+            &alpha, sp_weight, in_activation, &beta, output_m, CUDA_R_32F,
+            CUSPARSE_SPMM_CSR_ALG2, &bufferSize));
+        CUDA_SAFE_CALL(cudaMalloc(&dBuffer, bufferSize));
+    }
+    // Execute the forward matmul
+    CUSPARSE_SAFE_CALL(cusparseSpMM(cusparse_handle,
+                                    CUSPARSE_OPERATION_TRANSPOSE,
+                                    CUSPARSE_OPERATION_TRANSPOSE,
+                                    &alpha, sp_weight, in_activation, &beta, output_m, CUDA_R_32F,
+                                    CUSPARSE_SPMM_CSR_ALG2, dBuffer));
+    // destroy matrix/vector descriptors
+    CUSPARSE_SAFE_CALL(cusparseDestroyDnMat(in_activation));
+    CUSPARSE_SAFE_CALL(cusparseDestroyDnMat(output_m));
+    CUSPARSE_SAFE_CALL(cusparseDestroySpMat(sp_weight));
+    CUSPARSE_SAFE_CALL(cusparseDestroy(cusparse_handle));
+    return 0;
+}
+
+void backward_function(
+    float * activation,
+    int * csr_row, 
+    int * csr_col,
+    float * csr_val,
+    int nnz,
+    float * grad_out,
+    float * a_grad,
+    float * w_grad,
+    int M,
+    int K,
+    int N)
+{
+    // forward computation
+    // activation(M*K) x weight^T(K*N)
+    // a_grad(M*K) = grad_out(M*N) * weight (N*K)
     // w_grad(N*K) = grad_out^T(N*M) x activation(M*K) 
-    
+    cusparse_a_grad(grad_out, csr_row, csr_col, csr_val, nnz, a_grad, M, K, N);
 }
 
 std::vector<at::Tensor> cusparse_linear_backward(
@@ -186,14 +269,28 @@ std::vector<at::Tensor> cusparse_linear_backward(
     torch::Tensor col_index,
     torch::Tensor csr_val,
     torch::Tensor grad_out,
-    std::vector<int> weight_shape,
+    int M,
+    int K,
+    int N,
     int nnz)
 {
     cudaSetDevice(activation.get_device());
     torch::Tensor a_grad = torch::empty_like(activation);
     torch::Tensor w_grad = torch::empty_like(csr_val);
-    int n_row = weight_shape[0];
-    int n_col = weight_shape[1];
+    int n_row = N;
+    int n_col = K;
+    AT_DISPATCH_FLOATING_TYPES(activation.type(), "cusparse_linear_backward", ([&]
+                                                                        { backward_function(
+                                                                        activation.data_ptr<float>(),
+                                                                        row_index.data_ptr<int>(),
+                                                                        col_index.data_ptr<int>(),
+                                                                        csr_val.data_ptr<float>(),
+                                                                        nnz,
+                                                                        grad_out.data_ptr<float>(),
+                                                                        a_grad.data_ptr<float>(),
+                                                                        w_grad.data_ptr<float>(),
+                                                                        M, K, N
+                                                                        ); }));
     std::vector<at::Tensor> grads({a_grad, w_grad});
     return grads;
 }

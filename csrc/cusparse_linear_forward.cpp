@@ -15,7 +15,7 @@ std::vector<at::Tensor> cusparse_linear_backward(
     torch::Tensor col_index,
     torch::Tensor values,
     torch::Tensor grad_out,
-    std::vector<int> weight_shape,
+    int M, int K, int N,
     int nnz);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
