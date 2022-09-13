@@ -19,9 +19,9 @@ if __name__ == '__main__':
         data_2.requires_grad_()
         mask_weight = torch.randn(N, K).cuda()
         mask = (mask_weight > sparsity_ratio).to(torch.int32)
-        c_linear.update_mask(mask)
+        # c_linear.update_mask(mask)
         ori_linear.weight.data *= mask
-        out = c_linear(data_1)
+        out = c_linear(data_1, mask)
         ref_out = ori_linear(data_2)
         tmp_grad = torch.rand_like(out)
         out.backward(tmp_grad)
