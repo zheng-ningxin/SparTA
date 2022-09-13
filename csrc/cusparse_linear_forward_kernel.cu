@@ -243,6 +243,72 @@ int cusparse_a_grad(
     return 0;
 }
 
+int cusparse_w_grad(float * grad_out,
+                    float * activation,
+                    int * csr_row,
+                    int * csr_col,
+                    float * w_grad,
+                    int M,
+                    int K,
+                    int N,
+                    int nnz)
+{
+    //--------------------------------------------------------------------------
+    // CUSPARSE APIs
+    cusparseHandle_t     handle = NULL;
+    cusparseDnMatDescr_t matA, matB;
+    cusparseSpMatDescr_t matC;
+    void*                dBuffer    = NULL;
+    size_t               bufferSize = 0;
+    CUSPARSE_SAFE_CALL( cusparseCreate(&handle) );
+    float alpha = 1.0;
+    float beta = 0.0;
+    // Create dense matrix A
+    int A_num_rows = M;
+    int A_num_cols = N;
+    int B_num_rows = M;
+    int B_num_cols = K;
+    int C_num_rows = N;
+    int C_num_cols = K;
+    CUSPARSE_SAFE_CALL( cusparseCreateDnMat(&matA, A_num_rows, A_num_cols, A_num_cols, grad_out,
+                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) );
+    // Create dense matrix B
+    CUSPARSE_SAFE_CALL( cusparseCreateDnMat(&matB, B_num_rows, B_num_cols, B_num_cols, activation,
+                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) );
+    // Create sparse matrix C in CSR format
+    CUSPARSE_SAFE_CALL( cusparseCreateCsr(&matC, C_num_rows, C_num_cols, nnz,
+                                      csr_row, csr_col, w_grad,
+                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) );
+    // allocate an external buffer if needed
+    CUSPARSE_SAFE_CALL( cusparseSDDMM_bufferSize(
+                                 handle,
+                                 CUSPARSE_OPERATION_TRANSPOSE,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 &alpha, matA, matB, &beta, matC, CUDA_R_32F,
+                                 CUSPARSE_SDDMM_ALG_DEFAULT, &bufferSize) );
+    CUDA_SAFE_CALL( cudaMalloc(&dBuffer, bufferSize) );
+
+    // execute preprocess (optional)
+    CUSPARSE_SAFE_CALL( cusparseSDDMM_preprocess(
+                                  handle,
+                                  CUSPARSE_OPERATION_TRANSPOSE,
+                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
+                                  CUSPARSE_SDDMM_ALG_DEFAULT, dBuffer) );
+    // execute SpMM
+    CUSPARSE_SAFE_CALL( cusparseSDDMM(handle,
+                                  CUSPARSE_OPERATION_TRANSPOSE,
+                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
+                                  CUSPARSE_SDDMM_ALG_DEFAULT, dBuffer) );
+    // destroy matrix/vector descriptors
+    CUSPARSE_SAFE_CALL( cusparseDestroyDnMat(matA) );
+    CUSPARSE_SAFE_CALL( cusparseDestroyDnMat(matB) );
+    CUSPARSE_SAFE_CALL( cusparseDestroySpMat(matC) );
+    CUSPARSE_SAFE_CALL( cusparseDestroy(handle) );
+}
+
 void backward_function(
     float * activation,
     int * csr_row, 
@@ -261,6 +327,7 @@ void backward_function(
     // a_grad(M*K) = grad_out(M*N) * weight (N*K)
     // w_grad(N*K) = grad_out^T(N*M) x activation(M*K) 
     cusparse_a_grad(grad_out, csr_row, csr_col, csr_val, nnz, a_grad, M, K, N);
+    cusparse_w_grad(grad_out, activation, csr_row, csr_col, w_grad, M, K, N, nnz);
 }
 
 std::vector<at::Tensor> cusparse_linear_backward(
