@@ -6,8 +6,9 @@ if __name__ == '__main__':
     M = 1024
     K = 2048
     N = 4096
-    for sparsity_ratio in [0,1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
+    for sparsity_ratio in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
         ori_linear = torch.nn.Linear(K, N, bias=True).cuda()
+        ori_linear.weight.data.uniform_(0.1, 1)
         c_linear = CusparseDynamicLinear(ori_linear)
 
         print('Sparsity ratio:', sparsity_ratio)
@@ -26,7 +27,12 @@ if __name__ == '__main__':
         out.backward(tmp_grad)
         ref_out.backward(tmp_grad)
         # import ipdb; ipdb.set_trace()
-        assert torch.allclose(out, ref_out, rtol=1e-08, atol=1e-04)
+        flag = True
+        flag = flag and torch.allclose(out, ref_out, rtol=1e-08, atol=1e-03)
         # import ipdb; ipdb.set_trace()
-        assert torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-04)
+        flag = flag and torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
+        # import ipdb; ipdb.set_trace()
+        flag = flag and torch.allclose(ori_linear.weight.grad * mask, c_linear.weight.grad, rtol=1e-08, atol=1e-03)
+        if not flag:
+            import ipdb; ipdb.set_trace()
         print('correctness passed')
