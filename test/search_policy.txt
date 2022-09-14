@@ -1,19 +1,26 @@
 Function is_legal_mapping(data_tile, computation_tile):
     /*return whether the data tile can be mapped to the
       given computation tile*/
-    return has_one_same_dim(data_tile, computation_tile)    
+    mapping_dim = find_mapping_dimension(data_tile.size, computation.size)
+    if(mapping_dim == -1) // no legal mapping dimension
+        return False
+    return can_apply_elem_trans(computation_tile.compute_logic, mapping_dim)
 
 Function try_optimize(P):
-    /*
-    P: optimization policy
-    Search for the appropriate tile sizes
-    */
+    // P: optimization policy search for the appropriate tile sizes
     data_tile_set, compute_tile_set = load_from_tileDB()
     P.init_space(data_tile_set, compute_tile_set) 
-    while(P.has_time_budgut()){
+    if(P.has_time_budgut()){
         data_tile, compute_tile = P.get_next_tiles()
         if(is_legal_mapping(data_tile, compute_tile)){
-            P.record_perf(data_tile, compute_tile)
+            apply_tiles(data_tile, compute_tile)
+            cur_perf = record_perf(data_tile, compute_tile)
+            if(cur_perf < P.best_perf){
+                P.update_best_tile(data_tile, computation_tile)
+                P.update_perf(cur_perf)
+            }
+            // if current tile config is not better,
+            // revert back to best tiles for following inferences
+            apply_tiles(P.best_data_tile, P.best_compute_tile)
         }
     }
-    return P.best_data_tile, P.best_compute_tile
