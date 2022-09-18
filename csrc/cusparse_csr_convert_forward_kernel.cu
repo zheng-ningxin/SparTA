@@ -89,6 +89,7 @@ int cusparse_csr_convert(
     CUSPARSE_SAFE_CALL( cusparseDestroyDnMat(matA) );
     CUSPARSE_SAFE_CALL( cusparseDestroySpMat(matB) );
     CUSPARSE_SAFE_CALL( cusparseDestroy(handle) );
+    return 0;
 }
 
 std::vector<at::Tensor> cusparse_convert_forward(

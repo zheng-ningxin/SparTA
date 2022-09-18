@@ -307,6 +307,7 @@ int cusparse_w_grad(float * grad_out,
     CUSPARSE_SAFE_CALL( cusparseDestroyDnMat(matB) );
     CUSPARSE_SAFE_CALL( cusparseDestroySpMat(matC) );
     CUSPARSE_SAFE_CALL( cusparseDestroy(handle) );
+    return 0;
 }
 
 void backward_function(

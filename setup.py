@@ -1,6 +1,5 @@
 
 import os
-from tkinter.tix import FileSelectBox
 import torch
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension, CppExtension
