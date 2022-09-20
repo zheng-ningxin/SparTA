@@ -38,7 +38,7 @@ def test_corressness_full(data, full_mask, ori_linear, b_linear, block_h=32, blo
     
     
     ori_linear.weight.data *= full_mask.data
-    b_linear.weight.data *= full_mask.data
+    # b_linear.weight.data *= full_mask.data
     ref_out = ori_linear(data_1)
     out = b_linear(data_2, full_mask)
     tmp_grad = torch.rand_like(ref_out)

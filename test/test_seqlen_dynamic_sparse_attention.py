@@ -8,6 +8,7 @@ from cmath import inf
 from sparta.opset import *
 from sparta.opset.seqlen_dynamic_sparse_attention import SeqlenDynamicSparseAttention
 import joblib
+from sparta.opset.triton_dynamic_sparse_attention import TritonDynamicAttention
 
 def random_sparse_pattern(seq_len, sparsity):
     pattern = torch.zeros(seq_len, seq_len, dtype=torch.int32)
@@ -38,7 +39,7 @@ def test_speed(sparse_attention, sparse_pattern, head_num, seq_len, hidden_n, de
 
     torch.cuda.synchronize()
     st = time.time()
-    for _ in range(50):
+    for _ in range(1000):
         sparse_attention.set_global_seqlens(sparse_pattern)
         q = torch.rand(batch_size, head_num, seq_len, hidden_n,
                        dtype=torch.float32, device=device)
@@ -75,7 +76,7 @@ def dense_speed(sparse_attention, seq_len_pattern, head_num, max_seq_len, hidden
 
     torch.cuda.synchronize()
     st = time.time()
-    for _ in range(50):
+    for _ in range(1000):
         q = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
                        dtype=torch.float32, device=device)
         k = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
@@ -147,9 +148,37 @@ def random_seqlen(batchsize, max_seqlen):
     seqlens = torch.randint(1, max_seqlen, (batchsize,), dtype=torch.int32)
     return seqlens
 
+def test_triton(seqlens, head_num, seq_len, hidden_n, device):
+    # warmup
+    q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                   dtype=torch.float32, device=device)
+    # import ipdb; ipdb.set_trace()
+    max_seq_len = torch.max(seqlens)
+    print('triton: max_seq_len', max_seq_len)
+    mask = torch.zeros(head_num, seq_len, seq_len, device=device)
+    mask[:, 0:max_seq_len, 0:max_seq_len] = 1
+    t_attn = TritonDynamicAttention(32, 32, head_num)
+    torch.cuda.synchronize()
+    st = time.time()
+    for _ in range(1000):
+        q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device)
+        k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device)
+        v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+                       dtype=torch.float32, device=device)
+        t_attn(q, k, v, mask)
+    torch.cuda.synchronize()
+    end = time.time()
+
+    print('Triton Forward Implementation', end-st)
 if __name__ == '__main__':
-    batch_size = 8
-    max_seq_len = 128
+    batch_size = 20
+    max_seq_len = 2048
     HEAD_NUM = 12
     hidden_n = 64
     device = torch.device('cuda:0')
@@ -159,5 +188,6 @@ if __name__ == '__main__':
     spa = SeqlenDynamicSparseAttention(True)
     SeqlenDynamicSparseAttention.set_global_seqlens(seqlens)
     test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
-    dense_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
-    test_correctness(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
+    # dense_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
+    # test_correctness(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
+    test_triton(seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
