@@ -171,14 +171,14 @@ def test_triton(seqlens, head_num, seq_len, hidden_n, device):
                        dtype=torch.float32, device=device)
         v = torch.rand(batch_size, head_num, seq_len, hidden_n,
                        dtype=torch.float32, device=device)
-        t_attn(q, k, v, mask)
+        out = t_attn(q, k, v, mask)
     torch.cuda.synchronize()
     end = time.time()
 
     print('Triton Forward Implementation', end-st)
 if __name__ == '__main__':
     batch_size = 20
-    max_seq_len = 2048
+    max_seq_len = 256
     HEAD_NUM = 12
     hidden_n = 64
     device = torch.device('cuda:0')
