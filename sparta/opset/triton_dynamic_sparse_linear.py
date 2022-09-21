@@ -47,12 +47,13 @@ class TritonDynamicLinear(torch.nn.Module):
     def __init__(self, ori_linear, block_h, block_w, full_mask=True):
         super(TritonDynamicLinear, self).__init__()
         assert isinstance(ori_linear, torch.nn.Linear)
+        self.ori_linear = ori_linear
         self.weight = ori_linear.weight.clone().detach()
         self.bias = None
         if ori_linear.bias is not None:
             self.bias = ori_linear.bias.clone().detach()
         self.block_h, self.block_w = block_h, block_w
-        self.weight = torch.zeros_like(self.weight.size(0)//self.block_h, self.weight.size(1)//self.block_w, self.block_h, self.block_w)
+        self.weight = torch.zeros(self.weight.size(0)//self.block_h, self.weight.size(1)//self.block_w, self.block_h, self.block_w, device=self.weight.device)
         for i in range(self.weight.size(0)):
             for j in range(self.weight.size(1)):
                 self.weight.data[i,j] = ori_linear.weight.data[i*self.block_h:(i+1)*self.block_h, j*self.block_w:(j+1)*self.block_w]
@@ -79,13 +80,16 @@ class TritonDynamicLinear(torch.nn.Module):
         # convert the weight online
         block_nnz = torch.sum(block_mask)
         # import ipdb; ipdb.set_trace()
+        # print('triton sparse linear: block nnz', block_nnz)
+        
         sparse_weight = self.weight[block_mask[0]>0].view(1, block_nnz, self.block_h, self.block_w)
+        # import ipdb; ipdb.set_trace()
         # import ipdb; ipdb.set_trace()
         # return TritonDynamicLinearFunction.apply(data, self.weight, block_mask, self.block_h, self.block_w, self.bias)
         out = dot_dds_nt(data, sparse_weight)
         if len(ori_data_size)==2:
-            return out.view(M,K)
+            return out.view(M,K) if self.bias is None else out.view(M, K) + self.bias
         else:
             # import ipdb; ipdb.set_trace()
-            return out.view(ori_data_size[:-1] + [out.size(-1)])
+            return out.view(ori_data_size[:-1] + [out.size(-1)]) if self.bias is None else out.view(ori_data_size[:-1] + [out.size(-1)]) + self.bias
             
