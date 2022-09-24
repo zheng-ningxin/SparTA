@@ -125,11 +125,14 @@ def test_correctness(sparse_attention, HEAD_NUM, seq_len, hidden_n, device):
     out.backward(in_grad)
     out_2.backward(in_grad)
 
-    import ipdb; ipdb.set_trace()
-    if not torch.allclose(out, out_2, rtol=1e-08, atol=1e-04):
+    # import ipdb; ipdb.set_trace()
+    if not torch.allclose(out, out_2, rtol=1e-06, atol=1e-03):
         import pdb
         pdb.set_trace()
-    assert torch.allclose(out, out_2, rtol=1e-08, atol=1e-04)
+    assert torch.allclose(out, out_2, rtol=1e-06, atol=1e-03)
+    assert torch.allclose(q1.grad, q2.grad, rtol=1e-06, atol=1e-03)
+    assert torch.allclose(k1.grad, k2.grad, rtol=1e-06, atol=1e-03)
+    assert torch.allclose(v1.grad, v2.grad, rtol=1e-06, atol=1e-03)
     
     print('Correctness test passed')
 
@@ -162,7 +165,6 @@ if __name__ == '__main__':
     hidden_n = 128
     device = torch.device('cuda:0')
     for sparsity in np.arange(0.5, 1, 0.1):
-        
         sp_pattern =  random_sparse_pattern_block(seq_len, sparsity, block_h, block_w).cuda()
         spa = DynamicSparseAttention(True)
         DynamicSparseAttention.set_global_sparse_pattern(sp_pattern)

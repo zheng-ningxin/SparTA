@@ -885,6 +885,68 @@ __global__ void SPARSE_SOFTMAX_BACKWARD(int * row_ptr, int * col_idx, float * in
 
 
 }
+
+__global__ void SPARSE_SOFTMAX_BACKWARD_EXTRE_LONG(int * row_ptr, int * col_idx, float * inter_result, float *attn_grad, float* score_grad, int M, int N, int block_h, int block_w, int SPARSE_VAL_SIZE)
+{
+    // grad[i] = sum(-grad[j]*out[j]*out[i] if i!=j else grad[j]*(1-out[j])*out[j])
+    
+    // const int ROW_MAX_SIZE = 4096;
+    const int WARP_SIZE = 32;
+    inter_result += blockIdx.y * SPARSE_VAL_SIZE;
+    attn_grad += blockIdx.y * SPARSE_VAL_SIZE;
+    score_grad += blockIdx.y * SPARSE_VAL_SIZE;
+    
+    uint blk_row_idx = blockIdx.x / (block_h/SOFTMAX_ROW_TILE) ;
+    int block_inter_row = (blockIdx.x % (block_h/SOFTMAX_ROW_TILE)) * SOFTMAX_ROW_TILE;
+    uint bm = threadIdx.x / WARP_SIZE;
+    uint bn = threadIdx.x % WARP_SIZE;
+    assert(block_w % WARP_SIZE==0);
+    float regC = 0.0f;
+    float regSum = 0.0f;
+
+    int block_seq_start = row_ptr[blk_row_idx];
+    int block_seq_end = row_ptr[blk_row_idx+1];
+    // printf("block_seq_start:%d block_seq_end:%d row_size: %d ROW_MAX_SIZE:%d\n", block_seq_start, block_seq_end, (block_seq_end-block_seq_start) * block_w + global_attention_size, ROW_MAX_SIZE);
+    // load from the global memory to the shared memory
+    #pragma unroll
+    for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
+        // FIXME: there need one more for loop to handle the WARP_SIZE -> BLOCK_W
+        int _index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
+        // gs[ block_w * (block_seq - block_seq_start) + bn] = attn_grad[_index];
+        // vs[ block_w * (block_seq - block_seq_start) + bn] = inter_result[_index];
+        regSum += attn_grad[_index] * inter_result[_index];
+    }
+
+    // calculate the regSum
+    // #pragma unroll
+    // for(int i =bn; i<(block_seq_end-block_seq_start)*block_w; i+=WARP_SIZE){
+    //     regSum += gs[i] * vs[i];
+    // }
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
+    }
+    regSum = __shfl_sync(FULL_MASK, regSum, 0);
+    // calculate the corresponding value for each element
+    // #pragma unroll
+    // for(int i =bn; i<(block_seq_end-block_seq_start)*block_w; i+=WARP_SIZE){
+    //     vs[i] = vs[i] * gs[i] - regSum* vs[i];
+    // }
+
+    // Write the results back to the global memory
+
+    #pragma unroll
+    for (int block_seq = block_seq_start; block_seq < block_seq_end; block_seq++) {
+        // FIXME: there need one more for loop to handle the WARP_SIZE -> BLOCK_W
+        int _index = block_h * block_w * block_seq + (block_inter_row + bm) * block_w + bn;
+        // gs[ block_w * (block_seq - block_seq_start) + bn] = attn_grad[_index];
+        float v_ = inter_result[_index];
+        float g_ = attn_grad[_index];
+        score_grad[_index] = v_ * g_ - regSum * v_;
+    }
+
+
+}
 void dynamic_backward_function( float* grad_out,
                                 float* Q,
                                 float* K,
@@ -941,8 +1003,13 @@ void dynamic_backward_function( float* grad_out,
     // Calculate the Score_grad
     const dim3 softmax_dimBlock(SOFTMAX_ROW_TILE*32);
     const dim3 softmax_dimGrid(q_seq_len/SOFTMAX_ROW_TILE, head_num * batchsize);
-    SPARSE_SOFTMAX_BACKWARD<<<softmax_dimGrid, softmax_dimBlock>>>(row_ptr, col_idx, inter_result, Attn_grad, Score_grad, q_seq_len, k_seq_len, block_h, block_w, sparse_val_size);
+    // if(k_seq_len <= 4096){
+        // SPARSE_SOFTMAX_BACKWARD<<<softmax_dimGrid, softmax_dimBlock>>>(row_ptr, col_idx, inter_result, Attn_grad, Score_grad, q_seq_len, k_seq_len, block_h, block_w, sparse_val_size);
+    // }else{
+        // the sequence length is extremly long
+        SPARSE_SOFTMAX_BACKWARD_EXTRE_LONG<<<softmax_dimGrid, softmax_dimBlock>>>(row_ptr, col_idx, inter_result, Attn_grad, Score_grad, q_seq_len, k_seq_len, block_h, block_w, sparse_val_size);
 
+    // }
     // Calculate the Q_grad
     // Grad_Q = Grad_softmax * K^T
     // (q_seq_len x k_seq_len) x (k_seq_len x hidden_dim)
