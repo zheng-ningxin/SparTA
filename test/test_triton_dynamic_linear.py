@@ -1,5 +1,6 @@
 import torch
 import sparta
+import time
 from sparta.opset.triton_dynamic_sparse_linear import TritonDynamicLinear
 
     
@@ -108,8 +109,9 @@ if __name__ == '__main__':
         
         # ori_linear.weight.data[:] = 1
         ori_linear.bias.data[:] = 0
-        t_linear = TritonDynamicLinear(ori_linear, 32, 32)
-        test_corressness_full(data, full_mask, ori_linear, t_linear, block_h, block_w)
+        t_linear = TritonDynamicLinear(ori_linear, 32, 32, profile=True)
+        # test_corressness_full(data, full_mask, ori_linear, t_linear, block_h, block_w)
         # import ipdb; ipdb.set_trace()
         # dense_speed(ori_linear, data)
-        # test_speed(t_linear, full_mask, data)
+        test_speed(t_linear, full_mask, data)
+        import ipdb; ipdb.set_trace()

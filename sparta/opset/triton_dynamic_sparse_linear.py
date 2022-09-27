@@ -1,6 +1,7 @@
 import torch
 import triton
 import functools
+import time
 from functools import reduce
 # class TritonDynamicLinearFunction(torch.autograd.Function):
 #     @staticmethod
@@ -44,7 +45,7 @@ from functools import reduce
 #         return a_grad, w_grad, None, None, None, None
 
 class TritonDynamicLinear(torch.nn.Module):
-    def __init__(self, ori_linear, block_h, block_w, full_mask=True):
+    def __init__(self, ori_linear, block_h, block_w, full_mask=True, profile=False):
         super(TritonDynamicLinear, self).__init__()
         assert isinstance(ori_linear, torch.nn.Linear)
         self.ori_linear = ori_linear
@@ -64,12 +65,17 @@ class TritonDynamicLinear(torch.nn.Module):
             self.conv.eval()
             self.conv.weight.data[:] = 1
         self.weight.requires_grad_()
+        self.profile = profile
+        self.convert_overhead = []
 
     def forward(self, data, mask):
         ori_data_size = list(data.size())
         K = ori_data_size[-1]
         M = reduce(lambda x, y : x*y, ori_data_size) // K
         data = data.view(1, 1, M, K)
+        if self.profile:
+            torch.cuda.synchronize()
+            t_start = time.time()    
         block_mask = mask
         if self.full_mask:
             ori_mask_size = mask.size()
@@ -83,8 +89,10 @@ class TritonDynamicLinear(torch.nn.Module):
         # print('triton sparse linear: block nnz', block_nnz)
         
         sparse_weight = self.weight[block_mask[0]>0].view(1, block_nnz, self.block_h, self.block_w)
-        # import ipdb; ipdb.set_trace()
-        # import ipdb; ipdb.set_trace()
+        if self.profile:
+            torch.cuda.synchronize()
+            t_end = time.time()
+            self.convert_overhead.append((t_end-t_start)*1000)
         # return TritonDynamicLinearFunction.apply(data, self.weight, block_mask, self.block_h, self.block_w, self.bias)
         out = dot_dds_nt(data, sparse_weight)
         if len(ori_data_size)==2:

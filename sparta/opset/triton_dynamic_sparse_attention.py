@@ -1,8 +1,8 @@
 import torch
 import triton
-
+import time
 class TritonDynamicAttention(torch.nn.Module):
-    def __init__(self, block_h, block_w, head_num, full_mask=True):
+    def __init__(self, block_h, block_w, head_num, full_mask=True, profile=False):
         super(TritonDynamicAttention, self).__init__()
 
         self.block_h, self.block_w = block_h, block_w
@@ -13,8 +13,12 @@ class TritonDynamicAttention(torch.nn.Module):
             self.conv=torch.nn.Conv2d(self.head_num, self.head_num,(self.block_h, self.block_w), (self.block_h, self.block_w), groups=self.head_num, bias=False).cuda()
             self.conv.eval()
             self.conv.weight.data[:] = 1
-
+        self.profile = profile
+        self.convert_overhead = []
     def forward(self, query, key, value, mask):
+        if self.profile:
+            torch.cuda.synchronize()
+            t_start = time.time()
         block_mask = mask
         scale = 1.0
         if self.full_mask:
@@ -26,7 +30,10 @@ class TritonDynamicAttention(torch.nn.Module):
         sparse_dot_sdd_nt = triton.ops.blocksparse.matmul(block_mask, self.block_h, "sdd", trans_a=False, trans_b=True, device=value.device)
         sparse_dot_dsd_nn = triton.ops.blocksparse.matmul(block_mask, self.block_h, "dsd", trans_a=False, trans_b=False, device=value.device)
         sparse_softmax = triton.ops.blocksparse.softmax(block_mask, self.block_h, device=value.device)
-
+        if self.profile:
+            torch.cuda.synchronize()
+            t_end = time.time()
+            self.convert_overhead.append((t_end-t_start)*1000)
         w = sparse_dot_sdd_nt(query, key)
         w = sparse_softmax(w, scale=scale, is_causal=True)
         a = sparse_dot_dsd_nn(w, value)
