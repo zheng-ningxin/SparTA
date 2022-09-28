@@ -5,6 +5,7 @@ class TritonDynamicAttention(torch.nn.Module):
     global_sparse_dot_sdd_nt = None
     global_sparse_dot_dsd_nn = None
     global_sparse_softmax = None
+    global_convert_overhead = []
     def __init__(self, block_h, block_w, head_num, full_mask=True, profile=False, global_model=False):
         super(TritonDynamicAttention, self).__init__()
 
@@ -21,6 +22,8 @@ class TritonDynamicAttention(torch.nn.Module):
         self.global_model = global_model
 
     def set_global_mask(self, mask, is_full_mask, block_h, block_w, head_num):
+        torch.cuda.synchronize()
+        t_start = time.time()
         if not is_full_mask:
             block_mask = mask
         else:
@@ -32,6 +35,9 @@ class TritonDynamicAttention(torch.nn.Module):
         TritonDynamicAttention.global_sparse_dot_sdd_nt = triton.ops.blocksparse.matmul(block_mask, block_h, "sdd", trans_a=False, trans_b=True, device=mask.device)
         TritonDynamicAttention.global_sparse_dot_dsd_nn = triton.ops.blocksparse.matmul(block_mask, block_h, "dsd", trans_a=False, trans_b=False, device=mask.device)
         TritonDynamicAttention.global_sparse_softmax = triton.ops.blocksparse.softmax(block_mask, block_h, device=mask.device)
+        torch.cuda.synchronize()
+        t_end = time.time()
+        TritonDynamicAttention.global_convert_overhead.append((t_end-t_start)*1000)
 
     def forward(self, query, key, value, mask=None):
         scale = 1.0
