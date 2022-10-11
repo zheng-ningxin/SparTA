@@ -115,4 +115,4 @@ if __name__ == '__main__':
         # import ipdb; ipdb.set_trace()
         # dense_speed(ori_linear, data)
         test_speed(t_linear, full_mask, data)
-        import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
