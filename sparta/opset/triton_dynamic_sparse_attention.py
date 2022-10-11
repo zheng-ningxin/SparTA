@@ -28,6 +28,8 @@ class TritonDynamicAttention(torch.nn.Module):
             block_mask = mask
         else:
             conv = torch.nn.Conv2d(head_num, head_num, (block_h, block_w), (block_h, block_w), groups=head_num, bias=False).cuda()
+            conv.eval()
+            conv.weight.data[:] = 1
             ori_mask_size = mask.size()
             mask = mask.view(1, head_num, ori_mask_size[-2], ori_mask_size[-1]).to(torch.float32)
             block_mask = conv(mask)
