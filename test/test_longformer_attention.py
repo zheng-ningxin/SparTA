@@ -151,10 +151,11 @@ def test_random(HEAD_NUM, seq_len, hidden_dim, sparsity):
 def test_longformer():
     head_num =  12
     hidden_n = 64
-    seq_len =  4096
+    seq_len =  2048
     batch_size = 1
     device = torch.device('cuda:0')
-    data = joblib.load('longformer_inputs.pkl')
+    # data = joblib.load('longformer_inputs.pkl')
+    data = joblib.load('mask_pattern.pkl')
     dynamic_global_attention = data['dynamic']
     static_local_attention = data['attention_mask'][0]
     q, k, v = torch.randn(batch_size, head_num, seq_len, hidden_n, dtype=torch.float32, device=device), torch.randn(batch_size, head_num, seq_len,
