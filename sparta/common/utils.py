@@ -5,6 +5,7 @@ import json
 from array import array
 from pickle import NONE
 from shutil import copy
+from sklearn.datasets import make_sparse_uncorrelated
 import torch
 from torch._C import HalfStorageBase, dtype
 import numpy as np
@@ -130,6 +131,86 @@ def serialize_tesa(tesa):
             serialized[tesaid][key] = tesa[tesaid][key].tolist()
     return serialized
 
+def export_shape(model, dummy_input, export_dir):
+    class ShapeHook:
+        def __init__(self, model, dummy_input, debug_point=None):
+            assert isinstance(model, torch.nn.Module)
+            self.model = model
+            model.eval()
+            self.dummy_input = dummy_input
+            self.shapes = {}
+            for name, module in self.model.named_modules():
+                self.shapes[name] = {"in_shape":[], "out_shape":[], "weight_shape":[], "type":None}
+            self.trace_points = []
+            if debug_point != None:
+                self.trace_points = debug_point
+            self.__deploy_hooks()
+            if isinstance(dummy_input, torch.Tensor):
+                self.model(dummy_input)
+            elif isinstance(dummy_input, tuple) or isinstance(dummy_input, list):
+                self.model(*dummy_input)
+            elif isinstance(dummy_input, dict):
+                self.model(**dummy_input)
+
+        def __parse_tensor_shapa(self, args):
+            shapes = []
+            if isinstance(args, dict):
+                # some layers may return their output as a dict 
+                # ex. the IntermediateLayerGetter in the face detection jobs.
+                for key, val in args.items():
+                    if isinstance(val, torch.Tensor):
+                        shapes.append(list(val.size())+[str(val.dtype)])
+                    else:
+                        shapes.extend(self.__parse_tensor_shapa(val))
+            elif isinstance(args, list) or isinstance(args, tuple):
+                # list or tuple
+                for item in args:
+                    if isinstance(item, torch.Tensor):
+                        shapes.append(list(item.size()) + [str(item.dtype)])
+                    else:
+                        shapes.extend(self.__parse_tensor_shapa(item))
+            elif isinstance(args, torch.Tensor) or isinstance(args, torch.autograd.Variable):
+                # if the output is a already a tensor/variable, then return itself
+                shapes.append(list(args.size()) + [str(args.dtype)])
+            return shapes
+
+        def __get_decorator(self, func, name, debug_on=False):
+            def new_func(*args, **kwargs):
+                if debug_on:
+                    # 
+                    import pdb; pdb.set_trace()
+                self.shapes[name]['in_shape'].extend(self.__parse_tensor_shapa(args))
+                self.shapes[name]['in_shape'].extend(self.__parse_tensor_shapa(kwargs))
+                out = func(*args, **kwargs)
+                self.shapes[name]['out_shape'].extend(self.__parse_tensor_shapa(out))
+                return out
+            return new_func
+
+        def __deploy_hooks(self):
+            """
+            Deploy the hooks to get the input/output/weight shape of all submodules.
+            """
+            self.ori_forward = {}
+            for name, module in self.model.named_modules():
+                if hasattr(module, 'weight') and isinstance(module.weight, torch.Tensor):
+                    self.shapes[name]['weight_shape'].append(module.weight.size())
+                self.shapes[name]['type'] = str(type(module))
+                self.ori_forward [name] = getattr(module, 'forward')
+                setattr(module, 'forward', self.__get_decorator(module.forward, name, name in self.trace_points))
+
+        def __remove_hooks(self):
+            for name, module in self.model.named_modules():
+                if name in self.ori_forward:
+                    setattr(module, 'forward', self.ori_forward[name])
+    
+        def export(self, fpath):
+            with open(fpath, 'w') as f:
+                json.dump(self.shapes, f, indent=4)
+            self.__remove_hooks()
+
+    sh = ShapeHook(model, dummy_input)
+    sh.export(os.path.join(export_dir, 'shape.json'))
+
 def export_tesa(model, dummy_input, export_dir, tesa=None):
     """
     Export the model to onnx along with its Tesa Attribute
@@ -146,6 +227,7 @@ def export_tesa(model, dummy_input, export_dir, tesa=None):
         The tesa attribute of the target model, {layer_name: {tensor_name: tensor}}
     """
     os.makedirs(export_dir, exist_ok=True)
+    export_shape(model, dummy_input, export_dir)
     support_op = (torch.nn.Conv2d, torch.nn.Linear, torch.nn.Conv1d)
     assert isinstance(model, torch.nn.Module)
     torch.save(model.state_dict(), os.path.join(export_dir, 'state_dict.pth'))
@@ -676,7 +758,73 @@ def generate_hipsparse_sparse_cfg(tesa_path, state_path, id_map_path, out_dir):
             f.write(f"{tesaid} HipSparse\n")
             continue
 
+def write_balance_constant(dir_path, tesaid, name, state_dict, tesa, sparsity):
+    weight = state_dict['.'.join([name, 'weight'])].t()
+    bias = state_dict['.'.join([name, 'bias'])]
+    weight_tesa = tesa[tesaid]['weight'].t()
+    # bias_tesa = tesa[tesaid]['bias']
+    value = []
+    index = []
 
+    k, n = weight.size()
+    k_sparse = int(k * (1-sparsity))
+    
+    for i in range(n):
+        for j in range(k):
+            if weight_tesa[j, i] != 0:
+                value.append(weight[j, i])
+                index.append(j)
+
+    value = np.reshape(np.array(value), (n, k_sparse)).transpose().flatten().tolist()
+    index = np.reshape(np.array(index), (n, k_sparse)).transpose().flatten().tolist()
+
+    value_path = os.path.join(dir_path, f"value_{tesaid}.bin")
+    index_path = os.path.join(dir_path, f"index_{tesaid}.bin")
+    bias_path = os.path.join(dir_path, f"bias_{tesaid}.bin")
+    write_array(value, value_path, "f")
+    write_array(index, index_path)
+    write_array(bias, bias_path, "f")
+
+    return value_path, index_path, bias_path
+
+def generate_balance_cfg(dir_path, align_n, balance_k, sparsity):
+    data = {}
+    assert os.path.exists(dir_path)
+    device = torch.device('cpu')
+    tesa_path = os.path.join(dir_path, 'tesa')
+    state_path = os.path.join(dir_path, 'state_dict.pth')
+    map_path = os.path.join(dir_path, 'tesaid_2_names')
+    tesa = torch.load(tesa_path, map_location=device)
+    state = torch.load(state_path, map_location=device)
+    with open(os.path.join(dir_path, 'shape.json'), 'r') as f:
+        shape =  json.load(f)
+    id_map = torch.load(map_path)
+    constant_dir = os.path.join(dir_path, 'Constants')
+    # export the index and coresspoding value to bin here
+    os.makedirs(constant_dir, exist_ok=True)
+    for tesaid in id_map:
+        data[tesaid] = {}
+        name =  id_map[tesaid][0]
+        data[tesaid]['tesa'] = tesa[tesaid]
+        in_shape = shape[name]['in_shape'][0]
+        print(in_shape)
+        weight_shape=  shape[name]['weight_shape'][0]
+        M =  in_shape[0]*in_shape[1]
+        K = in_shape[2]
+        N = weight_shape[0]
+        data[tesaid]['M'] = M
+        data[tesaid]['K'] = K
+        data[tesaid]['N'] = N
+        data[tesaid]['align_n'] = align_n
+        data[tesaid]['balance_k'] = balance_k
+        data[tesaid]['sparsity'] = sparsity
+        write_balance_constant(constant_dir, tesaid, name, state, tesa, sparsity)
+    with open(os.path.join(dir_path, 'config'), 'w') as f:
+        for tesaid in id_map:
+            kernel_name = f'kernel_{tesaid}'
+            f.write('{} Balance {} {} {} {}\n'.format(tesaid, kernel_name, f'value_{tesaid}.bin', f'index_{tesaid}.bin', f'bias_{tesaid}.bin'))
+
+    torch.save(data, os.path.join(dir_path, 'balance_interface.pth'))
 
 def inject_kernel(template_path, kernel_json, op_type, id_map_path, out_dir):
     nnfusion_home = os.getenv('NNFUSION_HOME')
@@ -833,3 +981,20 @@ def constant_fold(file, optimized_model_filepath):
             ort_session.run(outputs_name, ort_inputs)
         t_end = time.time()
         print('>> Average time for each run: %.4f ms;' % ((t_end - t_start) * 1e3 / iters))
+        
+
+def generate_balance_pattern(n, k, balance_k, align_n, sparsity_ratio):
+    import random
+    mask = torch.zeros(n, k)
+    iter_n =  int(n/align_n)
+    iter_k = int(k/balance_k)
+    remain = balance_k - int(balance_k*sparsity_ratio)
+    for pos_n in range(iter_n):
+        for pos_k in range(iter_k):
+            selected = random.sample(list(range(balance_k)), remain)
+            selected = [x+pos_k*balance_k for x in selected]
+            n_start = pos_n * align_n
+            n_end = n_start + align_n
+            mask[n_start:n_end, selected] = 1
+    return mask
+        
