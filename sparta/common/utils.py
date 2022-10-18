@@ -7,7 +7,7 @@ from pickle import NONE
 from shutil import copy
 from sklearn.datasets import make_sparse_uncorrelated
 import torch
-from torch._C import HalfStorageBase, dtype
+
 import numpy as np
 import time
 import onnx
@@ -809,8 +809,16 @@ def generate_balance_cfg(dir_path, align_n, balance_k, sparsity):
         in_shape = shape[name]['in_shape'][0]
         print(in_shape)
         weight_shape=  shape[name]['weight_shape'][0]
-        M =  in_shape[0]*in_shape[1]
-        K = in_shape[2]
+        # if tesaid == 145:
+        #     import ipdb; ipdb.set_trace()
+        if len(in_shape) > 3:
+            # batch seqlen hidden
+            M = in_shape[0]*in_shape[1]
+            K = in_shape[2]
+        else:
+            # batch hidden
+            M = in_shape[0]
+            K = in_shape[1]
         N = weight_shape[0]
         data[tesaid]['M'] = M
         data[tesaid]['K'] = K
@@ -863,6 +871,42 @@ def inject_kernel(template_path, kernel_json, op_type, id_map_path, out_dir):
             json.dump(template, f)
         os.system(f"python {nnfusion_home}/src/tools/nnfusion/kernel_db/convert_external_spargen.py {f_path} CUDA_GPU")
 
+def inject_kernel_with_id(template_path, kernel_json, op_type, id_map_path, out_dir):
+    nnfusion_home = os.getenv('NNFUSION_HOME')
+    assert nnfusion_home is not None
+    os.makedirs(out_dir, exist_ok=True)
+    with open(template_path, 'r') as f:
+        template = json.load(f)
+        template = template[0]
+    id_maps = torch.load(id_map_path)
+    name_2_tid= {}
+    id_2_name = {}
+    for tid, names in id_maps.items():
+        id_2_name[tid] = names[0]
+        name_2_tid[names[0]] =tid
+    if isinstance(kernel_json, dict):
+        kernels = kernel_json
+    else:
+        with open(kernel_json, 'r') as f:
+            kernels = json.load(f)
+    for kernel_name in kernels:
+        tesa_id = int(kernel_name)
+        code = kernels[kernel_name]['code']
+        code = code.replace('COMMENT_TAG', 'TESAID:{}'.format(tesa_id))
+        template['code'] = code + tesa_id * ' '
+        template['kernel_identifier'] = 'kernel_{}'.format(tesa_id)
+        template['op_type'] = op_type
+        print('gridDim', kernels[kernel_name]['launch_config']['dimGrid'])
+        print('blockDim', kernels[kernel_name]['launch_config']['dimBlock'])
+        grid_dim = kernels[kernel_name]['launch_config']['dimGrid']+ [1]
+        template['gridDim'] = grid_dim
+        block_dim = kernels[kernel_name]['launch_config']['dimBlock'] + [1]
+        template['blockDim'] = block_dim
+        f_path =  os.path.join(out_dir, f"{tesa_id}.json")
+        print(f_path)
+        with open(f_path, 'w') as f:
+            json.dump(template, f)
+        os.system(f"python {nnfusion_home}/src/tools/nnfusion/kernel_db/convert_external_spargen.py {f_path} CUDA_GPU")
 def constant_fold(file, optimized_model_filepath):
     try:
         from yaml import safe_load as load_func
