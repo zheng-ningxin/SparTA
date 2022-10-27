@@ -765,6 +765,26 @@ def generate_cusparse_sparse_cfg(tesa_path, state_path, id_map_path, out_dir):
             f.write(f"{tesaid} CuSparse\n")
             continue
 
+def generate_cusparselt_sparse_cfg(tesa_path, state_path, id_map_path, out_dir):
+    
+    os.makedirs(out_dir, exist_ok=True)
+
+    tesa = torch.load(tesa_path, map_location='cpu')
+    cfg_path = os.path.join(out_dir, 'config')
+    state_dict = torch.load(state_path, map_location='cpu')
+    id_maps = torch.load(id_map_path, map_location='cpu')
+    with open(cfg_path, 'w') as f:
+        for tesaid in tesa:
+            module_name = id_maps[tesaid][0]
+            # import ipdb; ipdb.set_trace()
+            sparsity_ratio = 1-torch.sum(tesa[tesaid]['weight'])/tesa[tesaid]['weight'].numel()
+            print('tesa: {} name:{} sparsity:{}'.format(tesaid, module_name, sparsity_ratio))
+            if sparsity_ratio==0:
+                # if almost dense then use dense kernel
+                continue
+            f.write(f"{tesaid} CuSparseLt\n")
+            continue
+
 def generate_hipsparse_sparse_cfg(tesa_path, state_path, id_map_path, out_dir):
     os.makedirs(out_dir, exist_ok=True)
 
@@ -797,6 +817,37 @@ def write_balance_constant(dir_path, tesaid, name, state_dict, tesa, sparsity):
     value = np.reshape(np.array(value), (n, k_sparse)).transpose().flatten().tolist()
     index = np.reshape(np.array(index), (n, k_sparse)).transpose().flatten().tolist()
 
+    value_path = os.path.join(dir_path, f"value_{tesaid}.bin")
+    index_path = os.path.join(dir_path, f"index_{tesaid}.bin")
+    bias_path = os.path.join(dir_path, f"bias_{tesaid}.bin")
+    write_array(value, value_path, "f")
+    write_array(index, index_path)
+    write_array(bias, bias_path, "f")
+
+    return value_path, index_path, bias_path
+
+def write_balance_constant_int8(dir_path, tesaid, name, state_dict, tesa, sparsity, align):
+    weight = state_dict['.'.join([name, 'weight'])]
+    bias = state_dict['.'.join([name, 'bias'])]
+    weight_tesa = tesa[tesaid]['weight']
+    # bias_tesa = tesa[tesaid]['bias']
+
+    n, k = weight.size()
+    k_sparse = int(k * (1-sparsity))
+    index_2d = torch.zeros(n, k_sparse, dtype=torch.int32)
+    for i in range(n//align):
+        kid = 0
+        for j in range(k):
+            tmp_sum = torch.sum(weight_tesa[i*align:(i+1)*align, j])
+            if  tmp_sum > 0:
+                # import ipdb; ipdb.set_trace()
+                index_2d[i*align:(i+1)*align, kid] = j
+                kid+=1
+        # print("kid", kid)
+    value = torch.rand(n, k_sparse)
+    value = np.reshape(np.array(value), (n, k_sparse)).transpose().flatten().tolist()
+    index = np.reshape(np.array(index_2d), (n, k_sparse)).flatten().tolist()
+    # import ipdb; ipdb.set_trace()
     value_path = os.path.join(dir_path, f"value_{tesaid}.bin")
     index_path = os.path.join(dir_path, f"index_{tesaid}.bin")
     bias_path = os.path.join(dir_path, f"bias_{tesaid}.bin")
@@ -850,6 +901,54 @@ def generate_balance_cfg(dir_path, align_n, balance_k, sparsity):
         for tesaid in id_map:
             kernel_name = f'kernel_{tesaid}'
             f.write('{} Balance {} {} {} {}\n'.format(tesaid, kernel_name, f'value_{tesaid}.bin', f'index_{tesaid}.bin', f'bias_{tesaid}.bin'))
+
+    torch.save(data, os.path.join(dir_path, 'balance_interface.pth'))
+
+def generate_balance_cfg_int8(dir_path, align_n, balance_k, sparsity):
+    data = {}
+    assert os.path.exists(dir_path)
+    device = torch.device('cpu')
+    tesa_path = os.path.join(dir_path, 'tesa')
+    state_path = os.path.join(dir_path, 'state_dict.pth')
+    map_path = os.path.join(dir_path, 'tesaid_2_names')
+    tesa = torch.load(tesa_path, map_location=device)
+    state = torch.load(state_path, map_location=device)
+    with open(os.path.join(dir_path, 'shape.json'), 'r') as f:
+        shape =  json.load(f)
+    id_map = torch.load(map_path)
+    constant_dir = os.path.join(dir_path, 'Constants')
+    # export the index and coresspoding value to bin here
+    os.makedirs(constant_dir, exist_ok=True)
+    for tesaid in id_map:
+        data[tesaid] = {}
+        name =  id_map[tesaid][0]
+        data[tesaid]['tesa'] = tesa[tesaid]
+        in_shape = shape[name]['in_shape'][0]
+        print(in_shape)
+        weight_shape=  shape[name]['weight_shape'][0]
+        # if tesaid == 145:
+        #     import ipdb; ipdb.set_trace()
+        if len(in_shape) > 3:
+            # batch seqlen hidden
+            M = in_shape[0]*in_shape[1]
+            K = in_shape[2]
+        else:
+            # batch hidden
+            M = in_shape[0]
+            K = in_shape[1]
+        N = weight_shape[0]
+        data[tesaid]['M'] = M
+        data[tesaid]['K'] = K
+        data[tesaid]['N'] = N
+        data[tesaid]['align_n'] = align_n
+        data[tesaid]['balance_k'] = balance_k
+        data[tesaid]['sparsity'] = sparsity
+        write_balance_constant_int8(constant_dir, tesaid, name, state, tesa, sparsity, align_n)
+        print("Align=", align_n)
+    with open(os.path.join(dir_path, 'config'), 'w') as f:
+        for tesaid in id_map:
+            kernel_name = f'kernel_{tesaid}'
+            f.write('{} BlockQuantize {} 8 8 {} {} {} {} {} {}\n'.format(tesaid, kernel_name, f'index_{tesaid}.bin', f'index_{tesaid}.bin', f'value_{tesaid}.bin', f'value_{tesaid}.bin', f'value_{tesaid}.bin', f'value_{tesaid}.bin'))
 
     torch.save(data, os.path.join(dir_path, 'balance_interface.pth'))
 
