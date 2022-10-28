@@ -784,6 +784,26 @@ def generate_cusparselt_sparse_cfg(tesa_path, state_path, id_map_path, out_dir):
                 continue
             f.write(f"{tesaid} CuSparseLt\n")
             continue
+        
+def generate_cusparselt_int8_sparse_cfg(tesa_path, state_path, id_map_path, out_dir):
+    
+    os.makedirs(out_dir, exist_ok=True)
+
+    tesa = torch.load(tesa_path, map_location='cpu')
+    cfg_path = os.path.join(out_dir, 'config')
+    state_dict = torch.load(state_path, map_location='cpu')
+    id_maps = torch.load(id_map_path, map_location='cpu')
+    with open(cfg_path, 'w') as f:
+        for tesaid in tesa:
+            module_name = id_maps[tesaid][0]
+            # import ipdb; ipdb.set_trace()
+            sparsity_ratio = 1-torch.sum(tesa[tesaid]['weight'])/tesa[tesaid]['weight'].numel()
+            print('tesa: {} name:{} sparsity:{}'.format(tesaid, module_name, sparsity_ratio))
+            if sparsity_ratio==0:
+                # if almost dense then use dense kernel
+                continue
+            f.write(f"{tesaid} CuSparseLtInt8\n")
+            continue
 
 def generate_hipsparse_sparse_cfg(tesa_path, state_path, id_map_path, out_dir):
     os.makedirs(out_dir, exist_ok=True)
