@@ -52,7 +52,7 @@ def random_sparse_pattern_block(M, N, sparsity, block_h, block_w):
     pattern = torch.zeros(M, N, dtype=torch.int32)
     b_nnz = int(M * N //block_h //block_w*sparsity)
     print("Block_nnz: ", b_nnz)
-    block_pos = [(i, j) for i in range(0, N//block_h) for j in range(0, N//block_w)]
+    block_pos = [(i, j) for i in range(0, M//block_h) for j in range(0, N//block_w)]
     random.shuffle(block_pos)
     # import ipdb; ipdb.set_trace()
     remain_pos = block_pos[:b_nnz] 
