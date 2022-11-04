@@ -34,15 +34,15 @@ def _setup():
                                     extra_compile_args=['-std=c++14', '-lcusparse', '-O3'])
             ext_modules.append(cusparse_csr_ext)
         # the bcsr convert kernel
-        bcsr_ext = CUDAExtension(name='convert_bcsr_cpp', sources=['csrc/convert_bcsr_forward_blockwise.cpp',
+        bcsr_blockwise_ext = CUDAExtension(name='convert_bcsr_blockwise_cpp', sources=['csrc/convert_bcsr_forward_blockwise.cpp',
                                                             'csrc/convert_bcsr_forward_blockwise_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
-        ext_modules.append(bcsr_ext)
+        ext_modules.append(bcsr_blockwise_ext)
         
-        bcsr_blockwise_ext = CUDAExtension(name='convert_bcsr_blockwise_cpp', sources=['csrc/convert_bcsr_forward.cpp',
+        bcsr_ext = CUDAExtension(name='convert_bcsr_cpp', sources=['csrc/convert_bcsr_forward.cpp',
                                                             'csrc/convert_bcsr_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
-        ext_modules.append(bcsr_blockwise_ext)
+        ext_modules.append(bcsr_ext)
         bcsr_trans_ext = CUDAExtension(name='convert_bcsr_transpose_cpp', sources=['csrc/convert_bcsr_transpose_forward.cpp',
                                                             'csrc/convert_bcsr_transpose_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])

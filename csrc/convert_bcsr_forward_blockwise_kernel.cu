@@ -185,81 +185,114 @@ __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __
 
 }
 
-void convert_bcsr(int * mask, float * dense, int h, int w,
-    int block_h, int block_w, int * row, int *col, int * row_pos,
-    float*values, int * extra_buffer, int *block_index)
+void convert_bcsr()
 {
-    // need reset the extra buffer here
-    assert(block_w % 4 == 0);
-    CUDA_SAFE_CALL(cudaMemset((void*)extra_buffer, 0, sizeof(int)*(2*h+(h/block_h)*(w/block_w))) );
-    CUDA_SAFE_CALL(cudaMemset((void*)row, 0, sizeof(int)*(1+(h/block_h))) );
-    dim3 block_dim(block_h*block_w/4);
-    dim3 grid_dim(w/block_w, h/block_h);
-    // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
-    convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
-    convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer, block_index);
-
-}
-void convert_bcsr_transpose(int * mask, float * dense, int h, int w,
-    int block_h, int block_w, int * row, int *col, int * row_pos,
-    float*values, int * extra_buffer, int *block_index)
-{
-    // need reset the extra buffer here
+    
 }
 
-void convert_bcsr_dispatcher_blockwise(int * mask, float * dense, int h, int w,
-    int block_h, int block_w, int * row, int *col, int * row_pos,
-    float*values, int * extra_buffer, int *block_index, bool transpose)
+
+__global__ void convert_bcsr_kernel_transpose_1(const int * __restrict__  mask, int* __restrict__ row_ptr, int* __restrict__ col_idx, int * extra_buffer, int n_block_h, int n_block_w)
+{
+
+    
+    // initial the shared flag
+    uint bx = blockIdx.x;
+    uint by = blockIdx.y;
+    uint tid = threadIdx.x;
+
+    int global_offset =  (by * n_block_w) + bx;
+    int pos_id;
+    int flag = mask[global_offset];
+    if(tid==0 && flag>0){
+        pos_id= atomicAdd(&extra_buffer[bx], 1);
+        atomicAdd(&extra_buffer[bx+n_block_w], 1);
+        atomicAdd(&row_ptr[n_block_w], 1);
+        // printf("block nnz: %d\n", tmp);
+        // extra_buffer[2*w + gridDim.x * by + pos_id] = bx;
+        extra_buffer[2*n_block_w + gridDim.y * bx + pos_id] = by;
+    }
+
+}
+__global__ void convert_bcsr_kernel_transpose_2(const int * __restrict__  mask, int* __restrict__ row_ptr, int* __restrict__ col_idx, int * extra_buffer, int n_block_h, int n_block_w)
+{
+    uint by = blockIdx.y;
+    uint bx = blockIdx.x;
+    uint tid = threadIdx.x;
+    int pos_id, prefix_count, ori_bx, ori_by;
+    __shared__ int prefix_sum[MAX_BLOCK_THREAD_COUNT];
+    if (tid==0){
+        pos_id = -1;
+        prefix_count = 0;
+        // contend for the block
+
+        pos_id = atomicSub(&extra_buffer[bx], 1);
+        pos_id-=1;
+        if (pos_id>=0){
+            for(int i=0; i<bx;i++){
+                prefix_count +=  extra_buffer[n_block_w+i];
+            }
+            ori_bx = bx;
+            ori_by = extra_buffer[ 2*n_block_w + bx * gridDim.y + pos_id];       
+            
+            row_ptr[bx] = prefix_count;
+            col_idx[prefix_count + pos_id] = ori_by;
+        }
+        else if(pos_id==-1){
+            for(int i=0; i<bx; i++){
+                prefix_count +=  extra_buffer[n_block_w+i];
+            }            
+            row_ptr[bx] = prefix_count;
+        }
+    }
+
+
+}
+void convert_bcsr_transpose(int * mask, int * row_ptr, int * col_idx, int * ext_buffer, 
+                            int n_block_h, int n_block_w)
+{
+    // the mask is a binary matrix with shape of n_block_h x n_block_w
+    // build the csr index along the n_block_w
+    // need reset the extra buffer here
+    CUDA_SAFE_CALL(cudaMemset((void*)ext_buffer, 0, sizeof(int)*(2*n_block_w+n_block_h*n_block_w)) );
+    CUDA_SAFE_CALL(cudaMemset((void*)row_ptr, 0, sizeof(int)*(1+(n_block_w))) );
+    dim3 block_dim(1);
+    dim3 grid_dim(n_block_w, n_block_h);
+
+    convert_bcsr_kernel_transpose_1<<<grid_dim, block_dim>>>(mask, row_ptr, col_idx, ext_buffer, n_block_h, n_block_w);
+    convert_bcsr_kernel_transpose_2<<<grid_dim, block_dim>>>(mask, row_ptr, col_idx, ext_buffer, n_block_h, n_block_w);
+}
+
+void convert_bcsr_blockwise(int * mask, int *row_ptr, int * col_idx, int* ext_buffer, int n_block_h, int n_block_w, int transpose)
 {
     if(transpose){
-        convert_bcsr_transpose(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer, block_index);
+        convert_bcsr_transpose(mask, row_ptr, col_idx, ext_buffer, n_block_h, n_block_w);
     } else{
-        convert_bcsr(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer, block_index);
+        // TO BE DONE
+        convert_bcsr();
     }
 
 }
-std::vector<at::Tensor> convert_bcsr_forward(
+std::vector<at::Tensor> convert_bcsr_forward_blockwise(
     torch::Tensor sparse_pattern,
-    torch::Tensor dense_values,
-    int block_h, 
-    int block_w)
+    int transpose)
 {
-    int h = dense_values.size(0);
-    int w = dense_values.size(1);
     int n_block_h = sparse_pattern.size(0);
     int n_block_w = sparse_pattern.size(1);
-
-    assert(h % block_h==0);
-    assert(w % block_w==0);
-    torch::Tensor values = dense_values;
-    bool transpose = false;
-    if(block_w<4){
-        // need to transpose to guarantee the memory load efficiency
-        // In the block_wise mask, we don't have to need to transpose the mask tensor
-        values = dense_values.t().contiguous();
-        transpose = true;
-    }
-    // allocate enough memory for the sparse values
-    torch::Tensor csr_values = torch::empty_like(dense_values);
-    torch::Tensor csr_row = torch::zeros({h/block_h+1}, sparse_pattern.options());
-    int n_total_block = h * w / block_h / block_w;
-    torch::Tensor csr_row_pos = torch::zeros({n_total_block}, sparse_pattern.options());
+    int row_size = transpose? n_block_w: n_block_h;
+    int n_total_block = n_block_h * n_block_w;
+    torch::Tensor csr_row = torch::zeros({row_size+1}, sparse_pattern.options());
     torch::Tensor csr_col = torch::zeros({n_total_block}, sparse_pattern.options());
-    torch::Tensor ext_buffer = torch::zeros({2*h+n_total_block}, sparse_pattern.options());
-    torch::Tensor block_index = torch::empty({h * w / block_h / block_w}, sparse_pattern.options());
-    AT_DISPATCH_FLOATING_TYPES(dense_values.type(), "convert_bcsr", ([&]
-        { convert_bcsr_dispatcher_blockwise(
+    torch::Tensor ext_buffer = torch::zeros({2*row_size+n_total_block}, sparse_pattern.options());
+    AT_DISPATCH_INTEGRAL_TYPES(sparse_pattern.type(), "convert_bcsr_blockwise", ([&]
+        { convert_bcsr_blockwise(
                 sparse_pattern.data_ptr<int>(),
-                values.data_ptr<float>(),
-                h, w, block_h, block_w,
                 csr_row.data_ptr<int>(),
                 csr_col.data_ptr<int>(),
-                csr_row_pos.data_ptr<int>(),
-                csr_values.data_ptr<float>(),
                 ext_buffer.data_ptr<int>(),
-                block_index.data_ptr<int>(),
+                n_block_h,
+                n_block_w,
                 transpose
             ); }));
-    std::vector<torch::Tensor> bcsr({csr_row, csr_col, csr_row_pos, csr_values, block_index});
+    std::vector<torch::Tensor> bcsr({csr_row, csr_col});
     return bcsr;
 }
