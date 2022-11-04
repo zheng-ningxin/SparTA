@@ -294,6 +294,7 @@ void condense_dynamic_forward_function(float* activation, float* weight, int* ro
     const int BLOCK_SIZE_N = 32;
     dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
     dim3 blockDim(256);
+    printf("M:%d K:%d N:%d block_h:%d block_w:%d\n", M, K, N, block_h, block_w);
     BLOCK_SPARSE_MATMUL_TN_CONDENSE_OPENAI<<<gridDim, blockDim>>>(activation, weight, output, row_ptr, col_idx, M, K, N, block_h, block_w);
 }
 
@@ -308,19 +309,17 @@ at::Tensor dynamic_sparse_linear_condense_forward(
     torch::Tensor row_ptr,
     torch::Tensor col_index,
     torch::Tensor bias,
-    int M, int K, int N, int block_h, int block_w
+    int M, int K, int N, int block_h, int block_w,
+    int batch_size, int seq_len
 )
 {
+
     // The weight tensor here should be transposed and in the shape of K x N
+    // besides the activation tensor should also be transposed in the the shape of K x M
     cudaSetDevice(activation.get_device());
-    int batch_size = activation.size(0);
-    int seq_len = activation.size(1);
-    int in_hidden = activation.size(2);
-    assert(in_hidden == weight.size(0));
     assert(M == batch_size* seq_len);
     int out_hidden = weight.size(1);
     torch::Tensor output = torch::empty({batch_size, seq_len, out_hidden}, activation.options());
-    // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
 
     
     AT_DISPATCH_FLOATING_TYPES(activation.type(), "dynamic_sparse_linear", ([&]

@@ -8,7 +8,8 @@ at::Tensor dynamic_sparse_linear_condense_forward(
     torch::Tensor row_ptr,
     torch::Tensor col_indx,
     torch::Tensor bias,
-    int M, int K, int N, int block_h, int block_w
+    int M, int K, int N, int block_h, int block_w,
+    int batch_size, int seq_len
 );
 
 std::vector<at::Tensor> dynamic_sparse_linear_condense_backward(
