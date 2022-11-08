@@ -299,7 +299,6 @@ __global__ void BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI(float* A, float* B, f
     const int K = GLOBAL_K;
     const int N = GLOBAL_N;
 
-
     assert(blockDim.x % 32 == 0);
     uint n_warp = 8; // blockDim.x / 32
     assert(THREAD_SIZE_K % n_warp == 0);
@@ -321,7 +320,7 @@ __global__ void BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI(float* A, float* B, f
     assert(THREAD_SIZE_K % 16 == 0);
     uint k = tx * 4;
 
-    uint ori_offset_A00 = k;
+    uint tmp_ori_offset_A00 = k;
     // uint ori_offsetA00 = (by * 32 + ty) * K + k;
     // uint ori_offsetA16 = ori_offsetA00 + K * 16;
     // uint ori_offsetB00 = (bx * 32 + ty) * K + k;
@@ -349,19 +348,20 @@ __global__ void BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI(float* A, float* B, f
     int index_start =  row_ptr[bx];
     int index_end = row_ptr[bx+1];
     int round = (index_end - index_start - 1 + BLOCK_SIZE_M/BLOCK_H) / (BLOCK_SIZE_M/BLOCK_H);
+    
     if( by < round){
         uint m_offset =  (by * 32 + ty);
         uint m_offset16 = m_offset + 16;
         uint _pos = m_offset / BLOCK_H;
         uint _pos16 = m_offset16 / BLOCK_H;
+        uint ori_offsetA00 = (col_idx[index_start+_pos]+m_offset%BLOCK_H) * K + tmp_ori_offset_A00;
+        uint ori_offsetA16 = (col_idx[index_start+_pos16]+m_offset16%BLOCK_H) * K + tmp_ori_offset_A00;
+
         for (int k_seq = 0; k_seq < (int)(K/64); k_seq++)
         {
 
-            uint offsetA00 = (col_idx[index_start+_pos]+m_offset%BLOCK_H) * K + ori_offset_A00;
-            uint offsetA16 = (col_idx[index_start+_pos16]+m_offset16%BLOCK_H) * K + ori_offset_A00;
-
-            // uint offsetA00 = ori_offsetA00 + 64 * k_seq;
-            // uint offsetA16 = ori_offsetA16 + 64 * k_seq;
+            uint offsetA00 = ori_offsetA00 + 64 * k_seq;
+            uint offsetA16 = ori_offsetA16 + 64 * k_seq;
 
             // uint offsetB00 = ori_offsetB00 + 64 * k_seq;
             // uint offsetB16 = ori_offsetB16 + 64 * k_seq;
@@ -518,10 +518,6 @@ void condense_dynamic_forward_function(float* activation, float* weight, int* ro
     BLOCK_SPARSE_MATMUL_TN_CONDENSE_OPENAI<<<gridDim, blockDim>>>(activation, weight, output, row_ptr, col_idx, M, K, N, block_h, block_w);
 }
 
-void dynamic_backward_function(float* grad_in, int * row_ptr, int *col_idx, float* val, int M, int K, int N, int block_h, int block_w, float* grad_out)
-{
-
-}
 
 at::Tensor dynamic_sparse_linear_condense_forward(
     torch::Tensor activation,
@@ -554,16 +550,48 @@ at::Tensor dynamic_sparse_linear_condense_forward(
                                 ); }));
     return output;
 }
+void condense_dynamic_backward_function(float* activation,
+                                        float* weight,
+                                        float * grad_c,
+                                        int * row_ptr,
+                                        int *col_idx,
+                                        int M, int K, int N,
+                                        int block_h,
+                                        int block_w,
+                                        float* a_grad,
+                                        float* w_grad)
+{
+    // calculate the grad of the weight tensor with the shape of KxN
+    dim3 blockDim(256);
+    dim3 gridDim(N/32, K/32);
+    printf("block_h:%d block_w:%d\n", block_h, block_w);
+    BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI<<<gridDim, blockDim>>>(activation, grad_c, w_grad, row_ptr, col_idx, K, M, N, block_h, block_w);
+}
 
 vector<at::Tensor> dynamic_sparse_linear_condense_backward(
     torch::Tensor activation,
     torch::Tensor weight,
-    torch::Tensor grad_a_row_ptr,
-    torch::Tensor grad_a_col_index,
+    torch::Tensor row_ptr,
+    torch::Tensor col_idx,
     torch::Tensor grad_c,
     int M, int K, int N, int block_h, int block_w
 )
 {
-    vector<at::Tensor> grads;
+    // The origin dense computation should be in the shape of MxKxN
+    // Note: the activation here is transposed into the shape of KxM
+    torch::Tensor a_grad = torch::empty_like(activation);
+    torch::Tensor w_grad = torch::zeros_like(weight);
+    AT_DISPATCH_FLOATING_TYPES(activation.type(), "dynamic_sparse_linear", ([&]
+    { condense_dynamic_backward_function(
+            activation.data_ptr<float>(),
+            weight.data_ptr<float>(),
+            grad_c.data_ptr<float>(),
+            row_ptr.data_ptr<int>(),
+            col_idx.data_ptr<int>(),
+            M, K, N, block_h, block_w,
+            a_grad.data_ptr<float>(),
+            w_grad.data_ptr<float>()
+        ); }));
+    vector<at::Tensor> grads({a_grad, w_grad});
     return grads;
 }

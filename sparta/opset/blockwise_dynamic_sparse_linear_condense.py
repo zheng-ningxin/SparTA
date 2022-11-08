@@ -30,22 +30,33 @@ class BlockwiseSparseLinearCondenseFunction(torch.autograd.Function):
             activation,
             weight,
             row_ptr,
-            col_idx
+            col_idx,
+            torch.tensor(block_h, dtype=torch.int32),
+            torch.tensor(block_w, dtype=torch.int32)
         )
         return condense_sparse_linear_cpp.forward(activation, weight, row_ptr, col_idx, bias, M, K, N, block_h, block_w, batch_size, seq_len)
 
     @staticmethod
     def backward(ctx, *grad_out):
-        # activation, weight, blockwise_mask = ctx.saved_tensors
-        # a_grad, w_grad = blockwise_sparse_linear_cpp.backward(activation, weight, grad_out[0], blockwise_mask)
-        # return a_grad, w_grad, None, None
-        return None, None, None, None
+        
+        activation, weight, row_ptr, col_idx, block_h, block_w = ctx.saved_tensors
+        K, M = activation.size()
+        K, N = weight.size()
+        a_grad, w_grad = condense_sparse_linear_cpp.backward(activation, weight, row_ptr, col_idx, grad_out[0], M, K, N, block_h.item(), block_w.item())
+        # import ipdb; ipdb.set_trace()
+        return a_grad, w_grad, None, None, None, None, None, None, None, None, None, None
 
 class BlockwiseSparseLinearCondense(SparseOPBase):
     def __init__(self, ori_linear, block_h, block_w):
         super(BlockwiseSparseLinearCondense, self).__init__()
         assert isinstance(ori_linear, torch.nn.Linear)
-        self.weight = copy.deepcopy(ori_linear.weight).t().contiguous()
+        tmp_t = ori_linear.weight.clone().detach().t().contiguous()
+        # self.register_parameter('weight', tmp_t)
+        self.weight = torch.nn.Parameter(tmp_t)
+        # self.weight.require_grad_(ori_linear.weight.require_grad)
+        # self.weight = copy.deepcopy(ori_linear.weight)
+        # with torch.no_grad():
+        #     self.weight = self.weight.t().contiguous()
         self.bias = copy.deepcopy(ori_linear.bias)
         # for memory usage saving
         del ori_linear

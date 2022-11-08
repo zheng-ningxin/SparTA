@@ -45,19 +45,24 @@ def test_corressness(data, block_mask, ori_linear, b_linear, block_h=1, block_w=
     b_linear.weight.data *= full_mask.data
     ref_out = ori_linear(data_1)
     out = b_linear(data_2, block_mask)
-    import ipdb; ipdb.set_trace()
+    # assert torch.allclose(out, ref_out, rtol=1e-08, atol=1e-03)
+    # import ipdb; ipdb.set_trace()
     tmp_grad = torch.rand_like(ref_out)
+    # tmp_grad.data[:] = 1
     ref_out.backward(tmp_grad)
     out.backward(tmp_grad)
+    w_grad_1 = b_linear.weight.grad
+    w_grad_2 = ori_linear.weight.grad.t() * full_mask
     # import ipdb; ipdb.set_trace()
-    # import ipdb; ipdb.set_trace()
+    # # import ipdb; ipdb.set_trace()
+    # # import ipdb; ipdb.set_trace()
     flag = True
     flag = flag and torch.allclose(out, ref_out, rtol=1e-08, atol=1e-03)
-    flag = flag and torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
-    flag = flag and torch.allclose(ori_linear.weight.grad.data * full_mask, b_linear.weight.grad, rtol=1e-08, atol=1e-03)
-    if not flag:
-        import ipdb;
-        ipdb.set_trace()
+    # flag = flag and torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
+    flag = flag and torch.allclose(w_grad_2, w_grad_1, rtol=1e-08, atol=1e-03)
+    # if not flag:
+    #     import ipdb;
+    #     ipdb.set_trace()
 
 def dense_speed(linear, data):
     run_time = 2000
@@ -109,6 +114,7 @@ if __name__ == '__main__':
         ori_linear = torch.nn.Linear(K, N).cuda()
         ori_linear.bias.data[:] = 0
         # ori_linear.weight.data[:] = 1
+        # data.data[:] = 1
         b_linear = BlockwiseSparseLinearCondense(ori_linear, block_h, block_w)
         test_corressness(data, block_mask, ori_linear, b_linear)
         # dense_speed(ori_linear, data)
