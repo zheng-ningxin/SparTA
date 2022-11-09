@@ -39,8 +39,8 @@ def test_corressness(data, block_mask, ori_linear, b_linear, block_h=1, block_w=
     data_2.requires_grad_()
     
     full_mask = convert_to_full_mask(block_mask, (block_h, block_w))
-    print("Block mask:", block_mask.size())
-    print("Full mask:", full_mask.size())
+    # print("Block mask:", block_mask.size())
+    # print("Full mask:", full_mask.size())
     ori_linear.weight.data *= full_mask.data.t()
     b_linear.weight.data *= full_mask.data
     ref_out = ori_linear(data_1)

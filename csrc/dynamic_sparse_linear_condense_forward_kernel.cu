@@ -348,9 +348,7 @@ __global__ void BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI(float* A, float* B, f
     int index_start =  row_ptr[bx];
     int index_end = row_ptr[bx+1];
     int round = (index_end - index_start - 1 + BLOCK_SIZE_M/BLOCK_H) / (BLOCK_SIZE_M/BLOCK_H);
-    if(bx==0 && by ==0 && tid ==0){
-        printf("round:%d index_start:%d index_end:%d \n\n", round, index_start, index_end);
-    }
+
     if( by < round){
         uint m_offset =  (by * 32 + ty);
         uint m_offset16 = m_offset + 16;
@@ -358,9 +356,7 @@ __global__ void BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI(float* A, float* B, f
         uint _pos16 = m_offset16 / BLOCK_H;
         uint ori_offsetA00 = (col_idx[index_start+_pos]+m_offset%BLOCK_H) * K + tmp_ori_offset_A00;
         uint ori_offsetA16 = (col_idx[index_start+_pos16]+m_offset16%BLOCK_H) * K + tmp_ori_offset_A00;
-        if(col_idx[index_start+_pos]== 0 && bx == 0 && tid==0 ){
-            printf("round:%d bx:%d by:%d _pos:%d index_start:%d index_end:%d\n", round, bx, by, _pos, index_start, index_end);
-        }
+
         for (int k_seq = 0; k_seq < (int)(K/64); k_seq++)
         {
 
@@ -382,9 +378,7 @@ __global__ void BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI(float* A, float* B, f
                 a16 = __ldg((const float4*)(add_ptr_f(A, offsetA16)));
                 // b16 = __ldg((const float4*)(add_ptr_f(B, offsetB32)));
             }
-            if(col_idx[index_start+_pos]== 0 && bx == 0 && tid==0 ){
-                printf("a00:%f %f %f %f\n", a00.x, a00.y, a00.z, a00.w);
-            }
+
             // a00 = __ldg((const float4*)(add_ptr_f(A, offsetA00)));
             // a16 = __ldg((const float4*)(add_ptr_f(A, offsetA16)));
             b00 = __ldg((const float4*)(add_ptr_f(B, offsetB00)));
@@ -487,13 +481,8 @@ __global__ void BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI(float* A, float* B, f
             //-> store((bhalf2*)C, c2[0]);
             // *(float2*)C_val = c2[0];
             *(float2*)output = c2[0];
-            if(col_idx[index_start+_pos]== 0 && bx == 0 && tid==0 ){
-                printf("index:%d output: %f %f\n", output-ori_output, c2[0].x, c2[0].y);
-            }
+
         }
-        // if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
-        //     printf("output value: %f\n", *output);
-        // }
 
         __syncthreads();
         *(float4*)&fShare[storC + 0*32*8] = *(float4*)regC[4];
@@ -517,9 +506,7 @@ __global__ void BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI(float* A, float* B, f
             *(float2*)output = c2[0];
         }
     }
-    if(bx==0 && by ==0 && tid ==0 ){
-        printf("output[0]:%f \n", ori_output[0]);
-    }
+
 }
 
 void condense_dynamic_forward_function(float* activation, float* weight, int* row_ptr, int* col_idx,
@@ -530,7 +517,6 @@ void condense_dynamic_forward_function(float* activation, float* weight, int* ro
     const int BLOCK_SIZE_N = 32;
     dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
     dim3 blockDim(256);
-    // printf("M:%d K:%d N:%d block_h:%d block_w:%d\n", M, K, N, block_h, block_w);
     BLOCK_SPARSE_MATMUL_TN_CONDENSE_OPENAI<<<gridDim, blockDim>>>(activation, weight, output, row_ptr, col_idx, M, K, N, block_h, block_w);
 }
 
@@ -860,9 +846,7 @@ __global__ void MATMUL_NT_OPENAI(
     // *(float2*)C_val = c2[0];
     // *(float2*)output = _add(c2[0], *(float2*)(bias_share+tx*2));
     *(float2*)output = c2[0];
-    // if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
-    //     printf("output value: %f\n", *output);
-    // }
+
 
     __syncthreads();
     *(float4*)&fShare[storC + 0*32*8] = *(float4*)regC[4];
@@ -901,7 +885,6 @@ void condense_dynamic_backward_function(float* activation,
     // calculate the grad of the weight tensor with the shape of KxN
     dim3 blockDim(256);
     dim3 gridDim(N/32, K/32);
-    printf("block_h:%d block_w:%d\n", block_h, block_w);
     BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI<<<gridDim, blockDim>>>(activation, grad_c, w_grad, row_ptr, col_idx, K, M, N, block_h, block_w);
     dim3 a_gridDim(M/32, K/32);
     MATMUL_NT_OPENAI<<<a_gridDim, blockDim>>>(weight, grad_c, K, N, M, a_grad);
