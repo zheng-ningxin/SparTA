@@ -106,7 +106,8 @@ if __name__ == '__main__':
     block_h = 1
     block_w = 32
     
-    for sparsity_ratio in [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]:
+    for sparsity_ratio in [0.9]:
+        # for sparsity_ratio in [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]:
         block_wise_weight = torch.rand(K//block_h, N//block_w, dtype=torch.float32).cuda()
         block_mask = (block_wise_weight > sparsity_ratio).to(torch.int32)
         print("Sparsity ratio:", torch.sum(block_mask)/block_mask.numel())
@@ -116,6 +117,6 @@ if __name__ == '__main__':
         # ori_linear.weight.data[:] = 1
         # data.data[:] = 1
         b_linear = BlockwiseSparseLinearCondense(ori_linear, block_h, block_w)
-        test_corressness(data, block_mask, ori_linear, b_linear)
+        # test_corressness(data, block_mask, ori_linear, b_linear)
         # dense_speed(ori_linear, data)
-        # test_speed(b_linear, block_mask, data)
+        test_speed(b_linear, block_mask, data)
