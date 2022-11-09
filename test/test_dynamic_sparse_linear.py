@@ -109,7 +109,8 @@ if __name__ == '__main__':
     for sparsity_ratio in [0.05]:
         sp_pattern = random_sparse_pattern_block(out_dim, in_dim, sparsity_ratio, block_h, block_w).cuda()
         print('Sparsity ratio:', sparsity_ratio)
+        import ipdb; ipdb.set_trace()
         test_speed(d_linear, data, sp_pattern)
         # dense_speed(ori_linear, data)
         # test_correctness()
-        # dense_speed(ori_linear, data)
+        dense_speed(ori_linear, data)

@@ -67,10 +67,10 @@ class BlockwiseSparseLinearCondense(SparseOPBase):
         self.N = self.weight.size(1)
 
     def forward(self, activation, block_mask):
-        csr_row, csr_col = self.convert(block_mask)
+        self.csr_row, self.csr_col = self.convert(block_mask)
         batch_size, seq_len, in_hidden = activation.size()
         M = batch_size * seq_len
         K = self.K
         N = self.N
         activation = activation.view(M, K).t().contiguous()
-        return BlockwiseSparseLinearCondenseFunction.apply(activation, self.weight, csr_row, csr_col, self.bias, M, K, N, self.block_h, self.block_w, batch_size, seq_len)
+        return BlockwiseSparseLinearCondenseFunction.apply(activation, self.weight, self.csr_row, self.csr_col, self.bias, M, K, N, self.block_h, self.block_w, batch_size, seq_len)

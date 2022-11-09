@@ -58,11 +58,11 @@ def test_corressness(data, block_mask, ori_linear, b_linear, block_h=1, block_w=
     # # import ipdb; ipdb.set_trace()
     flag = True
     flag = flag and torch.allclose(out, ref_out, rtol=1e-08, atol=1e-03)
-    # flag = flag and torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
+    flag = flag and torch.allclose(data_1.grad, data_2.grad, rtol=1e-08, atol=1e-03)
     flag = flag and torch.allclose(w_grad_2, w_grad_1, rtol=1e-08, atol=1e-03)
-    # if not flag:
-    #     import ipdb;
-    #     ipdb.set_trace()
+    if not flag:
+        import ipdb;
+        ipdb.set_trace()
 
 def dense_speed(linear, data):
     run_time = 2000
