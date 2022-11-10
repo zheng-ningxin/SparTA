@@ -605,19 +605,6 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float* W_val, int* W_row, int
             FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
                 FETCH_FLOAT4(A[OFFSET(by*BLOCK_SIZE_M+k+A_BLOCK_ROW_START, tile_idx+A_BLOCK_COL_START, K)]);
         }
-        /*
-        for(int k = 0; k < BLOCK_SIZE_K; k += A_TILE_ROW_STRIDE){
-            FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_M)]) = 
-                FETCH_FLOAT4(A[OFFSET(tile_idx+k+A_BLOCK_ROW_START, by*BLOCK_SIZE_M+A_BLOCK_COL_START, M)]);
-        }
-        */
-
-        // #pragma unroll
-        // for(int k = 0; k < BLOCK_SIZE_K; k += B_TILE_ROW_STRIDE){
-        //     FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BLOCK_SIZE_N)]) = 
-        //         FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_N + B_BLOCK_COL_START]);
-        //         // FETCH_FLOAT4(B[OFFSET(tile_idx+k+B_BLOCK_ROW_START, bx*BLOCK_SIZE_N+B_BLOCK_COL_START, N)]);
-        // }
 
         #pragma unroll
         for(int k=0; k < BLOCK_SIZE_N; k+= B_TILE_ROW_STRIDE){
