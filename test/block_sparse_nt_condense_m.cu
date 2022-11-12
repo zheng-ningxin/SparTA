@@ -312,7 +312,7 @@ int main()
     K = 1024;
     N = 1024;
     const int n_iter = 1000;
-    float sparsity_ratio = 0.95;
+    float sparsity_ratio = 0.99;
     const int BLOCK_H = 1;
     const int BLOCK_W = 32;
     // const int BLOCK_W = 1;
