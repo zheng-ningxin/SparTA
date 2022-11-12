@@ -779,9 +779,11 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
 
     int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
     int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
+    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4;
+    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4;
 
-    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
-    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
+    // int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
+    // int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
 
     int index_start = csr_row[bx] + by * BLOCK_SIZE_M; 
     int index_end = min(csr_row[bx+1], index_start + BLOCK_SIZE_M);
@@ -797,12 +799,12 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
         if(tid<index_end-index_start)
             m_index[tid] = csr_col[tid+index_start];
         __syncthreads();
-        for(int block_n_id=0; block_n_id< N/BLOCK_SIZE_N; block_n_id++){
+        for(int block_n_id=0; block_n_id < N/BLOCK_SIZE_N; block_n_id++){
             #pragma unroll
             for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
                 // FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
                 if(k + A_BLOCK_ROW_START < index_end-index_start){
-                    tmp_float4 = FETCH_FLOAT4(A[OFFSET(m_index[k+A_BLOCK_ROW_START], A_BLOCK_COL_START, K)]);
+                    tmp_float4 = FETCH_FLOAT4(A[OFFSET(m_index[k+A_BLOCK_ROW_START], A_BLOCK_COL_START + BLOCK_SIZE_K * bx, K)]);
                 }
                 else{
                     tmp_float4 = const0;
@@ -813,7 +815,7 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
             #pragma unroll
             for(int k=0; k < BLOCK_SIZE_N; k+= B_TILE_ROW_STRIDE){
                 // transpose here
-                tmp_float4 = FETCH_FLOAT4(weight[OFFSET(block_n_id * BLOCK_SIZE_N + k + B_BLOCK_ROW_START, B_BLOCK_COL_START, K)]);
+                tmp_float4 = FETCH_FLOAT4(weight[OFFSET(block_n_id * BLOCK_SIZE_N + k + B_BLOCK_ROW_START, B_BLOCK_COL_START + BLOCK_SIZE_K * bx, K)]);
                 // tmp_float4 =  FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_K + B_BLOCK_COL_START]);
                 Bs[OFFSET(B_BLOCK_COL_START, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.x;
                 Bs[OFFSET(B_BLOCK_COL_START+1, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.y;
@@ -854,8 +856,6 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
                     }
                 }
             }
-
-
             // Write back to the correponding position
             #pragma unroll
             for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
@@ -868,7 +868,7 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
                     // )] = (accum[thread_x][thread_y]);
                     atomicAdd(C+OFFSET(
                         BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
-                        BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
+                        BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
                         N),
                         accum[thread_x][thread_y]);
                     
@@ -880,7 +880,6 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
     }
 
 }
-
 
 
 void condense_dynamic_backward_function(float* activation,
