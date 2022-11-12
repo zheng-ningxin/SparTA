@@ -133,9 +133,11 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
 
     int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
     int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
+    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4;
+    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4;
 
-    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
-    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
+    // int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
+    // int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
 
     int index_start = csr_row[bx] + by * BLOCK_SIZE_M; 
     int index_end = min(csr_row[bx+1], index_start + BLOCK_SIZE_M);
@@ -151,12 +153,12 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
         if(tid<index_end-index_start)
             m_index[tid] = csr_col[tid+index_start];
         __syncthreads();
-        for(int block_n_id=0; block_n_id< N/BLOCK_SIZE_N; block_n_id++){
+        for(int block_n_id=0; block_n_id < N/BLOCK_SIZE_N; block_n_id++){
             #pragma unroll
             for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
                 // FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
                 if(k + A_BLOCK_ROW_START < index_end-index_start){
-                    tmp_float4 = FETCH_FLOAT4(A[OFFSET(m_index[k+A_BLOCK_ROW_START], A_BLOCK_COL_START, K)]);
+                    tmp_float4 = FETCH_FLOAT4(A[OFFSET(m_index[k+A_BLOCK_ROW_START], A_BLOCK_COL_START + BLOCK_SIZE_K * bx, K)]);
                 }
                 else{
                     tmp_float4 = const0;
@@ -167,7 +169,7 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
             #pragma unroll
             for(int k=0; k < BLOCK_SIZE_N; k+= B_TILE_ROW_STRIDE){
                 // transpose here
-                tmp_float4 = FETCH_FLOAT4(weight[OFFSET(block_n_id * BLOCK_SIZE_N + k + B_BLOCK_ROW_START, B_BLOCK_COL_START, K)]);
+                tmp_float4 = FETCH_FLOAT4(weight[OFFSET(block_n_id * BLOCK_SIZE_N + k + B_BLOCK_ROW_START, B_BLOCK_COL_START + BLOCK_SIZE_K * bx, K)]);
                 // tmp_float4 =  FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_K + B_BLOCK_COL_START]);
                 Bs[OFFSET(B_BLOCK_COL_START, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.x;
                 Bs[OFFSET(B_BLOCK_COL_START+1, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.y;
@@ -222,7 +224,7 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
                     // )] = (accum[thread_x][thread_y]);
                     atomicAdd(C+OFFSET(
                         BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
-                        BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
+                        BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
                         N),
                         accum[thread_x][thread_y]);
                     
@@ -309,8 +311,8 @@ int main()
     M = 1024;
     K = 1024;
     N = 1024;
-    const int n_iter = 10;
-    float sparsity_ratio = 0.0;
+    const int n_iter = 1000;
+    float sparsity_ratio = 0.95;
     const int BLOCK_H = 1;
     const int BLOCK_W = 32;
     // const int BLOCK_W = 1;
@@ -355,7 +357,6 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(d_col, col, sizeof(int)*M * K / BLOCK_H / BLOCK_W, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(d_val, val, sizeof(float) * M * K, cudaMemcpyHostToDevice));
 
-    CUDA_SAFE_CALL(cudaEventRecord(time_start));
     
     const int A_BLOCK_SIZE_M = 64;
     const int A_BLOCK_SIZE_K = 32;
@@ -367,6 +368,8 @@ int main()
     dim3 a_grad_grid_dim(K/A_BLOCK_SIZE_K, M/A_BLOCK_SIZE_M);
     dim3 a_grad_block_dim(A_BLOCK_SIZE_N/A_THREAD_SIZE_N, A_BLOCK_SIZE_M/A_THREAD_SIZE_M);
     printf("Test Condense-M on our block sparse template\n");
+    CUDA_SAFE_CALL(cudaEventRecord(time_start));
+
     for(int run=0; run<n_iter; run++){
         BLOCK_SPARSE_NT_CONDENSE<A_BLOCK_SIZE_M, A_BLOCK_SIZE_K, A_BLOCK_SIZE_N, A_THREAD_SIZE_M, A_THREAD_SIZE_K, A_THREAD_SIZE_N><<<a_grad_grid_dim, a_grad_block_dim>>>(dA, dB, d_row, d_col, dC, M, K, N);
         // openai_bmm_32_64_32_condense_dim_m_launch(d_val, d_row, d_col, dB, dC, M, K, N, BLOCK_H, BLOCK_W, sparse_val_size, 1);
