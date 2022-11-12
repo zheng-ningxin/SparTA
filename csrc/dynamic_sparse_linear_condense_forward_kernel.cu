@@ -552,145 +552,6 @@ at::Tensor dynamic_sparse_linear_condense_forward(
                                 ); }));
     return output;
 }
-template <
-    const int BLOCK_SIZE_M, // 64
-    const int BLOCK_SIZE_K, // 8
-    const int BLOCK_SIZE_N, // 128
-    const int THREAD_SIZE_M, // 8
-    const int THREAD_SIZE_K, // 4
-    const int THREAD_SIZE_N  // 8
->
-__global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row, int * csr_col, float* C, int M, int K, int N){
-    
-    // A and Weight tensor are stored in the dense format
-    // bx-> K by->M
-    int by = blockIdx.y;
-    int bx = blockIdx.x;
-    int ty = threadIdx.y;
-    int tx = threadIdx.x;
-    const int padding = 1;
-    __shared__ float As[BLOCK_SIZE_M * (BLOCK_SIZE_K + padding)];
-    __shared__ float Bs[BLOCK_SIZE_N * (BLOCK_SIZE_K + padding)];
-    __shared__ int m_index[BLOCK_SIZE_M];
-    float accum[THREAD_SIZE_N][THREAD_SIZE_M] = {0};
-    float a_frag[THREAD_SIZE_M][THREAD_SIZE_K];
-    float b_frag[THREAD_SIZE_N][THREAD_SIZE_K];
-
-    int A_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
-    int B_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
-
-    int bszy = BLOCK_SIZE_M / THREAD_SIZE_M;
-    int bszx = BLOCK_SIZE_N / THREAD_SIZE_N;
-
-    int THREADS_PER_BLOCK = bszy * bszx;
-
-    int A_TILE_ROW_STRIDE = THREADS_PER_BLOCK / A_THREAD_PER_ROW;
-    int B_TILE_ROW_STRIDE = THREADS_PER_BLOCK / B_THREAD_PER_ROW;
-
-    int tid = ty * bszx + tx;
-
-    int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
-    int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
-
-    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
-    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
-
-    int index_start = csr_row[bx] + by * BLOCK_SIZE_M; 
-    int index_end = min(csr_row[bx+1], index_start + BLOCK_SIZE_M);
-    
-    const int vBLOCK_SIZE_M = BLOCK_SIZE_M / THREAD_SIZE_M;
-    const int vBLOCK_SIZE_N = BLOCK_SIZE_N / THREAD_SIZE_N;
-    float4 tmp_float4;
-    float4 const0 = {0,0,0,0};
-    if(index_start < index_end){
-        if(tid<index_end-index_start)
-            m_index[tid] = csr_col[tid+index_start];
-        __syncthreads();
-        for(int block_n_id=0; block_n_id< N/BLOCK_SIZE_N; block_n_id++){
-            #pragma unroll
-            for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
-                // FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
-                if(k + A_BLOCK_ROW_START < index_end-index_start){
-                    tmp_float4 = FETCH_FLOAT4(A[OFFSET(m_index[k+A_BLOCK_ROW_START], A_BLOCK_COL_START, K)]);
-                }
-                else{
-                    tmp_float4 = const0;
-                }
-                FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) = tmp_float4;
-            }
-
-            #pragma unroll
-            for(int k=0; k < BLOCK_SIZE_N; k+= B_TILE_ROW_STRIDE){
-                // transpose here
-                tmp_float4 = FETCH_FLOAT4(weight[OFFSET(block_n_id * BLOCK_SIZE_N + k + B_BLOCK_ROW_START, B_BLOCK_COL_START, K)]);
-                // tmp_float4 =  FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_K + B_BLOCK_COL_START]);
-                Bs[OFFSET(B_BLOCK_COL_START, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.x;
-                Bs[OFFSET(B_BLOCK_COL_START+1, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.y;
-                Bs[OFFSET(B_BLOCK_COL_START+2, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.z;
-                Bs[OFFSET(B_BLOCK_COL_START+3, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.w;
-            }
-
-            __syncthreads();
-
-            #pragma unroll
-            for(int k = 0; k < BLOCK_SIZE_K; k += THREAD_SIZE_K){
-                #pragma unroll
-                for(int i = 0; i < THREAD_SIZE_K; i++){
-                    #pragma unroll
-                    for(int j = 0; j < THREAD_SIZE_M; j += 1){
-                        a_frag[j][i] = As[OFFSET(ty + vBLOCK_SIZE_M * j, k+i, BLOCK_SIZE_K)];
-                        //a_frag[j][i] = As[OFFSET(k+i, ty + vBLOCK_SIZE_M * j, BLOCK_SIZE_M)];
-                    }
-                }
-
-                #pragma unroll
-                for(int i = 0; i < THREAD_SIZE_K; i++){
-                    #pragma unroll
-                    for(int j = 0; j < THREAD_SIZE_N; j += 1){
-                        b_frag[j][i] = Bs[OFFSET(k+i, tx + vBLOCK_SIZE_N * j, BLOCK_SIZE_N)];
-                    }
-                }
-
-                #pragma unroll
-                for(int i = 0; i < THREAD_SIZE_N; i++){
-                    #pragma unroll
-                    for(int j = 0; j < THREAD_SIZE_M; j++){
-                        #pragma unroll
-                        for(int k_in = 0; k_in < THREAD_SIZE_K; k_in++){
-                            // accum[i][j] = fma(a_frag[j][k_in], b_frag[i][k_in], accum[i][j]);
-                            accum[i][j] += a_frag[j][k_in] * b_frag[i][k_in];
-                        }
-                    }
-                }
-            }
-
-
-            // Write back to the correponding position
-            #pragma unroll
-            for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
-                #pragma unroll
-                for(int thread_y = 0; thread_y < THREAD_SIZE_M; thread_y+=1){
-                    // C[OFFSET(
-                    //     BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
-                    //     BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
-                    //     N
-                    // )] = (accum[thread_x][thread_y]);
-                    atomicAdd(C+OFFSET(
-                        BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
-                        BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
-                        N),
-                        accum[thread_x][thread_y]);
-                    
-                }
-            }
-
-        }
-
-    }
-
-}
-
-
 
 __global__ void MATMUL_NT_OPENAI(
     float* A,
@@ -879,6 +740,148 @@ __global__ void MATMUL_NT_OPENAI(
 
 }
 
+template <
+    const int BLOCK_SIZE_M, // 64
+    const int BLOCK_SIZE_K, // 8
+    const int BLOCK_SIZE_N, // 128
+    const int THREAD_SIZE_M, // 8
+    const int THREAD_SIZE_K, // 4
+    const int THREAD_SIZE_N  // 8
+>
+__global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row, int * csr_col, float* C, int M, int K, int N){
+    
+    // A and Weight tensor are stored in the dense format
+    // bx-> K by->M
+    int by = blockIdx.y;
+    int bx = blockIdx.x;
+    int ty = threadIdx.y;
+    int tx = threadIdx.x;
+    const int padding = 1;
+    __shared__ float As[BLOCK_SIZE_M * (BLOCK_SIZE_K + padding)];
+    __shared__ float Bs[BLOCK_SIZE_N * (BLOCK_SIZE_K + padding)];
+    __shared__ int m_index[BLOCK_SIZE_M];
+    float accum[THREAD_SIZE_N][THREAD_SIZE_M] = {0};
+    float a_frag[THREAD_SIZE_M][THREAD_SIZE_K];
+    float b_frag[THREAD_SIZE_N][THREAD_SIZE_K];
+
+    int A_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
+    int B_THREAD_PER_ROW = BLOCK_SIZE_K / 4;
+
+    int bszy = BLOCK_SIZE_M / THREAD_SIZE_M;
+    int bszx = BLOCK_SIZE_N / THREAD_SIZE_N;
+
+    int THREADS_PER_BLOCK = bszy * bszx;
+
+    int A_TILE_ROW_STRIDE = THREADS_PER_BLOCK / A_THREAD_PER_ROW;
+    int B_TILE_ROW_STRIDE = THREADS_PER_BLOCK / B_THREAD_PER_ROW;
+
+    int tid = ty * bszx + tx;
+
+    int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
+    int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
+
+    int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
+    int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 4 + BLOCK_SIZE_K * bx;
+
+    int index_start = csr_row[bx] + by * BLOCK_SIZE_M; 
+    int index_end = min(csr_row[bx+1], index_start + BLOCK_SIZE_M);
+    
+    const int vBLOCK_SIZE_M = BLOCK_SIZE_M / THREAD_SIZE_M;
+    const int vBLOCK_SIZE_N = BLOCK_SIZE_N / THREAD_SIZE_N;
+    float4 tmp_float4;
+    float4 const0 = {0,0,0,0};
+    if(index_start < index_end){
+        for(int i=0;i<THREAD_SIZE_N;i++)
+            for(int j=0;j<THREAD_SIZE_M;j++)
+                accum[i][j] = 0;
+        if(tid<index_end-index_start)
+            m_index[tid] = csr_col[tid+index_start];
+        __syncthreads();
+        for(int block_n_id=0; block_n_id< N/BLOCK_SIZE_N; block_n_id++){
+            #pragma unroll
+            for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
+                // FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
+                if(k + A_BLOCK_ROW_START < index_end-index_start){
+                    tmp_float4 = FETCH_FLOAT4(A[OFFSET(m_index[k+A_BLOCK_ROW_START], A_BLOCK_COL_START, K)]);
+                }
+                else{
+                    tmp_float4 = const0;
+                }
+                FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) = tmp_float4;
+            }
+
+            #pragma unroll
+            for(int k=0; k < BLOCK_SIZE_N; k+= B_TILE_ROW_STRIDE){
+                // transpose here
+                tmp_float4 = FETCH_FLOAT4(weight[OFFSET(block_n_id * BLOCK_SIZE_N + k + B_BLOCK_ROW_START, B_BLOCK_COL_START, K)]);
+                // tmp_float4 =  FETCH_FLOAT4(W_val[tile_block_idx * BLOCK_SIZE_N * BLOCK_SIZE_K + (k+B_BLOCK_ROW_START) * BLOCK_SIZE_K + B_BLOCK_COL_START]);
+                Bs[OFFSET(B_BLOCK_COL_START, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.x;
+                Bs[OFFSET(B_BLOCK_COL_START+1, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.y;
+                Bs[OFFSET(B_BLOCK_COL_START+2, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.z;
+                Bs[OFFSET(B_BLOCK_COL_START+3, k+B_BLOCK_ROW_START, BLOCK_SIZE_N)] = tmp_float4.w;
+            }
+
+            __syncthreads();
+
+            #pragma unroll
+            for(int k = 0; k < BLOCK_SIZE_K; k += THREAD_SIZE_K){
+                #pragma unroll
+                for(int i = 0; i < THREAD_SIZE_K; i++){
+                    #pragma unroll
+                    for(int j = 0; j < THREAD_SIZE_M; j += 1){
+                        a_frag[j][i] = As[OFFSET(ty + vBLOCK_SIZE_M * j, k+i, BLOCK_SIZE_K)];
+                        //a_frag[j][i] = As[OFFSET(k+i, ty + vBLOCK_SIZE_M * j, BLOCK_SIZE_M)];
+                    }
+                }
+
+                #pragma unroll
+                for(int i = 0; i < THREAD_SIZE_K; i++){
+                    #pragma unroll
+                    for(int j = 0; j < THREAD_SIZE_N; j += 1){
+                        b_frag[j][i] = Bs[OFFSET(k+i, tx + vBLOCK_SIZE_N * j, BLOCK_SIZE_N)];
+                    }
+                }
+
+                #pragma unroll
+                for(int i = 0; i < THREAD_SIZE_N; i++){
+                    #pragma unroll
+                    for(int j = 0; j < THREAD_SIZE_M; j++){
+                        #pragma unroll
+                        for(int k_in = 0; k_in < THREAD_SIZE_K; k_in++){
+                            // accum[i][j] = fma(a_frag[j][k_in], b_frag[i][k_in], accum[i][j]);
+                            accum[i][j] += a_frag[j][k_in] * b_frag[i][k_in];
+                        }
+                    }
+                }
+            }
+
+
+            // Write back to the correponding position
+            #pragma unroll
+            for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
+                #pragma unroll
+                for(int thread_y = 0; thread_y < THREAD_SIZE_M; thread_y+=1){
+                    // C[OFFSET(
+                    //     BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                    //     BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
+                    //     N
+                    // )] = (accum[thread_x][thread_y]);
+                    atomicAdd(C+OFFSET(
+                        BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                        BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
+                        N),
+                        accum[thread_x][thread_y]);
+                    
+                }
+            }
+
+        }
+
+    }
+
+}
+
+
 
 void condense_dynamic_backward_function(float* activation,
                                         float* weight,
@@ -896,8 +899,20 @@ void condense_dynamic_backward_function(float* activation,
     dim3 gridDim(N/32, K/32);
     BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI<<<gridDim, blockDim>>>(activation, grad_c, w_grad, row_ptr, col_idx, K, M, N, block_h, block_w);
     dim3 a_gridDim(M/32, K/32);
-    MATMUL_NT_OPENAI<<<a_gridDim, blockDim>>>(weight, grad_c, K, N, M, a_grad);
+
+    const int A_BLOCK_SIZE_M = 64;
+    const int A_BLOCK_SIZE_K = 32;
+    const int A_BLOCK_SIZE_N = 128;
+    const int A_THREAD_SIZE_M = 4;
+    const int A_THREAD_SIZE_K = 4;
+    const int A_THREAD_SIZE_N = 4;
+    // KxM = KxN * (MxN)^T
+    dim3 a_grad_grid_dim(N/A_BLOCK_SIZE_K, K/A_BLOCK_SIZE_M);
+    dim3 a_grad_block_dim(A_BLOCK_SIZE_N/A_THREAD_SIZE_N, A_BLOCK_SIZE_M/A_THREAD_SIZE_M);
+    BLOCK_SPARSE_NT_CONDENSE<A_BLOCK_SIZE_M, A_BLOCK_SIZE_K, A_BLOCK_SIZE_N, A_THREAD_SIZE_M, A_THREAD_SIZE_K, A_THREAD_SIZE_N><<<a_grad_grid_dim, a_grad_block_dim>>>(weight, grad_c, row_ptr, col_idx, a_grad, K, N, M);
+    // MATMUL_NT_OPENAI<<<a_gridDim, blockDim>>>(weight, grad_c, K, N, M, a_grad);
     
+
     // calculate the grad of the activation tensor with the shape of KxM
     // Should be KxN * N*M
     // const int A_GRAD_BLOCK_SIZE_M = 64;
