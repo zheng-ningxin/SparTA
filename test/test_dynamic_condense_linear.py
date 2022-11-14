@@ -32,6 +32,9 @@ def random_sparse_pattern_block(M, N, sparsity, block_h, block_w):
     print('Remaining ratio: ', torch.sum(pattern)/pattern.numel())
     return pattern
 
+# def export_tensort(t, fname):
+    
+
 def test_corressness(data, block_mask, ori_linear, b_linear, block_h=1, block_w=32):
     data_1 = data.clone().detach()
     data_1.requires_grad_()
@@ -106,7 +109,7 @@ if __name__ == '__main__':
     block_h = 1
     block_w = 32
     
-    for sparsity_ratio in [0.9]:
+    for sparsity_ratio in [0.0, 0.1, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]:
         # for sparsity_ratio in [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]:
         block_wise_weight = torch.rand(K//block_h, N//block_w, dtype=torch.float32).cuda()
         block_mask = (block_wise_weight > sparsity_ratio).to(torch.int32)
@@ -118,5 +121,5 @@ if __name__ == '__main__':
         # data.data[:] = 1
         b_linear = BlockwiseSparseLinearCondense(ori_linear, block_h, block_w)
         # test_corressness(data, block_mask, ori_linear, b_linear)
-        # dense_speed(ori_linear, data)
+        dense_speed(ori_linear, data)
         test_speed(b_linear, block_mask, data)

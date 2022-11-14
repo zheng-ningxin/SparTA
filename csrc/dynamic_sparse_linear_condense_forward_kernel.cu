@@ -793,13 +793,16 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
     float4 tmp_float4;
     float4 const0 = {0,0,0,0};
     if(index_start < index_end){
-        for(int i=0;i<THREAD_SIZE_N;i++)
-            for(int j=0;j<THREAD_SIZE_M;j++)
-                accum[i][j] = 0;
+        // __syncthreads();
+
         if(tid<index_end-index_start)
             m_index[tid] = csr_col[tid+index_start];
         __syncthreads();
         for(int block_n_id=0; block_n_id < N/BLOCK_SIZE_N; block_n_id++){
+            #pragma unroll
+            for(int i=0;i<THREAD_SIZE_N;i++)
+                for(int j=0;j<THREAD_SIZE_M;j++)
+                accum[i][j] = 0;
             #pragma unroll
             for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
                 // FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
@@ -857,6 +860,7 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
                 }
             }
             // Write back to the correponding position
+
             #pragma unroll
             for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
                 #pragma unroll
@@ -866,17 +870,30 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
                     //     BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
                     //     N
                     // )] = (accum[thread_x][thread_y]);
-                    atomicAdd(C+OFFSET(
-                        BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
-                        BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
-                        N),
-                        accum[thread_x][thread_y]);
-                    
+                    // if(by==0 && bx==0 && tid==0){
+                    //     printf("bx:%d by:%d block_n_id:%d accum[tx, ty]:%f C_OFFSET:%d\n", bx, by, block_n_id, accum[thread_x][thread_y], OFFSET(
+                    //     BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                    //     BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
+                    //     N));
+                    // }
+                    // if(ty + thread_y * vBLOCK_SIZE_M>=index_end-index_start){
+                    //     printf("m_index offset:%d index_end-index_start:%d \n", ty + thread_y * vBLOCK_SIZE_M, index_end-index_start);
+                    // }
+                    // atomicAdd(C+OFFSET(
+                    //     BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                    //     BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
+                    //     N),
+                    //     accum[thread_x][thread_y]);
+                    if(ty + thread_y * vBLOCK_SIZE_M < index_end-index_start)
+                        atomicAdd(C+OFFSET(
+                            m_index[ty + thread_y * vBLOCK_SIZE_M],
+                            BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
+                            N),
+                            accum[thread_x][thread_y]);
+                        
                 }
             }
-
         }
-
     }
 
 }

@@ -147,13 +147,15 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
     float4 tmp_float4;
     float4 const0 = {0,0,0,0};
     if(index_start < index_end){
-        for(int i=0;i<THREAD_SIZE_N;i++)
-            for(int j=0;j<THREAD_SIZE_M;j++)
-                accum[i][j] = 0;
+
         if(tid<index_end-index_start)
             m_index[tid] = csr_col[tid+index_start];
         __syncthreads();
         for(int block_n_id=0; block_n_id < N/BLOCK_SIZE_N; block_n_id++){
+            #pragma unroll
+            for(int i=0;i<THREAD_SIZE_N;i++)
+                for(int j=0;j<THREAD_SIZE_M;j++)
+                accum[i][j] = 0;
             #pragma unroll
             for(int k = 0; k < BLOCK_SIZE_M; k += A_TILE_ROW_STRIDE){
                 // FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_K)]) =
@@ -210,9 +212,8 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
                     }
                 }
             }
-
-
             // Write back to the correponding position
+
             #pragma unroll
             for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
                 #pragma unroll
@@ -222,8 +223,19 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
                     //     BLOCK_SIZE_N * bx + tx + thread_x * vBLOCK_SIZE_N,
                     //     N
                     // )] = (accum[thread_x][thread_y]);
+                    // if(by==0 && bx==0 && tid==0){
+                    //     printf("bx:%d by:%d block_n_id:%d accum[tx, ty]:%f C_OFFSET:%d\n", bx, by, block_n_id, accum[thread_x][thread_y], OFFSET(
+                    //     BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                    //     BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
+                    //     N));
+                    // }
+                    // atomicAdd(C+OFFSET(
+                    //     BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                    //     BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
+                    //     N),
+                    //     accum[thread_x][thread_y]);
                     atomicAdd(C+OFFSET(
-                        BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
+                        m_index[ty + thread_y * vBLOCK_SIZE_M],
                         BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
                         N),
                         accum[thread_x][thread_y]);
@@ -232,7 +244,7 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
             }
 
         }
-
+        __syncthreads();
     }
 
 }
@@ -308,11 +320,11 @@ void convert_bcsr_condense_m(int * mask, float* dense_val, int M, int N, int blo
 int main()
 {
     int M, K, N;
-    M = 1024;
-    K = 1024;
+    M = 2048;
+    K = 4096;
     N = 1024;
-    const int n_iter = 1000;
-    float sparsity_ratio = 0.99;
+    const int n_iter = 10;
+    float sparsity_ratio = 0.8;
     const int BLOCK_H = 1;
     const int BLOCK_W = 32;
     // const int BLOCK_W = 1;
@@ -340,7 +352,7 @@ int main()
     int sparse_val_size = (block_nnz * BLOCK_H * BLOCK_W);
     printf("Block NNZ: %d\n", block_nnz);
     CUDA_SAFE_CALL(cudaMalloc(&d_mask, sizeof(int) * M * K));
-    CUDA_SAFE_CALL(cudaMalloc(&d_row, sizeof(int) * (M + 1)));
+    CUDA_SAFE_CALL(cudaMalloc(&d_row, sizeof(int) * (K + 1)));
     CUDA_SAFE_CALL(cudaMalloc(&d_col, sizeof(int) * M * K / BLOCK_H / BLOCK_W));
     CUDA_SAFE_CALL(cudaMalloc(&d_row_pos, sizeof(int) * M * K / BLOCK_H / BLOCK_W));
     CUDA_SAFE_CALL(cudaMalloc(&d_val, sizeof(float) * M * K));
