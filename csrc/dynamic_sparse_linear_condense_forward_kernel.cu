@@ -919,7 +919,7 @@ void condense_dynamic_backward_function(float* activation,
     const int A_BLOCK_SIZE_M = 64;
     const int A_BLOCK_SIZE_K = 32;
     const int A_BLOCK_SIZE_N = 128;
-    const int A_THREAD_SIZE_M = 4;
+    const int A_THREAD_SIZE_M = 8;
     const int A_THREAD_SIZE_K = 4;
     const int A_THREAD_SIZE_N = 4;
     // KxM = KxN * (MxN)^T

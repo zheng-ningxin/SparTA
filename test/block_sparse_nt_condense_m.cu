@@ -104,6 +104,7 @@ template <
 >
 __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row, int * csr_col, float* C, int M, int K, int N){
     
+   
     // A and Weight tensor are stored in the dense format
     // bx-> K by->M
     int by = blockIdx.y;
@@ -147,6 +148,7 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
     float4 tmp_float4;
     float4 const0 = {0,0,0,0};
     if(index_start < index_end){
+        // __syncthreads();
 
         if(tid<index_end-index_start)
             m_index[tid] = csr_col[tid+index_start];
@@ -229,22 +231,24 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
                     //     BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
                     //     N));
                     // }
+                    // if(ty + thread_y * vBLOCK_SIZE_M>=index_end-index_start){
+                    //     printf("m_index offset:%d index_end-index_start:%d \n", ty + thread_y * vBLOCK_SIZE_M, index_end-index_start);
+                    // }
                     // atomicAdd(C+OFFSET(
                     //     BLOCK_SIZE_M * by + ty + thread_y * vBLOCK_SIZE_M,
                     //     BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
                     //     N),
                     //     accum[thread_x][thread_y]);
-                    atomicAdd(C+OFFSET(
-                        m_index[ty + thread_y * vBLOCK_SIZE_M],
-                        BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
-                        N),
-                        accum[thread_x][thread_y]);
-                    
+                    if(ty + thread_y * vBLOCK_SIZE_M < index_end-index_start)
+                        atomicAdd(C+OFFSET(
+                            m_index[ty + thread_y * vBLOCK_SIZE_M],
+                            BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
+                            N),
+                            accum[thread_x][thread_y]);
+                        
                 }
             }
-
         }
-        __syncthreads();
     }
 
 }
@@ -320,11 +324,17 @@ void convert_bcsr_condense_m(int * mask, float* dense_val, int M, int N, int blo
 int main()
 {
     int M, K, N;
-    M = 2048;
+    M = 768;
     K = 4096;
-    N = 1024;
+    N = 4096;
     const int n_iter = 10;
-    float sparsity_ratio = 0.8;
+    float sparsity_ratio = 0.5;
+    const int A_BLOCK_SIZE_M = 64;
+    const int A_BLOCK_SIZE_K = 32;
+    const int A_BLOCK_SIZE_N = 64;
+    const int A_THREAD_SIZE_M = 8;
+    const int A_THREAD_SIZE_K = 4;
+    const int A_THREAD_SIZE_N = 4;
     const int BLOCK_H = 1;
     const int BLOCK_W = 32;
     // const int BLOCK_W = 1;
@@ -370,12 +380,7 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(d_val, val, sizeof(float) * M * K, cudaMemcpyHostToDevice));
 
     
-    const int A_BLOCK_SIZE_M = 64;
-    const int A_BLOCK_SIZE_K = 32;
-    const int A_BLOCK_SIZE_N = 128;
-    const int A_THREAD_SIZE_M = 4;
-    const int A_THREAD_SIZE_K = 4;
-    const int A_THREAD_SIZE_N = 4;
+
     // KxM = KxN * (MxN)^T
     dim3 a_grad_grid_dim(K/A_BLOCK_SIZE_K, M/A_BLOCK_SIZE_M);
     dim3 a_grad_block_dim(A_BLOCK_SIZE_N/A_THREAD_SIZE_N, A_BLOCK_SIZE_M/A_THREAD_SIZE_M);
