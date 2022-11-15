@@ -750,6 +750,7 @@ template <
 >
 __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row, int * csr_col, float* C, int M, int K, int N){
     
+   
     // A and Weight tensor are stored in the dense format
     // bx-> K by->M
     int by = blockIdx.y;
@@ -860,7 +861,7 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
                 }
             }
             // Write back to the correponding position
-
+            // Write in the normal way
             #pragma unroll
             for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){
                 #pragma unroll
@@ -893,6 +894,20 @@ __global__ void BLOCK_SPARSE_NT_CONDENSE(float* A, float * weight, int * csr_row
                         
                 }
             }
+            // #pragma unroll
+            // for(int thread_x = 0; thread_x < THREAD_SIZE_N; thread_x++){        
+            //     #pragma unroll
+            //     for(int thread_y = 0; thread_y < THREAD_SIZE_M; thread_y+=1){
+
+            //         if(ty + thread_y * vBLOCK_SIZE_M < index_end-index_start)
+            //             atomicAdd(C+OFFSET(
+            //                 BLOCK_SIZE_N * block_n_id + tx + thread_x * vBLOCK_SIZE_N,
+            //                 m_index[ty + thread_y * vBLOCK_SIZE_M],
+            //                 M),
+            //                 accum[thread_x][thread_y]);
+                        
+            //     }
+            // }
         }
     }
 
@@ -916,7 +931,7 @@ void condense_dynamic_backward_function(float* activation,
     BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI<<<gridDim, blockDim>>>(activation, grad_c, w_grad, row_ptr, col_idx, K, M, N, block_h, block_w);
     dim3 a_gridDim(M/32, K/32);
 
-    const int A_BLOCK_SIZE_M = 8;
+    const int A_BLOCK_SIZE_M = 16;
     const int A_BLOCK_SIZE_K = 32;
     const int A_BLOCK_SIZE_N = 256;
     const int A_THREAD_SIZE_M = 4;

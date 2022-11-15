@@ -30,19 +30,16 @@ class BlockwiseSparseLinearCondenseFunction(torch.autograd.Function):
             activation,
             weight,
             row_ptr,
-            col_idx,
-            torch.tensor(block_h, dtype=torch.int32),
-            torch.tensor(block_w, dtype=torch.int32)
+            col_idx
         )
+        ctx.M, ctx.K, ctx.N, ctx.block_h, ctx.block_w = M, K, N, block_h, block_w
         return condense_sparse_linear_cpp.forward(activation, weight, row_ptr, col_idx, bias, M, K, N, block_h, block_w, batch_size, seq_len)
 
     @staticmethod
     def backward(ctx, *grad_out):
-        
-        activation, weight, row_ptr, col_idx, block_h, block_w = ctx.saved_tensors
-        K, M = activation.size()
-        K, N = weight.size()
-        a_grad, w_grad = condense_sparse_linear_cpp.backward(activation, weight, row_ptr, col_idx, grad_out[0], M, K, N, block_h.item(), block_w.item())
+        activation, weight, row_ptr, col_idx= ctx.saved_tensors
+        M, K, N, block_h, block_w = ctx.M, ctx.K, ctx.N, ctx.block_h, ctx.block_w
+        a_grad, w_grad = condense_sparse_linear_cpp.backward(activation, weight, row_ptr, col_idx, grad_out[0], M, K, N, block_h, block_w)
         # import ipdb; ipdb.set_trace()
         return a_grad, w_grad, None, None, None, None, None, None, None, None, None, None
 
@@ -73,4 +70,5 @@ class BlockwiseSparseLinearCondense(SparseOPBase):
         K = self.K
         N = self.N
         activation = activation.view(M, K).t().contiguous()
+        # activation = activation.view(M, K).contiguous()
         return BlockwiseSparseLinearCondenseFunction.apply(activation, self.weight, self.csr_row, self.csr_col, self.bias, M, K, N, self.block_h, self.block_w, batch_size, seq_len)
