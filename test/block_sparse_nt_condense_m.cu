@@ -325,14 +325,14 @@ int main()
 {
     int M, K, N;
     M = 768;
-    K = 4096;
+    K = 768;
     N = 4096;
-    const int n_iter = 10;
-    float sparsity_ratio = 0.5;
-    const int A_BLOCK_SIZE_M = 64;
+    const int n_iter = 10000;
+    float sparsity_ratio = 0.98;
+    const int A_BLOCK_SIZE_M = 8;
     const int A_BLOCK_SIZE_K = 32;
-    const int A_BLOCK_SIZE_N = 64;
-    const int A_THREAD_SIZE_M = 8;
+    const int A_BLOCK_SIZE_N = 256;
+    const int A_THREAD_SIZE_M = 4;
     const int A_THREAD_SIZE_K = 4;
     const int A_THREAD_SIZE_N = 4;
     const int BLOCK_H = 1;
