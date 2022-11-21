@@ -109,7 +109,7 @@ if __name__ == '__main__':
     block_h = 1
     block_w = 32
     
-    for sparsity_ratio in [0.95]:
+    for sparsity_ratio in [0.6]:
     # for sparsity_ratio in [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]:
         block_wise_weight = torch.rand(K//block_h, N//block_w, dtype=torch.float32).cuda()
         block_mask = (block_wise_weight > sparsity_ratio).to(torch.int32)

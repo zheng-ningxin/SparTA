@@ -61,7 +61,7 @@ class TritonDynamicLinear(torch.nn.Module):
         self.conv = None
         self.full_mask = full_mask
         if self.full_mask:
-            self.conv=torch.nn.Conv2d(1, 1,(self.block_h, self.block_w), (self.block_h, self.block_w)).cuda()
+            self.conv=torch.nn.Conv2d(1, 1,(self.block_h, self.block_w), (self.block_h, self.block_w), bias=False).cuda()
             self.conv.eval()
             self.conv.weight.data[:] = 1
         self.weight.requires_grad_()
