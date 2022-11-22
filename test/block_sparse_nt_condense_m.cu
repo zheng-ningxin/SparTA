@@ -338,14 +338,14 @@ void convert_bcsr_condense_m(int * mask, float* dense_val, int M, int N, int blo
 int main()
 {
     int M, K, N;
-    M = 768;
+    M = 3072;
     K = 768;
     N = 4096;
-    const int n_iter = 10000;
-    float sparsity_ratio = 0.96;
+    const int n_iter = 1000;
+    float sparsity_ratio = 0.6;
     const int A_BLOCK_SIZE_M = 16;
     const int A_BLOCK_SIZE_K = 32;
-    const int A_BLOCK_SIZE_N = 256;
+    const int A_BLOCK_SIZE_N = 128;
     const int A_THREAD_SIZE_M = 4;
     const int A_THREAD_SIZE_K = 4;
     const int A_THREAD_SIZE_N = 4;

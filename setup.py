@@ -24,7 +24,7 @@ def _setup():
         # Add the extral sparse kernel module
         # cusparse need cuda version higher than 11.1
         cuda_version = torch.version.cuda
-        if cuda_version > '11.1':
+        if cuda_version > '11.5':
             cusparse_linear_ext = CUDAExtension(name='cusparse_linear', sources=[
                                     'csrc/cusparse_linear_forward.cpp', 'csrc/cusparse_linear_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-lcusparse', '-O3'])

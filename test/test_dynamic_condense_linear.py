@@ -104,8 +104,8 @@ def test_speed(b_linear, block_mask, data):
 if __name__ == '__main__':
     B = 32
     S = 128
-    K = 3072
-    N = 768
+    K = 768
+    N = 3072
     block_h = 1
     block_w = 32
     
