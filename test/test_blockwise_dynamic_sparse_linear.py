@@ -94,7 +94,7 @@ if __name__ == '__main__':
     B = 32
     S = 128
     K = 768
-    N = 768
+    N = 3072
     block_h = 32
     block_w = 64
     # for sparsity_ratio in [0, 0.8]:

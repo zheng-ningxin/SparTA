@@ -15,7 +15,7 @@ using namespace std;
 #define FETCH_INT4(pointer) (reinterpret_cast<int4*>(&(pointer))[0])
 #define FETCH_INT32(pointer) (reinterpret_cast<int*>(&(pointer))[0])
 #define MAX_BLOCK_THREAD_COUNT 1024
-#define MAX_K_BLOCK 64
+#define MAX_K_BLOCK 96
 #define FULL_MASK 0xffffffff
 
 #define CUBLAS_SAFE_CALL(func)                                                                  \
@@ -814,7 +814,6 @@ __global__ void BLOCK_SPARSE_MATMUL_DSD(float * A, float * B, float* C,  int M, 
     __shared__ float As[BLOCK_SIZE_M * (padding+BLOCK_SIZE_K)];
     __shared__ float Bs[BLOCK_SIZE_N * (padding+BLOCK_SIZE_K)];
     __shared__ int k_dim_mask[MAX_K_BLOCK];
-    // printf("BLOCK_SIZE_KL:%d MAX_K_BLOCK:%d K:%d\n", BLOCK_SIZE_K, MAX_K_BLOCK, K);
     assert(BLOCK_SIZE_K * MAX_K_BLOCK>=K);
     float accum[THREAD_SIZE_N][THREAD_SIZE_M] = {0};
     float a_frag[THREAD_SIZE_M][THREAD_SIZE_K];
