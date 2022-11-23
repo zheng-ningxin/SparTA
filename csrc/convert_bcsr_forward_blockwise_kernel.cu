@@ -197,53 +197,76 @@ __global__ void convert_bcsr_kernel_transpose_1(const int * __restrict__  mask, 
     
     // initial the shared flag
     uint bx = blockIdx.x;
-    uint by = blockIdx.y;
     uint tid = threadIdx.x;
+    uint step = blockDim.x;
 
-    int global_offset =  (by * n_block_w) + bx;
     int pos_id;
-    int flag = mask[global_offset];
-    if(tid==0 && flag>0){
-        pos_id= atomicAdd(&extra_buffer[bx], 1);
-        atomicAdd(&extra_buffer[bx+n_block_w], 1);
-        atomicAdd(&row_ptr[n_block_w], 1);
-        // printf("block nnz: %d\n", tmp);
-        // extra_buffer[2*w + gridDim.x * by + pos_id] = bx;
-        extra_buffer[2*n_block_w + gridDim.y * bx + pos_id] = by;
+    int flag;
+    int global_offset;
+    for(int by=tid; by<n_block_h;by+=step){
+        global_offset =  (by * n_block_w) + bx;
+        flag = mask[global_offset];
+        if(flag>0){
+            pos_id= atomicAdd(&extra_buffer[bx], 1);
+            atomicAdd(&extra_buffer[bx+n_block_w], 1);
+            atomicAdd(&row_ptr[n_block_w], 1);
+            extra_buffer[2*n_block_w + n_block_h * bx + pos_id] = by;
+        }
+    
     }
+
 
 }
 __global__ void convert_bcsr_kernel_transpose_2(const int * __restrict__  mask, int* __restrict__ row_ptr, int* __restrict__ col_idx, int * extra_buffer, int n_block_h, int n_block_w)
 {
-    uint by = blockIdx.y;
     uint bx = blockIdx.x;
     uint tid = threadIdx.x;
-    int pos_id, prefix_count, ori_bx, ori_by;
-    __shared__ int prefix_sum[MAX_BLOCK_THREAD_COUNT];
-    if (tid==0){
-        pos_id = -1;
-        prefix_count = 0;
-        // contend for the block
-
+    int pos_id, ori_bx, ori_by;
+    __shared__ int prefix_count;
+    __shared__ int remain_count;
+    if(tid==0){
+        for(int i=0; i<bx;i++){
+            prefix_count +=  extra_buffer[n_block_w+i];
+        }
+        remain_count = extra_buffer[n_block_w+bx];
+        row_ptr[bx] = prefix_count;
+    }
+    __syncthreads();
+    for(int tmp=tid; tmp<remain_count;tmp+=blockDim.x){
         pos_id = atomicSub(&extra_buffer[bx], 1);
         pos_id-=1;
-        if (pos_id>=0){
-            for(int i=0; i<bx;i++){
-                prefix_count +=  extra_buffer[n_block_w+i];
-            }
+        if(pos_id>=0){
             ori_bx = bx;
-            ori_by = extra_buffer[ 2*n_block_w + bx * gridDim.y + pos_id];       
-            
+            ori_by = extra_buffer[ 2*n_block_w + bx * n_block_h + pos_id];       
             row_ptr[bx] = prefix_count;
             col_idx[prefix_count + pos_id] = ori_by;
         }
-        else if(pos_id==-1){
-            for(int i=0; i<bx; i++){
-                prefix_count +=  extra_buffer[n_block_w+i];
-            }            
-            row_ptr[bx] = prefix_count;
-        }
     }
+
+    // if (tid==0){
+    //     pos_id = -1;
+    //     prefix_count = 0;
+    //     // contend for the block
+
+    //     pos_id = atomicSub(&extra_buffer[bx], 1);
+    //     pos_id-=1;
+    //     if (pos_id>=0){
+    //         for(int i=0; i<bx;i++){
+    //             prefix_count +=  extra_buffer[n_block_w+i];
+    //         }
+    //         ori_bx = bx;
+    //         ori_by = extra_buffer[ 2*n_block_w + bx * gridDim.y + pos_id];       
+            
+    //         row_ptr[bx] = prefix_count;
+    //         col_idx[prefix_count + pos_id] = ori_by;
+    //     }
+    //     else if(pos_id==-1){
+    //         for(int i=0; i<bx; i++){
+    //             prefix_count +=  extra_buffer[n_block_w+i];
+    //         }            
+    //         row_ptr[bx] = prefix_count;
+    //     }
+    // }
 
 
 }
@@ -255,8 +278,8 @@ void convert_bcsr_transpose(int * mask, int * row_ptr, int * col_idx, int * ext_
     // need reset the extra buffer here
     CUDA_SAFE_CALL(cudaMemset((void*)ext_buffer, 0, sizeof(int)*(2*n_block_w+n_block_h*n_block_w)) );
     CUDA_SAFE_CALL(cudaMemset((void*)row_ptr, 0, sizeof(int)*(1+(n_block_w))) );
-    dim3 block_dim(1);
-    dim3 grid_dim(n_block_w, n_block_h);
+    dim3 block_dim(128);
+    dim3 grid_dim(n_block_w);
 
     convert_bcsr_kernel_transpose_1<<<grid_dim, block_dim>>>(mask, row_ptr, col_idx, ext_buffer, n_block_h, n_block_w);
     convert_bcsr_kernel_transpose_2<<<grid_dim, block_dim>>>(mask, row_ptr, col_idx, ext_buffer, n_block_h, n_block_w);
