@@ -225,6 +225,7 @@ __global__ void convert_bcsr_kernel_transpose_2(const int * __restrict__  mask, 
     __shared__ int prefix_count;
     __shared__ int remain_count;
     if(tid==0){
+        prefix_count = 0;
         for(int i=0; i<bx;i++){
             prefix_count +=  extra_buffer[n_block_w+i];
         }
