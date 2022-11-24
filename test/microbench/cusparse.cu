@@ -131,7 +131,7 @@ int main(int argc, char *argv[]){
     matC_ref = (float*) malloc(sizeof(float)*m*n);
     init(matA, m*k, 0);
     init_blockwise(matB, k, n, block_h, block_w, sparsity);
-    calculate_reference(m , k , n , matA, matB, matC_ref);
+    // calculate_reference(m , k , n , matA, matB, matC_ref);
     nnz = convert_csr(matB, k, n, row_idx, col_idx, values);
     printf("Final sparsity ratio:%f\n", 1.0*nnz/k/n);
     int values_size = nnz * sizeof(float);
