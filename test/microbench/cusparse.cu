@@ -133,6 +133,7 @@ int main(int argc, char *argv[]){
     init_blockwise(matB, k, n, block_h, block_w, sparsity);
     calculate_reference(m , k , n , matA, matB, matC_ref);
     nnz = convert_csr(matB, k, n, row_idx, col_idx, values);
+    printf("Final sparsity ratio:%f\n", 1.0*nnz/k/n);
     int values_size = nnz * sizeof(float);
     int col_idx_size = nnz * sizeof(int);
     int row_idx_size = (k+1) * sizeof(int);
