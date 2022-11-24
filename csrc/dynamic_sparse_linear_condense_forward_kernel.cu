@@ -931,10 +931,10 @@ void condense_dynamic_backward_function(float* activation,
     BLOCK_SPARSE_OUT_MATMUL_NN_CONDENSE_OPENAI<<<gridDim, blockDim>>>(activation, grad_c, w_grad, row_ptr, col_idx, K, M, N, block_h, block_w);
     dim3 a_gridDim(M/32, K/32);
 
-    const int A_BLOCK_SIZE_M = 64;
+    const int A_BLOCK_SIZE_M = 16;
     const int A_BLOCK_SIZE_K = 32;
-    const int A_BLOCK_SIZE_N = 128;
-    const int A_THREAD_SIZE_M = 8;
+    const int A_BLOCK_SIZE_N = 256;
+    const int A_THREAD_SIZE_M = 4;
     const int A_THREAD_SIZE_K = 4;
     const int A_THREAD_SIZE_N = 4;
     // KxM = KxN * (MxN)^T
