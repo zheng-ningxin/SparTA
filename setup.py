@@ -95,7 +95,7 @@ def _setup():
         condense_sparse_linear_ext_v2 = CUDAExtension(name='condense_sparse_linear_v2_cpp', sources=['csrc/dynamic_sparse_linear_condense_forward_v2.cpp',\
                                                                 'csrc/dynamic_sparse_linear_condense_forward_v2_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
-        ext_modules.append(condense_sparse_linear_ext)
+        ext_modules.append(condense_sparse_linear_ext_v2)
     print(rootdir)
     setup(
         name='SparTA',

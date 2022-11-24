@@ -1,22 +1,27 @@
 #include <vector>
 #include "torch/extension.h"
 
-at::Tensor blockwise_dynamic_sparse_linear_forward(
+at::Tensor dynamic_sparse_linear_condense_v2_forward(
     torch::Tensor activation,
     torch::Tensor weight,
+    torch::Tensor row_ptr,
+    torch::Tensor col_indx,
     torch::Tensor bias,
-    torch::Tensor blockwise_mask
+    int M, int K, int N, int block_h, int block_w,
+    int batch_size, int seq_len
 );
 
-std::vector<at::Tensor> blockwise_dynamic_sparse_linear_backward(
+std::vector<at::Tensor> dynamic_sparse_linear_condense_v2_backward(
     torch::Tensor activation,
     torch::Tensor weight,
+    torch::Tensor grad_a_row_ptr,
+    torch::Tensor grad_a_col_index,
     torch::Tensor grad_c,
-    torch::Tensor blockwise_mask
+    int M, int K, int N, int block_h, int block_w
 );
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("forward", &blockwise_dynamic_sparse_linear_forward, "dynamic sparse linear forward");
-    m.def("backward", &blockwise_dynamic_sparse_linear_backward, "dynamic sparse linear backward");
+    m.def("forward", &dynamic_sparse_linear_condense_v2_forward, "dynamic sparse linear forward v2");
+    m.def("backward", &dynamic_sparse_linear_condense_v2_backward, "dynamic sparse linear backward v2");
 }

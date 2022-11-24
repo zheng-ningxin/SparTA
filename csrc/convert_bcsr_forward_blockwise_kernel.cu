@@ -91,104 +91,6 @@ __device__ __forceinline__ const float* add_ptr_f(const float* src, int offset) 
     return dst;                                                              \
 }
 
-__global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
-                                int block_h, int block_w, int * row, int *col, int * row_pos,
-                                float * values, int * extra_buffer)
-{
-
-    __shared__ int reduce[MAX_BLOCK_THREAD_COUNT];
-    assert(blockDim.x<=MAX_BLOCK_THREAD_COUNT);
-    // initial the shared flag
-    uint bx = blockIdx.x;
-    uint by = blockIdx.y;
-    uint tid = threadIdx.x;
-    int global_offset =  (by * block_h) * w + bx * block_w;
-    int block_size =  block_h * block_w;
-    assert(block_w % 4 == 0);
-    // cannot handle the misalignment for now
-    assert((block_size / 4) % blockDim.x==0);
-    int flag = 0;
-    for(int _pos = tid; _pos< block_size / 4; _pos+=blockDim.x){
-        uint block_offset = _pos / (block_w / 4) * w + _pos % (block_w / 4) * 4;        
-        int4 data = __ldg((const int4*)(add_ptr_u(mask, global_offset+block_offset)));
-        flag += data.x + data.y + data.z + data.w;
-    }
-    reduce[tid] = flag;
-    __syncthreads();
-    // fast tree reduce accross the block
-    for(uint s=blockDim.x/2; s>32; s>>=1){
-        if(tid<s)
-            reduce[tid] += reduce[tid+s];
-        __syncthreads();
-    }
-    if(tid<32)
-        warpReduce(reduce, tid);
-    __syncthreads();
-    int pos_id;
-    if(tid==0 && reduce[0]>0){
-        pos_id= atomicAdd(&extra_buffer[by], 1);
-        atomicAdd(&extra_buffer[by+h], 1);
-        atomicAdd(&row[h/block_h], 1);
-        extra_buffer[2*h + gridDim.x * by + pos_id] = bx;
-    }
-
-}
-__global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
-    int block_h, int block_w, int * row, int *col, int * row_pos,
-    float * values, int * extra_buffer, int * block_index)
-{
-    __shared__ int pos_id, prefix_count, ori_bx, ori_by;
-    __shared__ int prefix_sum[MAX_BLOCK_THREAD_COUNT];
-    uint by = blockIdx.y;
-    uint bx = blockIdx.x;
-    uint tid = threadIdx.x;
-
-    if (tid==0){
-        pos_id = -1;
-        prefix_count = 0;
-        // contend for the block
-
-        pos_id = atomicSub(&extra_buffer[by], 1);
-        pos_id-=1;
-        if (pos_id>=0){
-            for(int i=0; i<by;i++){
-                prefix_count +=  extra_buffer[h+i];
-            }
-            ori_by = by;
-            ori_bx = extra_buffer[ 2*h + by * gridDim.x + pos_id];       
-            
-            row[by] = prefix_count;
-            col[prefix_count+pos_id] = ori_bx;
-            row_pos[prefix_count+pos_id] = by;
-            block_index[by*gridDim.x+ori_bx] = prefix_count+pos_id;
-        }
-        else if(pos_id==-1){
-            for(int i=0; i<by;i++){
-                prefix_count +=  extra_buffer[h+i];
-            }            
-            row[by] = prefix_count;
-        }
-    }
-    __syncthreads();
-    if(pos_id>=0){
-        int global_offset =  (ori_by * block_h) * w + ori_bx * block_w;
-        int block_size = block_h * block_w;
-        int write_global_offset = (prefix_count + pos_id) * block_size;
-
-        for(int _pos=tid; _pos<block_size/4; _pos+=blockDim.x){
-            uint block_offset = _pos / (block_w / 4) * w + _pos % (block_w / 4) * 4;
-            float4 data = __ldg((const float4*)(add_ptr_f(dense, global_offset + block_offset)));
-            *(float4*)&values[write_global_offset+_pos*4] = data;
-        }
-        
-    }
-
-}
-
-void convert_bcsr()
-{
-    
-}
 
 
 __global__ void convert_bcsr_kernel_transpose_1(const int * __restrict__  mask, int* __restrict__ row_ptr, int* __restrict__ col_idx, int * extra_buffer, int n_block_h, int n_block_w)
@@ -244,30 +146,62 @@ __global__ void convert_bcsr_kernel_transpose_2(const int * __restrict__  mask, 
         }
     }
 
-    // if (tid==0){
-    //     pos_id = -1;
-    //     prefix_count = 0;
-    //     // contend for the block
 
-    //     pos_id = atomicSub(&extra_buffer[bx], 1);
-    //     pos_id-=1;
-    //     if (pos_id>=0){
-    //         for(int i=0; i<bx;i++){
-    //             prefix_count +=  extra_buffer[n_block_w+i];
-    //         }
-    //         ori_bx = bx;
-    //         ori_by = extra_buffer[ 2*n_block_w + bx * gridDim.y + pos_id];       
-            
-    //         row_ptr[bx] = prefix_count;
-    //         col_idx[prefix_count + pos_id] = ori_by;
-    //     }
-    //     else if(pos_id==-1){
-    //         for(int i=0; i<bx; i++){
-    //             prefix_count +=  extra_buffer[n_block_w+i];
-    //         }            
-    //         row_ptr[bx] = prefix_count;
-    //     }
-    // }
+}
+
+
+__global__ void convert_bcsr_kernel_1(const int * __restrict__  mask, int* __restrict__ row_ptr, int* __restrict__ col_idx, int * extra_buffer, int n_block_h, int n_block_w)
+{
+
+    
+    // initial the shared flag
+    uint by = blockIdx.x;
+    uint tid = threadIdx.x;
+    uint step = blockDim.x;
+
+    int pos_id;
+    int flag;
+    int global_offset;
+    for(int bx=tid; bx<n_block_w;bx+=step){
+        global_offset =  (by * n_block_w) + bx;
+        flag = mask[global_offset];
+        if(flag>0){
+            pos_id= atomicAdd(&extra_buffer[by], 1);
+            atomicAdd(&extra_buffer[by+n_block_h], 1);
+            atomicAdd(&row_ptr[n_block_h], 1);
+            extra_buffer[2*n_block_h + n_block_w * by + pos_id] = bx;
+        }
+    
+    }
+
+
+}
+__global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, int* __restrict__ row_ptr, int* __restrict__ col_idx, int * extra_buffer, int n_block_h, int n_block_w)
+{
+    uint by = blockIdx.x;
+    uint tid = threadIdx.x;
+    int pos_id, ori_bx, ori_by;
+    __shared__ int prefix_count;
+    __shared__ int remain_count;
+    if(tid==0){
+        prefix_count = 0;
+        for(int i=0; i<by;i++){
+            prefix_count +=  extra_buffer[n_block_h+i];
+        }
+        remain_count = extra_buffer[n_block_h+by];
+        row_ptr[by] = prefix_count;
+    }
+    __syncthreads();
+    for(int tmp=tid; tmp<remain_count;tmp+=blockDim.x){
+        pos_id = atomicSub(&extra_buffer[by], 1);
+        pos_id-=1;
+        if(pos_id>=0){
+            ori_by = by;
+            ori_bx = extra_buffer[ 2*n_block_h + by * n_block_w + pos_id];       
+            row_ptr[by] = prefix_count;
+            col_idx[prefix_count + pos_id] = ori_bx;
+        }
+    }
 
 
 }
@@ -286,13 +220,27 @@ void convert_bcsr_transpose(int * mask, int * row_ptr, int * col_idx, int * ext_
     convert_bcsr_kernel_transpose_2<<<grid_dim, block_dim>>>(mask, row_ptr, col_idx, ext_buffer, n_block_h, n_block_w);
 }
 
+
+void convert_bcsr(int * mask, int * row_ptr, int * col_idx, int * ext_buffer, 
+                            int n_block_h, int n_block_w)
+{
+
+    CUDA_SAFE_CALL(cudaMemset((void*)ext_buffer, 0, sizeof(int)*(2*n_block_h+n_block_h*n_block_w)) );
+    CUDA_SAFE_CALL(cudaMemset((void*)row_ptr, 0, sizeof(int)*(1+(n_block_h))) );
+    dim3 block_dim(128);
+    dim3 grid_dim(n_block_h);
+
+    convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, row_ptr, col_idx, ext_buffer, n_block_h, n_block_w);
+    convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, row_ptr, col_idx, ext_buffer, n_block_h, n_block_w);
+}
+
 void convert_bcsr_blockwise(int * mask, int *row_ptr, int * col_idx, int* ext_buffer, int n_block_h, int n_block_w, int transpose)
 {
     if(transpose){
         convert_bcsr_transpose(mask, row_ptr, col_idx, ext_buffer, n_block_h, n_block_w);
     } else{
         // TO BE DONE
-        convert_bcsr();
+        convert_bcsr(mask, row_ptr, col_idx, ext_buffer, n_block_h, n_block_w);
     }
 
 }
