@@ -50,7 +50,7 @@ def summary_cusparse():
         for m,k,n in shape:
             for block_h, block_w in blocksize:
                 for s in sparsity:
-                    f_path = './log/cusparse_{s}_{m}_{k}_{n}_{block_h}_{block_w}.log'
+                    f_path = f'./log/cusparse_{s}_{m}_{k}_{n}_{block_h}_{block_w}.log'
                     lat = parse_result(f_path)
                     writer.writerow(str(c) for c in [m, k, n, block_h, block_w, s, lat])
 
