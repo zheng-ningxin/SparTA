@@ -26,7 +26,6 @@ if __name__ == '__main__':
         
         for sparsity_ratio in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]:
             with open('stil.log', 'a') as f:
-                t_re = (t_end-t_start)*1000/RUNTIME)
                 f.write(f'MKN: {M} {K} {N} sparsity:{sparsity_ratio} \n')
         
             ########################################################################
@@ -40,7 +39,7 @@ if __name__ == '__main__':
             torch.cuda.synchronize()
             t_end = time.time()
             with open('stil.log', 'a') as f:
-                t_re = (t_end-t_start)*1000/RUNTIME)
+                t_re = (t_end-t_start)*1000/RUNTIME
                 f.write(f'Dense time baseline latency(ms):{t_re} \n')
             
             #######################################################################
@@ -70,7 +69,7 @@ if __name__ == '__main__':
             torch.cuda.synchronize()
             t_end = time.time()
             with open('stil.log', 'a') as f:
-                t_re = (t_end-t_start)*1000/RUNTIME)
+                t_re = (t_end-t_start)*1000/RUNTIME
                 f.write(f'Original openai bmm latency(ms):{t_re} \n')
 
             ###########################################################################
@@ -98,7 +97,7 @@ if __name__ == '__main__':
             torch.cuda.synchronize()
             t_end = time.time()
             with open('stil.log', 'a') as f:
-                t_re = (t_end-t_start)*1000/RUNTIME)
+                t_re = (t_end-t_start)*1000/RUNTIME
                 f.write(f'Condense openai bmm latency(ms): {t_re} \n')
 
             
@@ -136,7 +135,7 @@ if __name__ == '__main__':
             torch.cuda.synchronize()
             t_end = time.time()
             with open('stil.log', 'a') as f:
-                t_re = (t_end-t_start)*1000/RUNTIME)
+                t_re = (t_end-t_start)*1000/RUNTIME
                 f.write(f'Condense openai bmm on dim m latency(ms): {t_re} \n')
 
 
@@ -174,7 +173,7 @@ if __name__ == '__main__':
             torch.cuda.synchronize()
             t_end = time.time()
             with open('stil.log', 'a') as f:
-                t_re = (t_end-t_start)*1000/RUNTIME)
+                t_re = (t_end-t_start)*1000/RUNTIME
                 f.write(f'Condense openai bmm on dim m latency v2(ms): {t_re} \n')
                 f.write("##################################\n\n")
             # print('Condense openai bmm on dim m latency v2(ms):', (t_end-t_start)*1000/RUNTIME)
