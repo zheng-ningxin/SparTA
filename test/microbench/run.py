@@ -16,6 +16,18 @@ def run_cusparse():
                 except Exception as err:
                     print(err)
 
+def run_sputnik():
+    for s in sparsity:
+        for m,k,n in shape:
+            for block_h, block_w in blocksize:
+                try:
+                    print(f'sputnik {s} {m} {k} {n} {block_h} {block_w}')
+                    os.system(f'./sputnik {s} {m} {k} {n} {block_h} {block_w} > log/sputnik_{s}_{m}_{k}_{n}_{block_h}_{block_w}.log')
+                except Exception as err:
+                    print(err)
+
+
 if __name__ == '__main__':
-    run_cusparse()
+    # run_cusparse()
+    run_sputnik()
 
