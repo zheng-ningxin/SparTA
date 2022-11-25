@@ -27,7 +27,19 @@ def run_sputnik():
                     print(err)
 
 
+def run_triton():
+    for s in sparsity:
+        for m,k,n in shape:
+            for block_h, block_w in blocksize:
+                try:
+                    print(f'triton {s} {m} {k} {n} {block_h} {block_w}')
+                    os.system(f'python triton.py {s} {m} {k} {n} {block_h} {block_w} > log/triton_{s}_{m}_{k}_{n}_{block_h}_{block_w}.log')
+                except Exception as err:
+                    print(err)
+
+
 if __name__ == '__main__':
     # run_cusparse()
-    run_sputnik()
+    # run_sputnik()
+    run_triton()
 
