@@ -54,5 +54,16 @@ def summary_cusparse():
                     lat = parse_result(f_path)
                     writer.writerow(str(c) for c in [m, k, n, block_h, block_w, s, lat])
 
+def summary_sputnik():
+    with open('sputnik.csv', 'w') as f:
+        writer = csv.writer(f, delimiter=',')
+        for m,k,n in shape:
+            for block_h, block_w in blocksize:
+                for s in sparsity:
+                    f_path = f'./log/sputnik_{s}_{m}_{k}_{n}_{block_h}_{block_w}.log'
+                    lat = parse_result(f_path)
+                    writer.writerow(str(c) for c in [m, k, n, block_h, block_w, s, lat])
+
+
 if __name__ == '__main__':
     summary_cusparse()
