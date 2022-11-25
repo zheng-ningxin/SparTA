@@ -83,7 +83,7 @@ if __name__ == '__main__':
         t_row_ptr, t_col_idx, t_row_pos, t_vals = converter_2(t_full_mask, torch.squeeze(A), new_block_h, new_block_w)
         t_block_nnz = t_row_ptr[M//new_block_h]
         condense_out = openai_bmm_cpp.forward_condense(t_row_ptr, t_col_idx, t_vals, B, M, K, N, new_block_h, new_block_w, batchsize, t_block_nnz)
-        assert torch.allclose(condense_out, ref_out, rtol=1e-08, atol=1e-03)
+        assert torch.allclose(condense_out, ref_out, rtol=1e-03, atol=1e-03)
         torch.cuda.synchronize()
         t_start = time.time()
         for _ in range(RUNTIME):
