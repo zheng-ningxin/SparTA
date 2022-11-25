@@ -26,8 +26,8 @@ def measure_triton(sparsity, M, K, N, block_h, block_w):
     layout = (block_mask.view(1, K//block_size, N//block_size)>0).to(torch.int32)
     matmul = triton.ops.blocksparse.matmul(layout, block_size, "dds", trans_a=False, trans_b=False, device=device)
     block_nnz = torch.sum(layout)
-    sparse_weight = torch.rand(1, block_nnz, block_size, block_size)
-    data = torch.rand(1, 1, M, K)
+    sparse_weight = torch.rand(1, block_nnz, block_size, block_size).to(device)
+    data = torch.rand(1, 1, M, K).to(device)
     out = matmul(data, sparse_weight)
     n_iter = 2000
     torch.cuda.synchronize()
