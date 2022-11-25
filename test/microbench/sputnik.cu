@@ -140,7 +140,8 @@ int main(int argc, char*argv[]) {
     const int m = atoi(argv[2]);
     const int k = atoi(argv[3]);
     const int n = atoi(argv[4]);
-    
+    const int block_h = atoi(argv[5]);
+    const int block_w = atoi(argv[6]);
     int major_cc, minor_cc;
     // Host problem definition, row-major order
     A_size = m * k * sizeof(float);
@@ -150,11 +151,12 @@ int main(int argc, char*argv[]) {
     hB = (float*)malloc(sizeof(float)*k*n);
     hC = (float*)malloc(sizeof(float)*m*n);
 
-    init(hA, m*k, sparsity_ratio);
+    init_blockwise(hA, m, k, block_h, block_w, sparsity_ratio);
+    // init(hA, m*k, sparsity_ratio);
     init(hB, k*n, 0);
     
     // build the index for the finegrained kernel
-    convert_csr(hA, m,k, row_idx, col_idx, values);
+    convert_csr(hA, m, k, row_idx, col_idx, values);
     CHECK_CUDA(cudaMalloc(&d_row_idx, row_idx_size));
     CHECK_CUDA(cudaMalloc(&d_col_idx, col_idx_size));
     CHECK_CUDA(cudaMalloc(&d_values, values_size));
