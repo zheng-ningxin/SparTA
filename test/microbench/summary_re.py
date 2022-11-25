@@ -67,3 +67,4 @@ def summary_sputnik():
 
 if __name__ == '__main__':
     summary_cusparse()
+    summary_sputnik()
