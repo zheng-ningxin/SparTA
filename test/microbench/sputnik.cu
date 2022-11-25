@@ -6,6 +6,7 @@
 #include "sputnik/spmm/cuda_spmm.h"
 #include "time.h"
 #include <vector>
+#include "utils.hpp"
 using namespace std;
 using namespace sputnik;
 #define CHECK_CUDA(func)                                                       \
