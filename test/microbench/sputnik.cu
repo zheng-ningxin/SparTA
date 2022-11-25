@@ -38,24 +38,7 @@ int m     = 1024; // bigger sizes may require dynamic allocations
 int n     = 1024; // bigger sizes may require dynamic allocations
 int k     = 1024; // bigger sizes may require dynamic allocations
 int A_size, B_size, C_size;
-void init(float * ptr, size_t length, float sparsity)
-{
-    // lock the random seed for
-    srand (1);
-    for (int i = 0; i < length; i++)
-    {
-        float pro = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        //printf("pro: %f\n", pro);
-        if (pro < sparsity)
-        {
-            ptr[i] = 0.0;
-        }
-        else
-        {
-            ptr[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        }
-    }
-}
+
 void SortedRowSwizzle(int rows, int *row_offsets, int *row_indices) {
   // Create our unsorted row indices.
   std::vector<int> swizzle_staging(rows);
