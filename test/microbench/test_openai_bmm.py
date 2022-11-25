@@ -21,7 +21,7 @@ if __name__ == '__main__':
     N = 4096
     block_h = 32
     block_w = 64
-    RUNTIME = 10000
+    RUNTIME = 2000
     
     for sparsity_ratio in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]:
     # for sparsity_ratio in [ 0.9]:
