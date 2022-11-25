@@ -55,9 +55,9 @@ if __name__ == '__main__':
         row_ptr, col_idx, row_pos, vals = converter_1(full_mask, A, block_h, block_w)
         block_nnz = row_ptr[M//block_h]
         out = openai_bmm_cpp.forward(row_ptr, col_idx, vals, B, M, K, N, batchsize, block_nnz)
-        if not torch.allclose(out, ref_out, rtol=1e-08, atol=1e-03):
+        if not torch.allclose(out, ref_out, rtol=1e-04, atol=1e-03):
             import ipdb; ipdb.set_trace()
-        assert torch.allclose(out, ref_out, rtol=1e-08, atol=1e-03)
+        assert torch.allclose(out, ref_out, rtol=1e-04, atol=1e-03)
         # measure the latency of the original openai kernel
         torch.cuda.synchronize()
         t_start = time.time()
@@ -115,7 +115,7 @@ if __name__ == '__main__':
         # print(m_block_nnz)
         # import ipdb; ipdb.set_trace()
         condense_out_m = openai_bmm_cpp.forward_condense_m(m_csr_row, m_csr_col, m_csr_val, B, M, K, N, new_block_h, new_block_w, batchsize, m_block_nnz)
-        flag = torch.allclose(condense_out_m, ref_out, rtol=1e-08, atol=1e-03)
+        flag = torch.allclose(condense_out_m, ref_out, rtol=1e-04, atol=1e-03)
         if not flag:
             import ipdb; ipdb.set_trace()
             print("Correctness Failed!")
@@ -148,7 +148,7 @@ if __name__ == '__main__':
         # print(m_block_nnz)
         # import ipdb; ipdb.set_trace()
         condense_out_m = openai_bmm_cpp.forward_condense_m_v2(m_csr_row, m_csr_col, m_csr_val, B, M, K, N, new_block_h, new_block_w, batchsize, m_block_nnz)
-        flag = torch.allclose(condense_out_m, ref_out, rtol=1e-08, atol=1e-03)
+        flag = torch.allclose(condense_out_m, ref_out, rtol=1e-04, atol=1e-03)
         if not flag:
             import ipdb; ipdb.set_trace()
             print("Correctness Failed!")
