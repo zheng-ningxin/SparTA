@@ -32,7 +32,7 @@ if __name__ == '__main__':
     conv.weight.data[:] = 1
     mask = full_mask.view(1, 1, full_mask.size(0), full_mask.size(1)).to(torch.float32)
     block_mask = conv(mask)
-    layout = (block_mask.view(M//tile_block_h, N//tile_block_w)>0).to(torch.int32)
+    layout = (block_mask.view(M//tile_block_h, K//tile_block_w)>0).to(torch.int32)
     #######################################################################
     # original openai sparse kernel
     A = torch.rand(batchsize, M, K).cuda()
