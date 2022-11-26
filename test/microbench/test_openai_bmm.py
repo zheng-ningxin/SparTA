@@ -47,7 +47,7 @@ if __name__ == '__main__':
     ref_out = torch.einsum('bmk,bkn->bmn',A, B)
     converter_1 = BcsrConverter()
     row_ptr, col_idx, row_pos, vals = converter_1(full_mask, A, tile_block_h, tile_block_w)
-    block_nnz = row_ptr[M//block_h]
+    block_nnz = row_ptr[M//tile_block_h]
     out = openai_bmm_cpp.forward(row_ptr, col_idx, vals, B, M, K, N, batchsize, block_nnz)
     if not torch.allclose(out, ref_out, rtol=1e-04, atol=1e-03):
         import ipdb; ipdb.set_trace()
