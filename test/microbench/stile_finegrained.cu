@@ -227,7 +227,7 @@ int main()
     A = (float*) malloc(sizeof(float) * M * K);
     B = (float*) malloc(sizeof(float) * K * N);
     C = (float*) malloc(sizeof(float) * M * N);
-    mask = (int*) malloc(sizeof(int) * M * K);
+
     row = (int*) malloc(sizeof(int) * (M+1));
     col = (int*) malloc(sizeof(int) *  M * K);
     val = (float*) malloc(sizeof(float) * M * K);
@@ -242,14 +242,13 @@ int main()
     CUDA_SAFE_CALL(cudaMalloc(&d_mask, sizeof(int) * M * K));
     CUDA_SAFE_CALL(cudaMalloc(&d_row, sizeof(int) * (M + 1)));
     CUDA_SAFE_CALL(cudaMalloc(&d_col, sizeof(int) * M * K));
-    CUDA_SAFE_CALL(cudaMalloc(&d_row_pos, sizeof(int) * M * K));
+
     CUDA_SAFE_CALL(cudaMalloc(&d_val, sizeof(float) * M * K));
     CUDA_SAFE_CALL(cudaMalloc(&dA, sizeof(float) * M * K));
     CUDA_SAFE_CALL(cudaMalloc(&dB, sizeof(float) * N * K));
     CUDA_SAFE_CALL(cudaMalloc(&dC, sizeof(float) * M * N));
     CUDA_SAFE_CALL(cudaMemset(dC, 0, sizeof(float)* M * N));
     
-    CUDA_SAFE_CALL(cudaMemcpy(d_mask, mask, sizeof(int) * M * K, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(dA, A, sizeof(float)*M*K, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(dB, B, sizeof(float)*K*N, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(d_row, row, sizeof(int)*(M+1), cudaMemcpyHostToDevice));
