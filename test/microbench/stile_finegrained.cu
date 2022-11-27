@@ -152,12 +152,12 @@ __global__ void FINEGRAINED_CONDENSE_KERNEL(int *csr_row, int * csr_col, float* 
     int n_stride = blockDim.x/n_thread_per_row;
     int ty = tid/n_thread_per_row;
     int tx = tid%n_thread_per_row;
-
+    #pragma unroll
     for(int n_round=0; n_round<N_TILE_SIZE/BLOCK_SIZE_N; n_round++){
         float sum = 0;
         int n_start = bx * N_TILE_SIZE + n_round * BLOCK_SIZE_N;
         int n_end = n_start + BLOCK_SIZE_K;
-        
+        #pragma unroll
         for(int k_round=0; k_round< (index_end-index_start-1+BLOCK_SIZE_K)/BLOCK_SIZE_K; k_round++){
             // load the A to the shared memory
             int k_start = index_start + k_round * BLOCK_SIZE_K;
@@ -173,6 +173,7 @@ __global__ void FINEGRAINED_CONDENSE_KERNEL(int *csr_row, int * csr_col, float* 
             }
             __syncthreads();
             // load B to the shared memory
+            #pragma unroll
             for(int _pos=ty; _pos<min(index_end-k_start, BLOCK_SIZE_K); _pos+=n_stride){
                 int k_offset = Is[_pos];
                 FETCH_FLOAT4(Bs[OFFSET(_pos, tx*4, BLOCK_SIZE_N)]) = 
@@ -180,6 +181,7 @@ __global__ void FINEGRAINED_CONDENSE_KERNEL(int *csr_row, int * csr_col, float* 
             }
             __syncthreads();
             // computation the spmv
+            #pragma unroll
             for(int i=0;i<BLOCK_SIZE_K;i++){
                 sum += Vs[i]*Bs[OFFSET(i, tid,BLOCK_SIZE_N)];
             }
