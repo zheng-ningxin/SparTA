@@ -244,7 +244,7 @@ int main()
     M = 4096;
     K = 4096;
     N = 4096;
-    const int n_iter = 1000;
+    const int n_iter = 10;
     float sparsity_ratio = 0.6;
 
     cudaEvent_t time_start, time_end;
@@ -258,6 +258,7 @@ int main()
     A = (float*) malloc(sizeof(float) * M * K);
     B = (float*) malloc(sizeof(float) * K * N);
     C = (float*) malloc(sizeof(float) * M * N);
+    refC = (float*) malloc(sizeof(float) * M * N);
 
     row = (int*) malloc(sizeof(int) * (M+1));
     col = (int*) malloc(sizeof(int) *  M * K);
