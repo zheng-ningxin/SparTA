@@ -115,7 +115,18 @@ void init(float * ptr, size_t length, float sparsity)
     }
 }
 
-
+void calculate_reference(int m, int k, int n, float * A, float *B, float * C) 
+{
+    for(int i=0; i<m; i++){
+        for(int j=0; j<n; j++){
+            float sum = 0.0;
+            for(int tmp=0; tmp<k; tmp++){
+                sum += A[i * k + tmp] * B[tmp * n + j];
+            }
+            C[i*n+j] = sum;
+        }
+    }
+}
 template <
     const int N_TILE_SIZE,
     const int BLOCK_SIZE_K,
@@ -240,8 +251,9 @@ int main()
     CUDA_SAFE_CALL(cudaEventCreate(&time_start));
     CUDA_SAFE_CALL(cudaEventCreate(&time_end));
     float msecTotal = 0;
-    float * A, *B, *C, *val;
+    float * A, *B, *C, *val, *refC;
     float * dA, *dB, *dC, *d_val;
+
     int * mask, *d_mask, *row, *d_row, *row_pos, *d_row_pos, *col, *d_col, *d_extra_buffer;
     A = (float*) malloc(sizeof(float) * M * K);
     B = (float*) malloc(sizeof(float) * K * N);
@@ -287,6 +299,11 @@ int main()
     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
     CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));
     printf("Time Cost: %.3fms\n", msecTotal/n_iter);
+    CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(float) * M * N, cudaMemcpyDeviceToHost));
+    calculate_reference(M, K, N, A, B, refC);
+    for(int i=0;i<100;i++){
+        printf("%f %f\n", C[i], refC[i]);
+    }
 
 
     return 0;
