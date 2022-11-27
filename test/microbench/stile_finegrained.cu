@@ -164,7 +164,7 @@ void FINEGRAINED_CONDESE(int *csr_row, int * csr_col, float* csr_val, float * B,
     const int N_TILE_SIZE = 1024;
     const int BLOCK_SIZE_N = 256;
     const int BLOCK_SIZE_K = 4;
-    dim3 blockDim(M, N/N_TILE_SIZE);
+    dim3 blockDim(N/N_TILE_SIZE, M);
     dim3 gridDim(BLOCK_SIZE_N);
     FINEGRAINED_CONDENSE_KERNEL<N_TILE_SIZE, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>(csr_row, csr_col, csr_val, B, C, M, K, N);
 
