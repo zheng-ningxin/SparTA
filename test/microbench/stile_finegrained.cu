@@ -15,9 +15,14 @@
 // #include <math>
 #include <algorithm>
 #include <assert.h>
-// CUDA runtime
-#include <cuda.h>
-#include "utils.hpp"
+#include "iostream"
+#include "sstream"
+#include "time.h"
+#include "memory"
+#include "vector"
+using namespace std;
+
+// #include "utils.hpp"
 using namespace std;
 #define OFFSET(row, col, ld) ((row) * ld + col)
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4*>(&pointer))[0]
@@ -94,6 +99,22 @@ __device__ __forceinline__ const float* add_ptr_f(const float* src, int offset) 
 
 __device__ __forceinline__ float2  _add(float2 x, float2 y) { float2 res; res.x = x.x + y.x; res.y = x.y + y.y; return res; }
 
+void init(float * ptr, size_t length, float sparsity)
+{
+    for (int i = 0; i < length; i++)
+    {
+        float pro = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        if (pro < sparsity)
+        {
+            ptr[i] = 0.0;
+        }
+        else
+        {
+            ptr[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        }
+    }
+}
+
 
 template <
     const int N_TILE_SIZE,
@@ -164,12 +185,12 @@ void FINEGRAINED_CONDESE(int *csr_row, int * csr_col, float* csr_val, float * B,
     const int N_TILE_SIZE = 1024;
     const int BLOCK_SIZE_N = 256;
     const int BLOCK_SIZE_K = 4;
-    dim3 blockDim(N/N_TILE_SIZE, M);
-    dim3 gridDim(BLOCK_SIZE_N);
+    dim3 gridDim(N/N_TILE_SIZE, M);
+    dim3 blockDim(BLOCK_SIZE_N);
     FINEGRAINED_CONDENSE_KERNEL<N_TILE_SIZE, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>(csr_row, csr_col, csr_val, B, C, M, K, N);
 
 }
-int convert_csr(float * ptr, int32_t row, int32_t col, int32_t * &row_idx, int32_t * &col_idx, float * &values)
+int convert_csr(float * ptr, int32_t row, int32_t col, int32_t * row_idx, int32_t * col_idx, float * values)
 {
     auto v_row_idx = std::make_shared<vector<int32_t>>();
     auto v_col_idx = std::make_shared<vector<int32_t>>();
@@ -198,9 +219,7 @@ int convert_csr(float * ptr, int32_t row, int32_t col, int32_t * &row_idx, int32
     int col_idx_size = sizeof(int32_t)*v_col_idx->size();
     int values_size = sizeof(float)*v_values->size();
     printf("values_size: %d\n", values_size);
-    row_idx = (int32_t*) malloc(row_idx_size);
-    col_idx = (int32_t*) malloc(col_idx_size);
-    values = (float*) malloc(values_size);
+
     memcpy(row_idx, v_row_idx->data(), row_idx_size);
     memcpy(col_idx, v_col_idx->data(), col_idx_size);
     memcpy(values, v_values->data(), values_size);
@@ -232,6 +251,7 @@ int main()
     col = (int*) malloc(sizeof(int) *  M * K);
     val = (float*) malloc(sizeof(float) * M * K);
     init(A, M*K, sparsity_ratio);
+    init(B, N*K, sparsity_ratio);
     // apply mask
 
     convert_csr(A, M, K, row, col, val);
