@@ -240,7 +240,7 @@ int main()
     printf("NNZ: %d\n", nnz);
     printf("Sparsity ratio: %f\n", nnz*1.0/M/K);
     CUDA_SAFE_CALL(cudaMalloc(&d_mask, sizeof(int) * M * K));
-    CUDA_SAFE_CALL(cudaMalloc(&d_row, sizeof(int) * (K + 1)));
+    CUDA_SAFE_CALL(cudaMalloc(&d_row, sizeof(int) * (M + 1)));
     CUDA_SAFE_CALL(cudaMalloc(&d_col, sizeof(int) * M * K));
     CUDA_SAFE_CALL(cudaMalloc(&d_row_pos, sizeof(int) * M * K));
     CUDA_SAFE_CALL(cudaMalloc(&d_val, sizeof(float) * M * K));
@@ -253,7 +253,7 @@ int main()
     CUDA_SAFE_CALL(cudaMemcpy(dA, A, sizeof(float)*M*K, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(dB, B, sizeof(float)*K*N, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(d_row, row, sizeof(int)*(M+1), cudaMemcpyHostToDevice));
-    CUDA_SAFE_CALL(cudaMemcpy(d_col, col, sizeof(int)*M * K, cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(d_col, col, sizeof(int)* M * K, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(d_val, val, sizeof(float) * M * K, cudaMemcpyHostToDevice));
 
     
