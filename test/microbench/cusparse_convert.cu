@@ -63,7 +63,7 @@ int cusparse_csr_convert(
     cusparseHandle_t     handle = NULL;
     cusparseSpMatDescr_t matB;
     cusparseDnMatDescr_t matA;
-    void*                dBuffer    = NULL;
+    static void*                dBuffer    = NULL;
     size_t               bufferSize = 0;
     CUSPARSE_SAFE_CALL(cusparseCreate(&handle));
 
@@ -77,7 +77,8 @@ int cusparse_csr_convert(
                                         handle, matA, matB,
                                         CUSPARSE_DENSETOSPARSE_ALG_DEFAULT,
                                         &bufferSize) );
-    CUDA_SAFE_CALL( cudaMalloc(&dBuffer, bufferSize) );
+    if (dBuffer == NULL)
+        CUDA_SAFE_CALL( cudaMalloc(&dBuffer, bufferSize) );
     CUSPARSE_SAFE_CALL( cusparseDenseToSparse_analysis(handle, matA, matB,
                                         CUSPARSE_DENSETOSPARSE_ALG_DEFAULT,
                                         dBuffer) );
