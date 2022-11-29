@@ -1,16 +1,21 @@
+import time
 import torch
 import cusparse_csr_cpp
+sparsity_ratios = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
+shape = [(4096, 4096, 4096), (4096, 768, 3072)]
 
 if __name__ == '__main__':
-    M = 1024
-    K = 1024
-    t = torch.rand(M, K).cuda()
-    t[10] = 0
-    csr_row, csr_col, csr_val = cusparse_csr_cpp.forward(t)
-    nnz = csr_row[M]
-    n_row = M
-    n_col = K
-    dense_t = cusparse_csr_cpp.backward(csr_row, csr_col, csr_val, n_row, n_col, nnz)
-    assert torch.allclose(t, dense_t, rtol=1e-08, atol=1e-03)
-    import ipdb; ipdb.set_trace()
-    print('sss')
+    M = 4096
+    K = 4096
+    RUNTIME = 1000
+    for sparsity in sparsity_ratios:    
+        mask = torch.rand(M, K).cuda()
+        mask = (mask > sparsity).to(torch.float32)
+        print('Sparsity ratio: ', torch.sum(mask)/mask.numel())
+        torch.cuda.synchronize()
+        t_start = time.time()
+        for _ in range(RUNTIME):
+            csr_row, csr_col, csr_val = cusparse_csr_cpp.forward(mask)
+        torch.cuda.synchronize()
+        t_end = time.time()
+        print("Time: ", (t_end-t_start)*1000/RUNTIME)
