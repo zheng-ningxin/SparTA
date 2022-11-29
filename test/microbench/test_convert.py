@@ -4,6 +4,7 @@
 import time
 import torch
 import random
+import csv
 from sparta.opset import *
 from sparta.common.utils import convert_bcsr, verify_bcsr
 
@@ -31,10 +32,15 @@ def test(h, w, block_h, block_w, sparsity):
         row, col, row_pos, value = converter(mask, dense_value, block_h, block_w)
     torch.cuda.synchronize()
     t_end = time.time()
-    print(f"H:{h} W:{w} Block_h:{block_h} Block_w:{block_w} Sparsity:{sparsity} Time: ",(t_end-t_start)*1000/RUNTIME)
-    
+    time_re = (t_end-t_start)*1000/RUNTIME
+    print(f"H:{h} W:{w} Block_h:{block_h} Block_w:{block_w} Sparsity:{sparsity} Time: ", time_re)
+    return time_re
+
 if __name__ == '__main__':
-    for h, w in [(4096, 4096)]:
-        for block_h, block_w in [(4,4), (8,8), (16,16), (32,32)]:
-            for sparsity in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]:
-                test(h, w, block_h, block_w, sparsity)
+    with open('convert.csv', 'w') as f:
+        writer = csv.writer(f, delimiter=',')
+        for h, w in [(4096, 4096)]:
+            for block_h, block_w in [(4,4), (8,8), (16,16), (32,32)]:
+                for sparsity in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]:
+                    t_avg = test(h, w, block_h, block_w, sparsity)
+                    writer.writerow(str(c) for c in [h, w, block_h, block_w, sparsity, t_avg])
