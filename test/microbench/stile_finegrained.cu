@@ -132,7 +132,7 @@ template <
     const int BLOCK_SIZE_K,
     const int BLOCK_SIZE_N
 >
-__global__ void FINEGRAINED_CONDENSE_KERNEL(int *csr_row, int * csr_col, float* csr_val, float * B, float* C, int M, int K, int N){
+__global__ void FINEGRAINED_CONDENSE_KERNEL(const int* __restrict__  csr_row, const int* __restrict__  csr_col, const float* __restrict__  csr_val,  float* __restrict__  B, float* __restrict__  C, const int M, const int K, const int N){
     
 
     int by = blockIdx.y;
@@ -303,10 +303,10 @@ int main()
     CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));
     printf("Time Cost: %.3fms\n", msecTotal/n_iter);
     CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(float) * M * N, cudaMemcpyDeviceToHost));
-    calculate_reference(M, K, N, A, B, refC);
-    for(int i=0;i<100;i++){
-        printf("%f %f\n", C[i], refC[i]);
-    }
+    // calculate_reference(M, K, N, A, B, refC);
+    // for(int i=0;i<100;i++){
+    //     printf("%f %f\n", C[i], refC[i]);
+    // }
 
 
     return 0;
