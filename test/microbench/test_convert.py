@@ -36,11 +36,22 @@ def test(h, w, block_h, block_w, sparsity):
     print(f"H:{h} W:{w} Block_h:{block_h} Block_w:{block_w} Sparsity:{sparsity} Time: ", time_re)
     return time_re
 
+def test_correctness():
+    h, w = 4096, 4096
+    sparsity=0.5
+    weight = torch.rand(h,w).cuda()
+    mask = (weight>sparsity).to(torch.int32)
+    converter = BcsrConverter()
+    row, col, _, value = converter(mask, weight, 1, 1)
+    import ipdb; ipdb.set_trace()
+    assert verify_bcsr(mask, weight, row, col, value, 1, 1)
 if __name__ == '__main__':
+    # test_correctness()
     with open('convert.csv', 'w') as f:
         writer = csv.writer(f, delimiter=',')
-        for h, w in [(4096, 4096)]:
-            for block_h, block_w in [(4,4), (8,8), (16,16), (32,32)]:
+        for h, w in [(4096, 4096), (768, 3072)]:
+            # for block_h, block_w in [(1,1), (4,4), (8,8), (16,16), (32,32)]:
+            for block_h, block_w in [(1,1)]:
                 for sparsity in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]:
                     t_avg = test(h, w, block_h, block_w, sparsity)
                     writer.writerow(str(c) for c in [h, w, block_h, block_w, sparsity, t_avg])

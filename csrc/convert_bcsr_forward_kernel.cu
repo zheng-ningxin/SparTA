@@ -185,20 +185,90 @@ __global__ void convert_bcsr_kernel_2(const int * __restrict__  mask, float * __
 
 }
 
+
+__global__ void convert_bcsr_kernel_fine_1(int * __restrict__  mask, float * __restrict__  dense, int h, int w,
+    int block_h, int block_w, int * row, int *col, float * values, int * extra_buffer)
+{
+    __shared__ int reduce[MAX_BLOCK_THREAD_COUNT];
+    uint by = blockIdx.x; // row
+    uint tid = threadIdx.x;
+    int sum =0;
+    int4 flag;
+    for(int _pos = tid; _pos<w/4; _pos +=blockDim.x){
+        flag = FETCH_INT4(mask[by * w + _pos*4]);
+        sum += flag.x + flag.y + flag.z + flag.w;
+    }
+    reduce[tid] = sum;
+    __syncthreads();
+    // fast tree reduce accross the block
+    for(uint s=blockDim.x/2; s>32; s>>=1){
+        if(tid<s)
+            reduce[tid] += reduce[tid+s];
+        __syncthreads();
+    }
+    if(tid<32)
+        warpReduce(reduce, tid);
+    __syncthreads();
+    if(tid==0){
+        extra_buffer[by] = reduce[0];
+        extra_buffer[by+h] = reduce[0];
+        atomicAdd(&row[h], reduce[0]);
+    }
+
+}
+__global__ void convert_bcsr_kernel_fine_2(const int * __restrict__  mask, float * __restrict__  dense, int h, int w,
+    int block_h, int block_w, int * row, int *col, float * values, int * extra_buffer)
+{
+    uint tid = threadIdx.x;
+    uint by = blockIdx.x;
+    __shared__ int prefix_sum;
+    if (tid==0){
+        prefix_sum = 0;
+        for(int i=0; i<by; i++)
+            prefix_sum += extra_buffer[i];
+        row[by] = prefix_sum;
+    }
+    __syncthreads();
+    for(int _pos=tid; _pos<w; _pos+=blockDim.x){
+        if(mask[by*w+_pos]>0){
+            int tmp = atomicSub(&extra_buffer[by+h], 1);
+            tmp-=1;
+            col[prefix_sum+tmp] = _pos;
+            values[prefix_sum+tmp] = dense[by*w+_pos];
+        }
+    }
+}
+void convert_bcsr_fine(int * mask, float* dense, int h, int w, int block_h,
+                        int block_w, int * row, int * col,
+                        float * values, int * extra_buffer)
+{
+    assert(block_w==1);
+    assert(block_h==1);
+    CUDA_SAFE_CALL(cudaMemset((void*)extra_buffer, 0, sizeof(int)*(2*h+(h/block_h)*(w/block_w))) );
+    CUDA_SAFE_CALL(cudaMemset((void*)row, 0, sizeof(int)*(1+(h/block_h))) );
+    dim3 block_dim(256);
+    dim3 grid_dim(h/block_h);
+    convert_bcsr_kernel_fine_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, values, extra_buffer);
+    convert_bcsr_kernel_fine_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, values, extra_buffer);
+}
+
 void convert_bcsr(int * mask, float * dense, int h, int w,
     int block_h, int block_w, int * row, int *col, int * row_pos,
     float*values, int * extra_buffer, int *block_index)
 {
+    if(block_h==1&&block_w==1){
+        convert_bcsr_fine(mask, dense, h, w, 1, 1, row, col, values, extra_buffer);
+    }else{
     // need reset the extra buffer here
-    assert(block_w % 4 == 0);
-    CUDA_SAFE_CALL(cudaMemset((void*)extra_buffer, 0, sizeof(int)*(2*h+(h/block_h)*(w/block_w))) );
-    CUDA_SAFE_CALL(cudaMemset((void*)row, 0, sizeof(int)*(1+(h/block_h))) );
-    dim3 block_dim(block_h*block_w/4);
-    dim3 grid_dim(w/block_w, h/block_h);
-    // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
-    convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
-    convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer, block_index);
-
+        assert(block_w % 4 == 0);
+        CUDA_SAFE_CALL(cudaMemset((void*)extra_buffer, 0, sizeof(int)*(2*h+(h/block_h)*(w/block_w))) );
+        CUDA_SAFE_CALL(cudaMemset((void*)row, 0, sizeof(int)*(1+(h/block_h))) );
+        dim3 block_dim(block_h*block_w/4);
+        dim3 grid_dim(w/block_w, h/block_h);
+        // std::cout<<"grid_dim "<< w/block_w << ", " <<h/block_h << std::endl;
+        convert_bcsr_kernel_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer);
+        convert_bcsr_kernel_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, row_pos, values, extra_buffer, block_index);
+    }
 }
 
 std::vector<at::Tensor> convert_bcsr_forward(
