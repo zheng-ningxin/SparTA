@@ -110,7 +110,8 @@ void init(float * ptr, size_t length, float sparsity)
         }
         else
         {
-            ptr[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+            // ptr[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+            ptr[i] = 1;
         }
     }
 }
@@ -272,8 +273,8 @@ __global__ void FINEGRAINED_CONDENSE_KERNEL_V2(const int* __restrict__  csr_row,
 }
 void FINEGRAINED_CONDESE_V2(int *csr_row, int * csr_col, float* csr_val, float * B, float* C, int M, int K, int N)
 {
-    const int BLOCK_SIZE_M = 8;
-    const int BLOCK_SIZE_N = 128;
+    const int BLOCK_SIZE_M = 32;
+    const int BLOCK_SIZE_N = 32;
     const int BLOCK_SIZE_K = 32;
     dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
     dim3 blockDim(BLOCK_SIZE_M*BLOCK_SIZE_N);
@@ -305,6 +306,7 @@ __global__ void FINEGRAINED_CONDENSE_KERNEL_V3(const int* __restrict__  csr_row,
     int m_stride = blockDim.x / BLOCK_SIZE_N;
     #pragma unroll
     for(int ty=tid/BLOCK_SIZE_N; ty<BLOCK_SIZE_M; ty+=m_stride){
+        sum = 0;
         int row_id = by * BLOCK_SIZE_M + ty;
         int index_start = csr_row[row_id];
         int index_end = csr_row[row_id+1];
@@ -340,12 +342,12 @@ __global__ void FINEGRAINED_CONDENSE_KERNEL_V3(const int* __restrict__  csr_row,
 }
 void FINEGRAINED_CONDESE_V3(int *csr_row, int * csr_col, float* csr_val, float * B, float* C, int M, int K, int N)
 {
-    const int BLOCK_SIZE_M = 8;
-    const int BLOCK_SIZE_N = 128;
+    const int BLOCK_SIZE_M = 32;
+    const int BLOCK_SIZE_N = 64;
     const int BLOCK_SIZE_K = 32;
     dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
-    dim3 blockDim(BLOCK_SIZE_M*BLOCK_SIZE_N);
-    FINEGRAINED_CONDENSE_KERNEL_V2<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>(csr_row, csr_col, csr_val, B, C, M, K, N);
+    dim3 blockDim(512);
+    FINEGRAINED_CONDENSE_KERNEL_V3<BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>(csr_row, csr_col, csr_val, B, C, M, K, N);
 
 }
 int convert_csr(float * ptr, int32_t row, int32_t col, int32_t * row_idx, int32_t * col_idx, float * values)
@@ -388,9 +390,9 @@ int convert_csr(float * ptr, int32_t row, int32_t col, int32_t * row_idx, int32_
 int main()
 {
     int M, K, N;
-    M = 4096;
-    K = 4096;
-    N = 4096;
+    M = 1024;
+    K = 1024;
+    N = 1024;
     const int n_iter = 100;
     float sparsity_ratio = 0.6;
 
@@ -441,7 +443,8 @@ int main()
     CUDA_SAFE_CALL(cudaEventRecord(time_start));
 
     for(int run=0; run<n_iter; run++){
-        FINEGRAINED_CONDESE_V2(d_row, d_col, d_val, dB, dC, M, K, N);
+        // FINEGRAINED_CONDESE_V2(d_row, d_col, d_val, dB, dC, M, K, N);
+        FINEGRAINED_CONDESE_V3(d_row, d_col, d_val, dB, dC, M, K, N);
     }
     CUDA_SAFE_CALL(cudaEventRecord(time_end));
     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
