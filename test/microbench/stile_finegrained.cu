@@ -390,9 +390,9 @@ int convert_csr(float * ptr, int32_t row, int32_t col, int32_t * row_idx, int32_
 int main()
 {
     int M, K, N;
-    M = 1024;
-    K = 1024;
-    N = 1024;
+    M = 4096;
+    K = 4096;
+    N = 4096;
     const int n_iter = 100;
     float sparsity_ratio = 0.6;
 
