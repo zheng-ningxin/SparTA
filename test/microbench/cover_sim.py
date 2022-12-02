@@ -24,9 +24,15 @@ def sim(sparsity, h, w, ori_block_h, ori_block_w, new_block_h, new_block_w):
     assert ori_full_mask.size(0) == tmp_h
     assert ori_full_mask.size(1) == tmp_w
     full_mask[:tmp_h, :tmp_w] = ori_full_mask
-    row, col, val = convert_bcsr(full_mask, full_mask.to(torch.float32), new_block_h, new_block_w)
-    bnnz = row[h//new_block_h]
-    new_sparsity_ratio = 1.0 - bnnz / (h*w/new_block_h/new_block_w)    
+    conv=torch.nn.Conv2d(1, 1,(new_block_h, new_block_w), (new_block_h, new_block_w), bias=False)
+    conv.eval()
+    conv.weight.data[:] = 1
+    # row, col, val = convert_bcsr(full_mask, full_mask.to(torch.float32), new_block_h, new_block_w)
+    # bnnz = row[h//new_block_h]
+    # new_sparsity_ratio = 1.0 - bnnz / (h*w/new_block_h/new_block_w)    
+    tmp_full = full_mask.view(1, 1, h, w).to(torch.float32)
+    new_block_mask = conv(tmp_full) > 0
+    new_sparsity_ratio = 1-torch.sum(new_block_mask)/ new_block_mask.numel()    
     return new_sparsity_ratio
 
 
@@ -39,4 +45,4 @@ if __name__ == '__main__':
                     for sparsity in sparsity_ratios:
                         sim_sparsity = sim(sparsity, h, w, ori_block_h, ori_block_w, new_block_h, new_block_w)
                         print(f'h:{h} w:{w} {ori_block_h}, {ori_block_w}-> {new_block_h}, {new_block_w} , {sparsity}->{sim_sparsity}')
-                        writer.writerow(str(c) for c in [sparsity, h, w, ori_block_h, ori_block_w, new_block_h, new_block_w])
+                        writer.writerow(str(c) for c in [h, w, ori_block_h, ori_block_w, new_block_h, new_block_w, sparsity, sim_sparsity.item()])
