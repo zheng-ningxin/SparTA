@@ -503,7 +503,7 @@ int main(int argc, char*argv[])
     CUDA_SAFE_CALL(cudaEventRecord(time_end));
     CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
     CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));
-    printf("Time Cost: %.3f ms\n", msecTotal/n_iter);
+    printf("Time= %.3f ms\n", msecTotal/n_iter);
     CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(float)*M*N, cudaMemcpyDeviceToHost));
     // printf("csr_row[63]:%d csr_row[64]:%d\n", row[63], row[64]);
 
