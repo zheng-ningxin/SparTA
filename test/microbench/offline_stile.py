@@ -24,5 +24,6 @@ if __name__ == '__main__':
             print(sparsity)
             os.system(f'./stile {sparsity} > log/stile_{sparsity}.log')
             t_ = parse_result('log/stile_{sparsity}.log')
+            print(sparsity, t_)
             writer.writerow(str(c) for c in [sparsity, t_])
         
