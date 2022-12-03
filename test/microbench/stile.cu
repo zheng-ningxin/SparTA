@@ -426,18 +426,19 @@ bool verify_matmul_sdd(float * A, float * B, int M, int N)
     }
     return flag;
 }
-int main()
+int main(int argc, char*argv[])
 {
     int M, K, N;
-    M = 1024;
-    K = 1024;
-    N = 1024;
-    const int n_iter = 10;
-    float sparsity_ratio = 0.1;
-    const int BLOCK_SIZE_M = 16;
+    M = 4096;
+    K = 4096;
+    N = 4096;
+    const int n_iter = 1000;
+    float sparsity_ratio = atof(argv[1]);
+    // float sparsity_ratio = 0.99;
+    const int BLOCK_SIZE_M = 8;
     const int BLOCK_SIZE_K = 32;
     const int BLOCK_SIZE_N = 128;
-    const int THREAD_SIZE_M = 4;
+    const int THREAD_SIZE_M = 2;
     const int THREAD_SIZE_K = 4;
     const int THREAD_SIZE_N = 4;
     const int BLOCK_H = BLOCK_SIZE_M;
