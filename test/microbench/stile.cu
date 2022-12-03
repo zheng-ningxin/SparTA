@@ -256,7 +256,9 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_CONDENSE_K(int* csr_row, int * csr_col, 
     const int vBLOCK_SIZE_N = BLOCK_SIZE_N / THREAD_SIZE_N;
     int k_nnz = index_end-index_start;
     int k_round = (k_nnz - 1 + BLOCK_SIZE_K)/BLOCK_SIZE_K;
-
+    // if(tid==0 && by==gridDim.y-1 && bx==0){
+    //     printf("bx:%d by%d k_nnz:%d k_round:%d\n", bx, by, k_nnz, k_round);
+    // }
     for(int rid=0; rid<k_round; rid++){
         if(tid<min(BLOCK_SIZE_K, k_nnz-rid*BLOCK_SIZE_K)){
             local_k_offset[tid] = csr_col[index_start + rid * BLOCK_SIZE_K + tid];
@@ -267,7 +269,7 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_CONDENSE_K(int* csr_row, int * csr_col, 
             float4 tmp_float4={0};
             if(k < k_nnz-rid*BLOCK_SIZE_K)
                 tmp_float4 = FETCH_FLOAT4(csr_val[index_start*BLOCK_SIZE_M*1+rid*BLOCK_SIZE_M*BLOCK_SIZE_K+k*BLOCK_SIZE_M+A_BLOCK_COL_START]);
-            FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BLOCK_SIZE_M)]) = tmp_float4;
+            FETCH_FLOAT4(As[OFFSET(k, A_BLOCK_COL_START, BLOCK_SIZE_M)]) = tmp_float4;
         }
         #pragma unroll
         for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
@@ -431,14 +433,14 @@ int main()
     K = 1024;
     N = 1024;
     const int n_iter = 10;
-    float sparsity_ratio = 0.0;
+    float sparsity_ratio = 0.1;
     const int BLOCK_SIZE_M = 16;
     const int BLOCK_SIZE_K = 32;
     const int BLOCK_SIZE_N = 128;
     const int THREAD_SIZE_M = 4;
     const int THREAD_SIZE_K = 4;
     const int THREAD_SIZE_N = 4;
-    const int BLOCK_H = 4;
+    const int BLOCK_H = BLOCK_SIZE_M;
     const int BLOCK_W = 1;
     // const int BLOCK_W = 1;
     cudaEvent_t time_start, time_end;
@@ -457,7 +459,7 @@ int main()
     col = (int*) malloc(sizeof(int) *  M * K / BLOCK_H / BLOCK_W);
     val = (float*) malloc(sizeof(float) * M * K);
     init_mask_blockwise(mask, A, M, K, BLOCK_H, BLOCK_W, sparsity_ratio);
-    init(B, K*N ,0.5);
+    init(B, K*N ,0);
     // init(A, M*K ,0);
     // // apply mask
     // for(int i=0; i< M*K; i++){
@@ -502,6 +504,8 @@ int main()
     CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));
     printf("Time Cost: %.3fms\n", msecTotal/n_iter);
     CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(float)*M*N, cudaMemcpyDeviceToHost));
+    // printf("csr_row[63]:%d csr_row[64]:%d\n", row[63], row[64]);
+
     calculate_reference(M,K,N,A,B,refC);
     verify_matmul_sdd(C, refC, M,N);
     return 0;

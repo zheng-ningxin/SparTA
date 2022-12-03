@@ -16,8 +16,8 @@ void init(float * ptr, size_t length, float sparsity)
         }
         else
         {
-            // ptr[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-            ptr[i] = 1;
+            ptr[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+            // ptr[i] = 1;
         }
     }
 }
@@ -38,8 +38,8 @@ void init_blockwise(float* value, size_t M, size_t N, int block_h, int block_w, 
                 for (int b_i=0; b_i<block_h; b_i++){
                     for(int b_j=0; b_j<block_w; b_j++){
                         pos = (i * block_h + b_i)*N + j* block_w + b_j;
-                        // value[pos] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-                        value[pos] = 1;
+                        value[pos] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+                        // value[pos] = 1;
                     }
                 }
                 block_nnz++;
@@ -69,7 +69,7 @@ void init_mask_blockwise(int * mask, float * value, size_t M, size_t N, int bloc
                         pos = (i * block_h + b_i)*N + j* block_w + b_j;
                         mask[pos]=1;
                         value[pos] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-                        value[pos] = 1;
+                        // value[pos] = 1;
                     }
                 }
                 block_nnz++;
