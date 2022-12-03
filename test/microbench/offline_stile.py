@@ -22,8 +22,9 @@ if __name__ == '__main__':
         for sparsity in np.arange(0, 1.0, 0.05):
             sparsity = round(sparsity, 2)
             print(sparsity)
-            os.system(f'./stile {sparsity} > log/stile_{sparsity}.log')
-            t_ = parse_result('log/stile_{sparsity}.log')
+            fpath = f'log/stile_{sparsity}.log'
+            os.system(f'./stile {sparsity} > {fpath}')
+            t_ = parse_result(fpath)
             print(sparsity, t_)
             writer.writerow(str(c) for c in [sparsity, t_])
         
