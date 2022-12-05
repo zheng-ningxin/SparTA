@@ -259,9 +259,9 @@ int main()
 {
 
     const int test_num = 1;
-    const int M_list[test_num] = {16384};
-    const int N_list[test_num] = {16384};
-    const int K_list[test_num] = {16384};
+    const int M_list[test_num] = {4096};
+    const int N_list[test_num] = {4096};
+    const int K_list[test_num] = {4096};
 
 
     // const int test_num = 64;
