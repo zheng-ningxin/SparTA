@@ -95,7 +95,8 @@ void init_mask_blockwise(int * mask, half * value, size_t M, size_t N, int block
                         pos = (i * block_h + b_i)*N + j* block_w + b_j;
                         mask[pos]=1;
                         float tmp_float = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-                        value[pos] = static_cast<half>(tmp_float);
+                        value[pos] = static_cast<half>(1.0);
+                        // value[pos] = static_cast<half>(tmp_float);
                         // value[pos] = 1;
                     }
                 }
@@ -120,6 +121,7 @@ void init(half * ptr, size_t length, float sparsity)
         {
             float tmp_float = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
             ptr[i] = static_cast<half>(tmp_float);
+            // ptr[i] = static_cast<half>(1.0);
         }
     }
 }
@@ -271,7 +273,7 @@ __global__ void HGEMM(
     int index_start = csr_row[by];
     int index_end = csr_row[by+1];
     for(int tile_block_idx = index_start; tile_block_idx< index_end; tile_block_idx++){
-        int col_pos = csr_col[tile_block_idx];
+        int col_pos = csr_col[tile_block_idx] * BK;
         #pragma unroll
         for(int k = 0; k < BM; k += A_TILE_ROW_STRIDE){
             FETCH_FLOAT4(As[k+A_BLOCK_ROW_START][A_BLOCK_COL_START]) = FETCH_FLOAT4(csr_val[tile_block_idx * BM * BK + OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BK)]);
@@ -287,7 +289,7 @@ __global__ void HGEMM(
         #pragma unroll
         for(int k_step=0; k_step<BK/16; k_step++){
             wmma::load_matrix_sync(frag_a[k_step], &As[wy*16][k_step*16], BK + APAD);
-            wmma::load_matrix_sync(frag_b[k_step], &Bs[k_step*16][wy*16], BN + BPAD);
+            wmma::load_matrix_sync(frag_b[k_step], &Bs[k_step*16][wx*16], BN + BPAD);
         }
         #pragma unroll
         for(int k_step=0; k_step<BK/16; k_step++){
@@ -295,7 +297,7 @@ __global__ void HGEMM(
         }
 
     }
-    int write_offset = (by * BM + wy * 16) * N + bx * BN + wx*16;
+    int write_offset = (by * BM + wy * 16) * N + bx * BN + wx * 16;
     wmma::store_matrix_sync(&C[write_offset], frag_c, N, wmma::mem_row_major);
 }
 

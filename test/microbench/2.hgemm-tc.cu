@@ -271,7 +271,7 @@ int main()
         printf("\nalgo = HGEMMAlignedV1\n");
 
         {
-            const int M = 256, N = 256, K = 256;
+            const int M = 1024, N = 1024, K = 1024;
             float max_error = testF16F16GemmMaxError(
                 myF16F16GemmTCWarp<HGEMMAlignedV1>, M, N, K);
             printf("Max Error = %f\n", max_error);
