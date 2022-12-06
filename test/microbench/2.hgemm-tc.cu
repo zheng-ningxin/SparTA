@@ -264,16 +264,6 @@ int main()
     const int K_list[test_num] = {4096};
 
 
-    // const int test_num = 64;
-    // int M_list[test_num];
-    // int N_list[test_num];
-    // int K_list[test_num];
-    // for (int i = 0; i < test_num; i++)
-    // {
-    //     M_list[i] = (i + 1) * 256;
-    //     N_list[i] = (i + 1) * 256;
-    //     K_list[i] = (i + 1) * 256;
-    // }
 
     const int outer_repeat = 1, inner_repeat = 1;
 

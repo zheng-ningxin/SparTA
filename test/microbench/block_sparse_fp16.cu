@@ -4,7 +4,10 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <mma.h>
-
+#include <vector>
+#include <sstream>
+#include <string>
+#include <assert.h>
 using namespace std;
 using namespace nvcuda;
 
@@ -71,21 +74,141 @@ __device__ __forceinline__ const int* add_ptr_u(const int* src, int offset)     
     return dst;                                                              \
 }
 
-__device__ __forceinline__ const float* add_ptr_f(const float* src, int offset)      \
-{                                                                            \
-    const float* dst;                                                            \
-    asm("{                       \n\t"                                       \
-        ".reg .u32 lo,hi,of;     \n\t"                                       \
-        "mul.lo.u32 of, %2, %3;  \n\t"                                       \
-        "mov.b64    {lo,hi}, %1; \n\t"                                       \
-        "add.cc.u32  lo,lo,  of; \n\t"                                       \
-        "addc.u32    hi,hi,  0;  \n\t"                                       \
-        "mov.b64 %0, {lo,hi};    \n\t"                                       \
-        "}" : "=l"(dst) : "l"(src), "r"(offset), "r"((int)sizeof(*src)));    \
-    return dst;                                                              \
+
+
+void init_mask_blockwise(int * mask, half * value, size_t M, size_t N, int block_h, int block_w, float sparsity)
+{
+    memset(mask, 0, sizeof(int)*M*N);
+    memset(value, 0, sizeof(half)*M*N);
+    int m_block_n = M / block_h;
+    int n_block_n = N / block_w;
+    int block_nnz = 0;
+    for (int i = 0; i < m_block_n; i++)
+    {
+        for(int j=0; j < n_block_n; j++){
+            float pro = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+            if (pro >= sparsity)
+            {
+                int pos;
+                for (int b_i=0; b_i<block_h; b_i++){
+                    for(int b_j=0; b_j<block_w; b_j++){
+                        pos = (i * block_h + b_i)*N + j* block_w + b_j;
+                        mask[pos]=1;
+                        float tmp_float = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+                        value[pos] = static_cast<half>(tmp_float);
+                        // value[pos] = 1;
+                    }
+                }
+                block_nnz++;
+            }
+        }
+        
+    }
+    printf("random %d blocks in init_mask_blockwise\n", block_nnz);
+
+}
+void init(half * ptr, size_t length, float sparsity)
+{
+    for (int i = 0; i < length; i++)
+    {
+        float pro = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        if (pro < sparsity)
+        {
+            ptr[i] = 0.0;
+        }
+        else
+        {
+            float tmp_float = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+            ptr[i] = static_cast<half>(tmp_float);
+        }
+    }
 }
 
-__device__ __forceinline__ float2  _add(float2 x, float2 y) { float2 res; res.x = x.x + y.x; res.y = x.y + y.y; return res; }
+
+void convert_bcsr(int * mask, half* dense_val, int M, int N, int block_h, int block_w, int *row_ptr, int* col_idx, half * val )
+{
+    vector<int> vr(M/block_h+1, 0);
+    vector<vector<int>> vc(M/block_h+1, vector<int>());
+    int block_nnz = 0;
+    assert(M%block_h==0);
+    assert(N%block_w==0);
+    for(int rid=0; rid<M/block_h; rid++){
+        for(int cid=0; cid<N/block_w; cid++){
+            int flag = 0;
+            for(int i=0; i<block_h; i++){
+                for(int j=0; j<block_w; j++){
+                    int _pos = (rid * block_h + i) * N + cid * block_w + j;
+                    if(mask[_pos]>0)
+                        flag = 1;
+                }
+            }
+            if(flag){
+                vc[rid].push_back(cid);
+            }
+        }
+    }
+    row_ptr[0]=0;
+    for(int i=0;i<M/block_h;i++){
+        row_ptr[i+1] = row_ptr[i] + vc[i].size();
+        for(int j =0; j<vc[i].size(); j++){
+            int _block_idx = row_ptr[i]+j;
+            col_idx[_block_idx] = vc[i][j];
+            for(int b_i=0; b_i<block_h; b_i++){
+                for(int b_j=0; b_j<block_w; b_j++){
+                    int pos_1 = _block_idx * block_h *block_w + b_i * block_w + b_j;
+                    int pos_2 = (b_i + i * block_h) * N + (b_j + block_w * vc[i][j]);
+                    val[pos_1] = dense_val[pos_2];
+                }
+            }
+        }
+    }
+
+}
+bool verify_bcsr(int * mask, half * data, int h, int w, int block_h, int block_w, int* row, int * col, half* values)
+{
+    for(int rid=0; rid<h/block_h; rid++){
+        // printf("row-%d: %d row-%d : %d\n", rid, row[rid], rid+1, row[rid+1]);
+        int _start = row[rid];
+        int _end = row[rid+1];
+        for(int _pos=_start; _pos<_end; _pos++){
+            int cid = col[_pos];
+            for(int i=0;i<block_h;i++){
+                for(int j=0;j<block_w;j++){
+                    int offset = (rid * block_h+i) * w + cid * block_w + j;
+                    int csr_offset = _pos * block_h * block_w + i * block_w + j;
+                    if (mask[offset]>0){
+                        // printf("%f %f\n", data[offset], values[csr_offset]);
+
+                        if(abs(static_cast<float>(data[offset])-static_cast<float>(values[csr_offset]))>1e-6)
+                        {
+                            return false;
+                        }
+                        mask[offset]= 0;
+                    }
+                }
+            }
+        }
+    }
+    printf("%d blocks remained\n", row[h/block_h]);
+    printf("Blockwise sparsity %f \n", 1.0-1.0*row[h/block_h]/(h/block_h)/(w/block_w));
+    for(int i=0;i<block_h*block_w;i++)
+        if(mask[i])
+            return false;
+    return true;
+}
+void calculate_reference(int m, int k, int n, float * A, float *B, float * C) 
+{
+    for(int i=0; i<m; i++){
+        for(int j=0; j<n; j++){
+            float sum = 0.0;
+            for(int tmp=0; tmp<k; tmp++){
+                sum += A[i * k + tmp] * B[tmp * n + j];
+            }
+            C[i*n+j] = sum;
+        }
+    }
+}
+
 
 
 void cpuF16F16Gemm(half *a, half *b, half *c, int M, int N, int K)
@@ -271,8 +394,84 @@ float testF16F16GemmPerformance(
     return sec;
 }
 
-int main()
+int main(int argc, char*argv[])
 {
+    int M, K, N;
+    M = 4096;
+    K = 4096;
+    N = 4096;
+    const int n_iter = 1000;
+    float sparsity_ratio = atof(argv[1]);
+    // float sparsity_ratio = 0.99;
+    const int BLOCK_SIZE_M = 32;
+    const int BLOCK_SIZE_K = 64;
+    const int BLOCK_SIZE_N = 32;
+    const int BLOCK_H = BLOCK_SIZE_M;
+    const int BLOCK_W = BLOCK_SIZE_K;
 
-   
+    cudaEvent_t time_start, time_end;
+    CUDA_SAFE_CALL(cudaEventCreate(&time_start));
+    CUDA_SAFE_CALL(cudaEventCreate(&time_end));
+    float msecTotal = 0;
+    half * A, *B, *C, *val, *refC;
+    half * dA, *dB, *dC, *d_val;
+    int * mask, *d_mask, *row, *d_row, *row_pos, *d_row_pos, *col, *d_col;
+    A = (half*) malloc(sizeof(half) * M * K);
+    B = (half*) malloc(sizeof(half) * K * N);
+    C = (half*) malloc(sizeof(half) * M * N);
+    refC = (half*) malloc(sizeof(half) * M * N);
+    mask = (int*) malloc(sizeof(int) * M * K);
+    row = (int*) malloc(sizeof(int) * (K+1));
+    col = (int*) malloc(sizeof(int) *  M * K / BLOCK_H / BLOCK_W);
+    val = (half*) malloc(sizeof(half) * M * K);
+    init_mask_blockwise(mask, A, M, K, BLOCK_H, BLOCK_W, sparsity_ratio);
+    init(B, K*N ,0);
+    // init(A, M*K ,0);
+    // // apply mask
+    // for(int i=0; i< M*K; i++){
+    //     A[i] = A[i] * mask[i];
+    // }
+    convert_bcsr(mask, A, M, K, BLOCK_H, BLOCK_W, row, col, val);
+    assert (verify_bcsr(mask, A, M,K,BLOCK_H,BLOCK_W, row, col, val));
+    int block_nnz = row[M/BLOCK_H];
+    
+    printf("Block NNZ: %d\n", block_nnz);
+    CUDA_SAFE_CALL(cudaMalloc(&d_mask, sizeof(int) * M * K));
+    CUDA_SAFE_CALL(cudaMalloc(&d_row, sizeof(int) * (M + 1)));
+    CUDA_SAFE_CALL(cudaMalloc(&d_col, sizeof(int) * M * K / BLOCK_H / BLOCK_W));
+    CUDA_SAFE_CALL(cudaMalloc(&d_row_pos, sizeof(int) * M * K / BLOCK_H / BLOCK_W));
+    CUDA_SAFE_CALL(cudaMalloc(&d_val, sizeof(half) * M * K));
+    CUDA_SAFE_CALL(cudaMalloc(&dA, sizeof(half) * M * K));
+    CUDA_SAFE_CALL(cudaMalloc(&dB, sizeof(half) * N * K));
+    CUDA_SAFE_CALL(cudaMalloc(&dC, sizeof(half) * M * N));
+    CUDA_SAFE_CALL(cudaMemset(dC, 0, sizeof(half)*M*N));
+    
+    CUDA_SAFE_CALL(cudaMemcpy(d_mask, mask, sizeof(int) * M * K, cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(dA, A, sizeof(half)*M*K, cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(dB, B, sizeof(half)*K*N, cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(d_row, row, sizeof(int)*(M+1), cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(d_col, col, sizeof(int)*M * K / BLOCK_H / BLOCK_W, cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(d_val, val, sizeof(half) * M * K, cudaMemcpyHostToDevice));
+
+    
+
+    // KxM = KxN * (MxN)^T
+    dim3 blockDim(128);
+    dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M);
+    printf("Test Condense-k on our block sparse template\n");
+    CUDA_SAFE_CALL(cudaEventRecord(time_start));
+
+    for(int run=0; run<n_iter; run++){
+        HGEMM<<<gridDim, blockDim>>>(d_row, d_col, d_val, dB, dC, M, K, N, BLOCK_H, BLOCK_W);
+     }
+    CUDA_SAFE_CALL(cudaEventRecord(time_end));
+    CUDA_SAFE_CALL(cudaEventSynchronize(time_end));
+    CUDA_SAFE_CALL(cudaEventElapsedTime(&msecTotal, time_start, time_end));
+    printf("Time= %.3f ms\n", msecTotal/n_iter);
+    CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(half)*M*N, cudaMemcpyDeviceToHost));
+    // printf("csr_row[63]:%d csr_row[64]:%d\n", row[63], row[64]);
+
+    // calculate_reference(M,K,N,A,B,refC);
+    // verify_matmul_sdd(C, refC, M,N);
+    return 0;
 }
