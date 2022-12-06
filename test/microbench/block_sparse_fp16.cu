@@ -400,9 +400,9 @@ float testF16F16GemmPerformance(
 int main(int argc, char*argv[])
 {
     int M, K, N;
-    M = 1024;
-    K = 1024;
-    N = 1024;
+    M = 4096;
+    K = 4096;
+    N = 4096;
     const int n_iter = 1000;
     float sparsity_ratio = atof(argv[1]);
     // float sparsity_ratio = 0.99;
@@ -469,13 +469,13 @@ int main(int argc, char*argv[])
     printf("Time= %.3f ms\n", msecTotal/n_iter);
     CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(half)*M*N, cudaMemcpyDeviceToHost));
     // printf("csr_row[63]:%d csr_row[64]:%d\n", row[63], row[64]);
-    cpuF16F16Gemm(A, B, refC, M, N, K);
-    float max_error = -1000000.0;
-    for(int i=0; i<M*N; i++){
-        float tmp_err = abs((float)refC[i] - (float)C[i]);
-        max_error = max(tmp_err, max_error);
-    }
-    printf("max error:%f \n", max_error);
+    // cpuF16F16Gemm(A, B, refC, M, N, K);
+    // float max_error = -1000000.0;
+    // for(int i=0; i<M*N; i++){
+    //     float tmp_err = abs((float)refC[i] - (float)C[i]);
+    //     max_error = max(tmp_err, max_error);
+    // }
+    // printf("max error:%f \n", max_error);
     // calculate_reference(M,K,N,A,B,refC);
     // verify_matmul_sdd(C, refC, M,N);
     return 0;
