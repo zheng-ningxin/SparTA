@@ -95,8 +95,8 @@ void init_mask_blockwise(int * mask, half * value, size_t M, size_t N, int block
                         pos = (i * block_h + b_i)*N + j* block_w + b_j;
                         mask[pos]=1;
                         float tmp_float = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-                        value[pos] = static_cast<half>(1.0);
-                        // value[pos] = static_cast<half>(tmp_float);
+                        // value[pos] = static_cast<half>(1.0);
+                        value[pos] = static_cast<half>(tmp_float);
                         // value[pos] = 1;
                     }
                 }
@@ -295,6 +295,7 @@ __global__ void HGEMM(
         for(int k_step=0; k_step<BK/16; k_step++){
             wmma::mma_sync(frag_c, frag_a[k_step], frag_b[k_step], frag_c);
         }
+        __syncthreads();
 
     }
     int write_offset = (by * BM + wy * 16) * N + bx * BN + wx * 16;
