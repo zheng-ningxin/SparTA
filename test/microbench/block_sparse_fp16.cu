@@ -274,14 +274,13 @@ __global__ void HGEMM(
         int col_pos = csr_col[tile_block_idx];
         #pragma unroll
         for(int k = 0; k < BM; k += A_TILE_ROW_STRIDE){
-            FETCH_FLOAT4(As[OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BK)]) =
-                FETCH_FLOAT4(csr_val[tile_block_idx * BM * BK + OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BK)]);
+            FETCH_FLOAT4(As[k+A_BLOCK_ROW_START][A_BLOCK_COL_START]) = FETCH_FLOAT4(csr_val[tile_block_idx * BM * BK + OFFSET(k+A_BLOCK_ROW_START, A_BLOCK_COL_START, BK)]);
         }
 
         #pragma unroll
         for(int k = 0; k < BK; k += B_TILE_ROW_STRIDE){
-            FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BN)]) = 
-                FETCH_FLOAT4(B[OFFSET(col_pos+k+B_BLOCK_ROW_START, bx*BN + B_BLOCK_COL_START, N)]);
+            // FETCH_FLOAT4(Bs[OFFSET(k+B_BLOCK_ROW_START, B_BLOCK_COL_START, BN+BPAD)]) = FETCH_FLOAT4(B[OFFSET(col_pos+k+B_BLOCK_ROW_START, bx*BN + B_BLOCK_COL_START, N)]);
+            FETCH_FLOAT4(Bs[k+B_BLOCK_ROW_START][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[OFFSET(col_pos+k+B_BLOCK_ROW_START, bx*BN + B_BLOCK_COL_START, N)]);
         }
 
         __syncthreads();
@@ -394,12 +393,13 @@ float testF16F16GemmPerformance(
     return sec;
 }
 
+
 int main(int argc, char*argv[])
 {
     int M, K, N;
-    M = 4096;
-    K = 4096;
-    N = 4096;
+    M = 1024;
+    K = 1024;
+    N = 1024;
     const int n_iter = 1000;
     float sparsity_ratio = atof(argv[1]);
     // float sparsity_ratio = 0.99;
@@ -426,11 +426,7 @@ int main(int argc, char*argv[])
     val = (half*) malloc(sizeof(half) * M * K);
     init_mask_blockwise(mask, A, M, K, BLOCK_H, BLOCK_W, sparsity_ratio);
     init(B, K*N ,0);
-    // init(A, M*K ,0);
-    // // apply mask
-    // for(int i=0; i< M*K; i++){
-    //     A[i] = A[i] * mask[i];
-    // }
+
     convert_bcsr(mask, A, M, K, BLOCK_H, BLOCK_W, row, col, val);
     assert (verify_bcsr(mask, A, M,K,BLOCK_H,BLOCK_W, row, col, val));
     int block_nnz = row[M/BLOCK_H];
@@ -470,7 +466,13 @@ int main(int argc, char*argv[])
     printf("Time= %.3f ms\n", msecTotal/n_iter);
     CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(half)*M*N, cudaMemcpyDeviceToHost));
     // printf("csr_row[63]:%d csr_row[64]:%d\n", row[63], row[64]);
-
+    cpuF16F16Gemm(A, B, refC, M, N, K);
+    float max_error = -1000000.0;
+    for(int i=0; i<M*N; i++){
+        float tmp_err = abs((float)refC[i] - (float)C[i]);
+        max_error = max(tmp_err, max_error);
+    }
+    printf("max error:%f \n", max_error);
     // calculate_reference(M,K,N,A,B,refC);
     // verify_matmul_sdd(C, refC, M,N);
     return 0;
