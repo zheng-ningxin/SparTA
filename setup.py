@@ -96,6 +96,12 @@ def _setup():
                                                                 'csrc/dynamic_sparse_linear_condense_forward_v2_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(condense_sparse_linear_ext_v2)
+        moe_ext = CUDAExtension(name='sparse_moe', sources=['csrc/moe_sparse_forward.cpp',\
+                                                                'csrc/moe_sparse_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-O3'])
+        ext_modules.append(moe_ext)
+
+        
     print(rootdir)
     setup(
         name='SparTA',
