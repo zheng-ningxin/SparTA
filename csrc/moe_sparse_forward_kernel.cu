@@ -386,7 +386,7 @@ at::Tensor moe_sparse_forward(
     int in_hidden = tokens.size(1);
     // weight : [n_expert, out_hidden, in_hidden]
     int n_expert = weight.size(0);
-    int out_hidden = weight.size(1);
+    int out_hidden = weight.size(2);
     const int TMAX = sparse_index.size(1); // the max token each expert can take
     assert(router_index.size(0) == total_token);
     torch::Tensor output = torch::zeros({total_token, out_hidden}, tokens.options());

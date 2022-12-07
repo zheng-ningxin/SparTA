@@ -15,7 +15,7 @@ if __name__ == '__main__':
     S = 128
     N_exp = 16
     in_hidden = 768
-    out_hidden = 1024
+    out_hidden = 3072
     exps = []
     for i in range(N_exp):
         exps.append(torch.nn.Linear(in_hidden, out_hidden, bias=False).cuda())
@@ -27,5 +27,7 @@ if __name__ == '__main__':
     # import ipdb; ipdb.set_trace()
     out = moe(data, exp_ids)
     ref_out =  calculate_ref(data, exps, exp_ids, out_hidden)
-    # import ipdb; ipdb.set_trace()
+    import ipdb; ipdb.set_trace()
+    
+    assert torch.allclose(out, ref_out, rtol=1e-08, atol=1e-04)
     # pass
