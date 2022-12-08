@@ -13,6 +13,7 @@ def calculate_ref(data, exps, exp_ids, out_hidden):
 
 def run_load(moe):
     data, ids = joblib.load('moe/tokens.pkl')
+    # import ipdb; ipdb.set_trace()
     out = joblib.load('moe/out.pkl')
     data = data.to(moe.device)
     ids = ids.to(moe.device)
@@ -25,8 +26,8 @@ if __name__ == '__main__':
     B = 32
     S = 128
     N_exp = 8
-    in_hidden = 768
-    out_hidden = 3072
+    in_hidden = 3072
+    out_hidden = 768
     exps = []
     for i in range(N_exp):
         exps.append(torch.nn.Linear(in_hidden, out_hidden, bias=False).cuda())
@@ -34,15 +35,17 @@ if __name__ == '__main__':
     #     exps[i].weight.data[:]=1
     moe = DynamicSparseMoE(N_exp, exps)
     data = torch.rand(B*S, in_hidden).cuda()
-    exp_ids = torch.randint(0, N_exp, (B*S,)).to(torch.int32).cuda()
+    # exp_ids = torch.randint(0, N_exp, (B*S,)).to(torch.int32).cuda()
+    exp_ids = torch.load('expids.pth')
     # import ipdb; ipdb.set_trace()
     out = moe(data, exp_ids)
-    run_load(moe)
+    # run_load(moe)
 
     ref_out =  calculate_ref(data, exps, exp_ids, out_hidden)
     # import ipdb; ipdb.set_trace()
     
-    # assert torch.allclose(out, ref_out, rtol=1e-08, atol=1e-04)
+    assert torch.allclose(out, ref_out, rtol=1e-08, atol=1e-04)
+    
     RUNTIME = 1000
     torch.cuda.synchronize()
     t_start = time.time()

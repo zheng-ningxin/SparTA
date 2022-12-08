@@ -31,6 +31,4 @@ class DynamicSparseMoE(SparseOPBase):
     def forward(self, tokens, expids):
         sparse_moe.convert_index(expids, self.sparse_index, self.expert_count)
         GLOBAL_M = torch.max(self.expert_count)
-        import ipdb; ipdb.set_trace()
-        print(GLOBAL_M)
         return sparse_moe.forward(tokens, self.weight, expids, self.sparse_index, self.expert_count, GLOBAL_M)
