@@ -19,13 +19,14 @@ class DynamicSparseMoE(SparseOPBase):
         self.n_exp = n_exp
         self.in_hidden = exp_modules[0].weight.size(1)
         self.out_hidden = exp_modules[0].weight.size(0)
+        self.device = exp_modules[0].weight.device
         assert(len(exp_modules)==n_exp)
-        self.weight = torch.nn.Parameter(torch.rand(self.n_exp, self.in_hidden, self.out_hidden).cuda())
+        self.weight = torch.nn.Parameter(torch.rand(self.n_exp, self.in_hidden, self.out_hidden).to(self.device))
         with torch.no_grad():
             for eid in range(self.n_exp):
                 self.weight.data[eid] = exp_modules[eid].weight.t().data
-        self.sparse_index = torch.zeros(self.n_exp, 3000, dtype=torch.int32).cuda()
-        self.expert_count = torch.zeros(self.n_exp, dtype=torch.int32).cuda()
+        self.sparse_index = torch.zeros(self.n_exp, 3000, dtype=torch.int32).to(self.device)
+        self.expert_count = torch.zeros(self.n_exp, dtype=torch.int32).to(self.device)
 
     def forward(self, tokens, expids):
         sparse_moe.convert_index(expids, self.sparse_index, self.expert_count)

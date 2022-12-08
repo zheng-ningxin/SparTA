@@ -1,4 +1,5 @@
 import torch
+import time
 import sparta
 from sparta.opset.sparse_moe import DynamicSparseMoE
 
@@ -27,7 +28,26 @@ if __name__ == '__main__':
     # import ipdb; ipdb.set_trace()
     out = moe(data, exp_ids)
     ref_out =  calculate_ref(data, exps, exp_ids, out_hidden)
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     
-    assert torch.allclose(out, ref_out, rtol=1e-08, atol=1e-04)
-    # pass
+    # assert torch.allclose(out, ref_out, rtol=1e-08, atol=1e-04)
+    RUNTIME = 1000
+    torch.cuda.synchronize()
+    t_start = time.time()
+    for i in range(RUNTIME):
+        out = moe(data, exp_ids)
+    
+    torch.cuda.synchronize()
+    t_end = time.time()
+    print('Time: {} ms'.format(t_end-t_start))
+    
+    tmp_linear = torch.nn.Linear(in_hidden, out_hidden, bias=False).cuda()
+    RUNTIME = 1000
+    torch.cuda.synchronize()
+    t_start = time.time()
+    for i in range(RUNTIME):
+        out = tmp_linear(data)
+    
+    torch.cuda.synchronize()
+    t_end = time.time()
+    print('Lower bound Time: {} ms'.format(t_end-t_start))
