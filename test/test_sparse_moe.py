@@ -2,7 +2,7 @@ import torch
 import time
 import sparta
 from sparta.opset.sparse_moe import DynamicSparseMoE
-
+import joblib
 
 def calculate_ref(data, exps, exp_ids, out_hidden):
     n_exp = len(exps)
@@ -11,10 +11,20 @@ def calculate_ref(data, exps, exp_ids, out_hidden):
         out[exp_ids == eid]=exps[eid](data[exp_ids == eid])
     return out
 
+def run_load(moe):
+    data, ids = joblib.load('moe/tokens.pkl')
+    out = joblib.load('moe/out.pkl')
+    data = data.to(moe.device)
+    ids = ids.to(moe.device)
+    my_out = moe(data, ids)
+    import ipdb; ipdb.set_trace()
+    pass
+
 if __name__ == '__main__':
+
     B = 32
     S = 128
-    N_exp = 16
+    N_exp = 8
     in_hidden = 768
     out_hidden = 3072
     exps = []
@@ -27,6 +37,8 @@ if __name__ == '__main__':
     exp_ids = torch.randint(0, N_exp, (B*S,)).to(torch.int32).cuda()
     # import ipdb; ipdb.set_trace()
     out = moe(data, exp_ids)
+    run_load(moe)
+
     ref_out =  calculate_ref(data, exps, exp_ids, out_hidden)
     # import ipdb; ipdb.set_trace()
     
