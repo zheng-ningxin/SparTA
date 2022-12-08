@@ -354,6 +354,7 @@ void moe_sparse_convert_index(
 )
 {
     // tokens: [total_token, in_hidden]
+    cudaSetDevice(router_index.get_device());
     int total_token = router_index.size(0);
     int n_expert = expert_count.size(0);
     const int TMAX = sparse_index.size(1); // the max token each expert can take
@@ -381,6 +382,7 @@ at::Tensor moe_sparse_forward(
     const int GLOBAL_M
 )
 {
+    cudaSetDevice(router_index.get_device());
     // tokens: [total_token, in_hidden]
     int total_token = tokens.size(0);
     int in_hidden = tokens.size(1);
