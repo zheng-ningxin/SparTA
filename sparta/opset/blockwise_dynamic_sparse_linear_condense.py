@@ -69,6 +69,6 @@ class BlockwiseSparseLinearCondense(SparseOPBase):
         M = batch_size * seq_len
         K = self.K
         N = self.N
-        activation = activation.view(M, K).t().contiguous()
-        # activation = activation.view(M, K).contiguous()
+        activation = activation.view(K, M)
+        # activation = activation.view(M, K).t().contiguous()
         return BlockwiseSparseLinearCondenseFunction.apply(activation, self.weight, self.csr_row, self.csr_col, self.bias, M, K, N, self.block_h, self.block_w, batch_size, seq_len)
