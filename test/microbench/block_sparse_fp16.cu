@@ -286,14 +286,21 @@ __global__ void HGEMM(
         }
 
         __syncthreads();
+        // #pragma unroll
+        // for(int k_step=0; k_step<BK/16; k_step++){
+        //     wmma::load_matrix_sync(frag_a[k_step], &As[wy*16][k_step*16], BK + APAD);
+        //     wmma::load_matrix_sync(frag_b[k_step], &Bs[k_step*16][wx*16], BN + BPAD);
+        // }
+        // #pragma unroll
+        // for(int k_step=0; k_step<BK/16; k_step++){
+        //     wmma::mma_sync(frag_c, frag_a[k_step], frag_b[k_step], frag_c);
+        // }
         #pragma unroll
         for(int k_step=0; k_step<BK/16; k_step++){
-            wmma::load_matrix_sync(frag_a[k_step], &As[wy*16][k_step*16], BK + APAD);
-            wmma::load_matrix_sync(frag_b[k_step], &Bs[k_step*16][wx*16], BN + BPAD);
-        }
-        #pragma unroll
-        for(int k_step=0; k_step<BK/16; k_step++){
-            wmma::mma_sync(frag_c, frag_a[k_step], frag_b[k_step], frag_c);
+            wmma::load_matrix_sync(frag_a[0], &As[wy*16][k_step*16], BK + APAD);
+            wmma::load_matrix_sync(frag_b[0], &Bs[k_step*16][wx*16], BN + BPAD);
+            wmma::mma_sync(frag_c, frag_a[0], frag_b[0], frag_c);
+        
         }
         __syncthreads();
 
@@ -469,13 +476,13 @@ int main(int argc, char*argv[])
     printf("Time= %.3f ms\n", msecTotal/n_iter);
     CUDA_SAFE_CALL(cudaMemcpy(C, dC, sizeof(half)*M*N, cudaMemcpyDeviceToHost));
     // printf("csr_row[63]:%d csr_row[64]:%d\n", row[63], row[64]);
-    // cpuF16F16Gemm(A, B, refC, M, N, K);
-    // float max_error = -1000000.0;
-    // for(int i=0; i<M*N; i++){
-    //     float tmp_err = abs((float)refC[i] - (float)C[i]);
-    //     max_error = max(tmp_err, max_error);
-    // }
-    // printf("max error:%f \n", max_error);
+    cpuF16F16Gemm(A, B, refC, M, N, K);
+    float max_error = -1000000.0;
+    for(int i=0; i<M*N; i++){
+        float tmp_err = abs((float)refC[i] - (float)C[i]);
+        max_error = max(tmp_err, max_error);
+    }
+    printf("max error:%f \n", max_error);
     // calculate_reference(M,K,N,A,B,refC);
     // verify_matmul_sdd(C, refC, M,N);
     return 0;

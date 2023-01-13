@@ -21,7 +21,8 @@ class DynamicSparseMoE(SparseOPBase):
         self.out_hidden = exp_modules[0].weight.size(0)
         self.device = exp_modules[0].weight.device
         assert(len(exp_modules)==n_exp)
-        self.weight = torch.nn.Parameter(torch.rand(self.n_exp, self.in_hidden, self.out_hidden).to(self.device))
+        assert(n_exp>0)
+        self.weight = torch.nn.Parameter(torch.rand(self.n_exp, self.in_hidden, self.out_hidden).to(exp_modules[0].weight.dtype).to(self.device))
         with torch.no_grad():
             for eid in range(self.n_exp):
                 self.weight.data[eid] = exp_modules[eid].weight.t().data
@@ -31,4 +32,5 @@ class DynamicSparseMoE(SparseOPBase):
     def forward(self, tokens, expids):
         sparse_moe.convert_index(expids, self.sparse_index, self.expert_count)
         GLOBAL_M = torch.max(self.expert_count)
+        # import ipdb; ipdb.set_trace()
         return sparse_moe.forward(tokens, self.weight, expids, self.sparse_index, self.expert_count, GLOBAL_M)

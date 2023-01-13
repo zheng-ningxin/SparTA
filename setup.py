@@ -98,7 +98,8 @@ def _setup():
         ext_modules.append(condense_sparse_linear_ext_v2)
         moe_ext = CUDAExtension(name='sparse_moe', sources=['csrc/moe_sparse_forward.cpp',\
                                                                 'csrc/moe_sparse_forward_kernel.cu'],
-                                    extra_compile_args=['-std=c++14', '-O3'])
+                                    extra_compile_args=['-std=c++14', '-O3',                  "-U__CUDA_NO_HALF_OPERATORS__",
+                                                        "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
         ext_modules.append(moe_ext)
 
         
