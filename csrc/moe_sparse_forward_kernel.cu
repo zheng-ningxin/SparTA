@@ -394,9 +394,9 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16(half* tokens, int* sparse_index, 
         __syncthreads();
 
         for(int k=C_BLOCK_ROW_START; k<index_end-index_start; k+=C_TILE_ROW_STRIDE){
-            if(tid==0){
-                printf("bx:%d by:%d k:%d C_BLOCK_COL_START:%d m_index:%d offset:%d result %f\n", bx, by, k, C_BLOCK_COL_START, m_index[k], m_index[k] * N + bx * BLOCK_SIZE_N + C_BLOCK_COL_START,__half2float(Cs[k][C_BLOCK_COL_START]));
-            }
+            // if(tid==0){
+            //     printf("bx:%d by:%d k:%d C_BLOCK_COL_START:%d m_index:%d offset:%d result %f\n", bx, by, k, C_BLOCK_COL_START, m_index[k], m_index[k] * N + bx * BLOCK_SIZE_N + C_BLOCK_COL_START,__half2float(Cs[k][C_BLOCK_COL_START]));
+            // }
             FETCH_FLOAT4(C[m_index[k] * N + bx * BLOCK_SIZE_N + C_BLOCK_COL_START]) = FETCH_FLOAT4(Cs[k][C_BLOCK_COL_START]);
         }
     }
