@@ -21,6 +21,16 @@ def run_load(moe):
     import ipdb; ipdb.set_trace()
     pass
 
+def measure_time(model, data, exp_ids):
+    torch.cuda.synchronize()
+    t_start = time.time()
+    RUNTIME = 1000
+    for i in range(RUNTIME):
+        _out = model(data, exp_ids)
+    torch.cuda.synchronize()
+    t_end = time.time()
+    print((t_end-t_start)*1000/RUNTIME)
+    
 if __name__ == '__main__':
 
     B = 32
@@ -41,6 +51,7 @@ if __name__ == '__main__':
     out = moe(data, exp_ids)
     # run_load(moe)
 
+    measure_time(moe, data, exp_ids)
     ref_out =  calculate_ref(data, exps, exp_ids, out_hidden)
     # import ipdb; ipdb.set_trace()
     
