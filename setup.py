@@ -43,6 +43,10 @@ def _setup():
                                                             'csrc/convert_bcsr_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(bcsr_ext)
+        csr_ext = CUDAExtension(name='convert_csr_cpp', sources=['csrc/convert_csr_forward.cpp',
+                                                            'csrc/convert_csr_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-O3'])
+        ext_modules.append(csr_ext)
         bcsr_trans_ext = CUDAExtension(name='convert_bcsr_transpose_cpp', sources=['csrc/convert_bcsr_transpose_forward.cpp',
                                                             'csrc/convert_bcsr_transpose_forward_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
