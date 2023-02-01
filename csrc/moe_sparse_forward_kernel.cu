@@ -543,6 +543,132 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* tokens, int* sparse_inde
     
 }
 
+
+
+__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V3(half* tokens, int* sparse_index, int* expert_count, half*B, half*C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
+{
+    /*
+    description:
+    tiling k dimension
+    tile size: 32x64x32
+    smm_sd_d_nt: sparse matmul, sparse (MxK, along K, K major bcsr) x dense (KxN, along N, need transpose) -> dense (MxN, along N)
+    block sparse matrix (block size: 32x64) X dense matrix -> dense matrix
+
+    */
+    const int BLOCK_SIZE_M = 32;  // 64
+    const int BLOCK_SIZE_K = 64;  //8
+    const int BLOCK_SIZE_N = 32;  //128
+    const int THREAD_SIZE_K = 64;
+    const int M = GLOBAL_M;
+    const int K = GLOBAL_K;
+    const int N = GLOBAL_N;
+    const int APAD = 8;
+    const int BPAD = 8;
+    assert(blockDim.x % 32 == 0);
+    const int n_warp = blockDim.x / 32;
+    int exp_id = blockIdx.z;
+    B += K * N * blockIdx.z;
+
+    const int w_per_row = BLOCK_SIZE_N / 16;
+
+    int obx = blockIdx.x;
+    int oby = blockIdx.y;
+    const int BLOCK_GROUP_M = 2;
+    const int BLOCK_GROUP_N = 2;
+    assert(gridDim.x%BLOCK_GROUP_N==0);
+    assert(gridDim.y%BLOCK_GROUP_M==0);
+    const int BLOCK_PER_GROUP = BLOCK_GROUP_M * BLOCK_GROUP_N;
+    const int GROUP_PER_ROW = gridDim.x / BLOCK_GROUP_N;
+    int obid = oby * gridDim.x + obx;
+    int bgid = obid / BLOCK_PER_GROUP;
+    int bgy = bgid / GROUP_PER_ROW;
+    int bgx = bgid % GROUP_PER_ROW;
+    int bid_within_group = obid % BLOCK_PER_GROUP;
+    int y_within_group = bid_within_group / BLOCK_GROUP_N;
+    int x_within_group = bid_within_group % BLOCK_GROUP_N;
+    int bx = x_within_group + BLOCK_GROUP_N * bgx;
+    int by = y_within_group + BLOCK_GROUP_M * bgy;
+
+
+    int tid = threadIdx.x;
+    int wid = tid >> 5; // warp id
+
+    int wy = wid / w_per_row;
+    int wx = wid % w_per_row;
+
+    __shared__ half As[BLOCK_SIZE_M][BLOCK_SIZE_K + APAD];
+    __shared__ half Bs[BLOCK_SIZE_K][BLOCK_SIZE_N + BPAD];
+    __shared__ int m_index[BLOCK_SIZE_M];
+    __shared__ half Cs[BLOCK_SIZE_M][BLOCK_SIZE_N];
+    int n_token = expert_count[exp_id];
+    int index_start = exp_id * TMAX + by * BLOCK_SIZE_M;
+    int index_end = min(index_start + BLOCK_SIZE_M, exp_id * TMAX + n_token);
+    if(index_start<index_end){        
+        uint ori_offsetB00 = tid / (BLOCK_SIZE_N/4) * N + bx * BLOCK_SIZE_N + (tid % (BLOCK_SIZE_N/4)) * 4;
+        uint ori_offsetB16 = ori_offsetB00 + N * 32;
+
+        wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> frag_a;
+        wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> frag_b;
+        wmma::fragment<wmma::accumulator, 16, 16, 16, half> frag_c;
+        wmma::fill_fragment(frag_c, 0.0);
+
+        // load to the shared memory
+        
+        const int A_THREAD_PER_ROW = BLOCK_SIZE_K / 8; // 1 float4 = 8 half
+        const int B_THREAD_PER_ROW = BLOCK_SIZE_N / 8;
+        const int C_THREAD_PER_ROW = BLOCK_SIZE_N / 8;
+
+        const int A_TILE_ROW_STRIDE = blockDim.x / A_THREAD_PER_ROW;
+        const int B_TILE_ROW_STRIDE = blockDim.x / B_THREAD_PER_ROW;
+        const int C_TILE_ROW_STRIDE = blockDim.x / C_THREAD_PER_ROW;
+    
+        const int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
+        const int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
+        const int C_BLOCK_ROW_START = tid / C_THREAD_PER_ROW;
+
+        const int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 8;
+        const int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 8;
+        const int C_BLOCK_COL_START = tid % C_THREAD_PER_ROW * 8;
+        // uint ori_offsetB00 = B_BLOCK_ROW_START * N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START;
+
+        if(tid<index_end-index_start)
+            m_index[tid] = sparse_index[index_start+tid];
+        __syncthreads();
+        // uint ori_offsetA00 = m_index[ty] * K + k;
+        for(int k_seq=0; k_seq<K/BLOCK_SIZE_K; k_seq++){
+            for(int k=A_BLOCK_ROW_START; k<index_end-index_start; k+=A_TILE_ROW_STRIDE){
+                FETCH_FLOAT4(As[k][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
+            }
+            for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
+                FETCH_FLOAT4(Bs[k][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+            }
+            __syncthreads();
+            // if(tid==0)
+            //     printf("load value: %f\n", __half2float(Bs[0][0]));
+            #pragma unroll
+            for(int k_step=0; k_step<BLOCK_SIZE_K/16; k_step++){
+                wmma::load_matrix_sync(frag_a, &As[wy*16][k_step*16], BLOCK_SIZE_K + APAD);
+                wmma::load_matrix_sync(frag_b, &Bs[k_step*16][wx*16], BLOCK_SIZE_N + BPAD);
+                wmma::mma_sync(frag_c, frag_a, frag_b, frag_c);
+            }
+
+            __syncthreads();
+
+        }
+        wmma::store_matrix_sync(&Cs[wy*16][wx*16], frag_c, BLOCK_SIZE_N, wmma::mem_row_major);
+        __syncthreads();
+
+        for(int k=C_BLOCK_ROW_START; k<index_end-index_start; k+=C_TILE_ROW_STRIDE){
+            // if(tid==0){
+            //     printf("bx:%d by:%d k:%d C_BLOCK_COL_START:%d m_index:%d offset:%d result %f\n", bx, by, k, C_BLOCK_COL_START, m_index[k], m_index[k] * N + bx * BLOCK_SIZE_N + C_BLOCK_COL_START,__half2float(Cs[k][C_BLOCK_COL_START]));
+            // }
+            FETCH_FLOAT4(C[m_index[k] * N + bx * BLOCK_SIZE_N + C_BLOCK_COL_START]) = FETCH_FLOAT4(Cs[k][C_BLOCK_COL_START]);
+        }
+    }
+
+
+    
+}
  __global__ void convert_sparse_index(int * router_index, int total_token, int * expert_count, int *sparse_index, const int TMAX)
 {
     int bx =  blockIdx.x;
@@ -692,8 +818,9 @@ void forward_function(
     const int max_block = (GLOBAL_M -1 + BLOCK_SIZE_M)/BLOCK_SIZE_M;
     dim3 blockDim(32*BLOCK_SIZE_M*BLOCK_SIZE_N/16/16);
     dim3 gridDim(out_hidden/BLOCK_SIZE_N, max_block, n_expert);
-    // BATCH_BLOCK_SPARSE_MATMUL_FP16<<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, GLOBAL_M, in_hidden, out_hidden, TMAX);
-    BATCH_BLOCK_SPARSE_MATMUL_FP16_V2<<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, GLOBAL_M, in_hidden, out_hidden, TMAX);
+    BATCH_BLOCK_SPARSE_MATMUL_FP16<<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, GLOBAL_M, in_hidden, out_hidden, TMAX);
+    // BATCH_BLOCK_SPARSE_MATMUL_FP16_V2<<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, GLOBAL_M, in_hidden, out_hidden, TMAX);
+    // BATCH_BLOCK_SPARSE_MATMUL_FP16_V3<<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, GLOBAL_M, in_hidden, out_hidden, TMAX);
 }
 
 
