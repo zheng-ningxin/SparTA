@@ -438,12 +438,13 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* tokens, int* sparse_inde
 
     int wy = wid / w_per_row;
     int wx = wid % w_per_row;
-    __shared__ half As[2 * BLOCK_SIZE_M * (BLOCK_SIZE_K+APAD)];
-    __shared__ half Bs[2 * BLOCK_SIZE_K * (BLOCK_SIZE_N+BPAD)];
+
+    __shared__ half As[2 * BLOCK_SIZE_M][(BLOCK_SIZE_K + APAD)];
+    __shared__ half Bs[2 * BLOCK_SIZE_K][(BLOCK_SIZE_N + BPAD)];
     __shared__ int m_index[BLOCK_SIZE_M];
     __shared__ half Cs[BLOCK_SIZE_M][BLOCK_SIZE_N];
-    const int s_a_offset = BLOCK_SIZE_M * (BLOCK_SIZE_K+APAD);
-    const int s_b_offset = BLOCK_SIZE_K * (BLOCK_SIZE_N+BPAD);
+    // const int s_a_offset = BLOCK_SIZE_M * (BLOCK_SIZE_K+APAD);
+    // const int s_b_offset = BLOCK_SIZE_K * (BLOCK_SIZE_N+BPAD);
     int n_token = expert_count[exp_id];
     int index_start = exp_id * TMAX + by * BLOCK_SIZE_M;
     int index_end = min(index_start + BLOCK_SIZE_M, exp_id * TMAX + n_token);
@@ -483,13 +484,13 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* tokens, int* sparse_inde
             const int k_seq = 0;
             #pragma unroll
             for(int k=A_BLOCK_ROW_START; k<index_end-index_start; k+=A_TILE_ROW_STRIDE){
-                // FETCH_FLOAT4(As[k][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
-                FETCH_FLOAT4(As[OFFSET(k, A_BLOCK_COL_START, BLOCK_SIZE_K+APAD)]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
+                FETCH_FLOAT4(As[k][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
+                // FETCH_FLOAT4(As[OFFSET(k, A_BLOCK_COL_START, BLOCK_SIZE_K+APAD)]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
             }
             #pragma unroll
             for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
-                // FETCH_FLOAT4(Bs[k][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(0*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
-                FETCH_FLOAT4(Bs[OFFSET(k, B_BLOCK_COL_START, BLOCK_SIZE_M+BPAD)]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+                FETCH_FLOAT4(Bs[k][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(0*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+                // FETCH_FLOAT4(Bs[OFFSET(k, B_BLOCK_COL_START, BLOCK_SIZE_N+BPAD)]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
             }
         }
         __syncthreads();
@@ -499,22 +500,22 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* tokens, int* sparse_inde
             int smem_next = smem_select ^ 1;
             #pragma unroll
             for(int k=A_BLOCK_ROW_START; k<index_end-index_start; k+=A_TILE_ROW_STRIDE){
-                // FETCH_FLOAT4(As[k][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
-                FETCH_FLOAT4(As[OFFSET(k, A_BLOCK_COL_START, BLOCK_SIZE_K+APAD)+smem_next*s_a_offset]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
+                FETCH_FLOAT4(As[k+smem_next*BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
+                // FETCH_FLOAT4(As[OFFSET(k, A_BLOCK_COL_START, BLOCK_SIZE_K+APAD)+smem_next*s_a_offset]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
 
             }
             #pragma unroll
             for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
-                // FETCH_FLOAT4(Bs[k][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
-                FETCH_FLOAT4(Bs[OFFSET(k, B_BLOCK_COL_START, BLOCK_SIZE_N+BPAD)+smem_next*s_b_offset]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+                FETCH_FLOAT4(Bs[k+smem_next*BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+                // FETCH_FLOAT4(Bs[OFFSET(k, B_BLOCK_COL_START, BLOCK_SIZE_N+BPAD)+smem_next*s_b_offset]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
             }
             // __syncthreads();
             #pragma unroll
             for(int k_step=0; k_step<BLOCK_SIZE_K/16; k_step++){
-                // wmma::load_matrix_sync(frag_a, &As[wy*16][k_step*16], BLOCK_SIZE_K + APAD);
-                // wmma::load_matrix_sync(frag_b, &Bs[k_step*16][wx*16], BLOCK_SIZE_N + BPAD);
-                wmma::load_matrix_sync(frag_a, &As[OFFSET(wy*16, k_step*16, BLOCK_SIZE_K+APAD)+smem_select*s_a_offset], BLOCK_SIZE_K + APAD);
-                wmma::load_matrix_sync(frag_b, &Bs[OFFSET(k_step*16, wx*16, BLOCK_SIZE_N+BPAD)+smem_select*s_b_offset], BLOCK_SIZE_N + BPAD);
+                wmma::load_matrix_sync(frag_a, &As[wy*16+smem_select*BLOCK_SIZE_M][k_step*16], BLOCK_SIZE_K + APAD);
+                wmma::load_matrix_sync(frag_b, &Bs[k_step*16+smem_select*BLOCK_SIZE_K][wx*16], BLOCK_SIZE_N + BPAD);
+                // wmma::load_matrix_sync(frag_a, &As[OFFSET(wy*16, k_step*16, BLOCK_SIZE_K+APAD)+smem_select*s_a_offset], BLOCK_SIZE_K + APAD);
+                // wmma::load_matrix_sync(frag_b, &Bs[OFFSET(k_step*16, wx*16, BLOCK_SIZE_N+BPAD)+smem_select*s_b_offset], BLOCK_SIZE_N + BPAD);
                 wmma::mma_sync(frag_c, frag_a, frag_b, frag_c);
             }
 
@@ -524,8 +525,10 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* tokens, int* sparse_inde
         int smem_select = ((K/BLOCK_SIZE_K) & 1) ^ 1;
         #pragma unroll
         for(int k_step=0; k_step<BLOCK_SIZE_K/16; k_step++){
-            wmma::load_matrix_sync(frag_a, &As[OFFSET(wy*16, k_step*16, BLOCK_SIZE_K+APAD)+smem_select*s_a_offset], BLOCK_SIZE_K + APAD);
-            wmma::load_matrix_sync(frag_b, &Bs[OFFSET(k_step*16, wx*16, BLOCK_SIZE_N+BPAD)+smem_select*s_b_offset], BLOCK_SIZE_N + BPAD);
+            wmma::load_matrix_sync(frag_a, &As[wy*16+smem_select*BLOCK_SIZE_M][k_step*16], BLOCK_SIZE_K + APAD);
+            wmma::load_matrix_sync(frag_b, &Bs[k_step*16+smem_select*BLOCK_SIZE_K][wx*16], BLOCK_SIZE_N + BPAD);
+            // wmma::load_matrix_sync(frag_a, &As[OFFSET(wy*16, k_step*16, BLOCK_SIZE_K+APAD)+smem_select*s_a_offset], BLOCK_SIZE_K + APAD);
+            // wmma::load_matrix_sync(frag_b, &Bs[OFFSET(k_step*16, wx*16, BLOCK_SIZE_N+BPAD)+smem_select*s_b_offset], BLOCK_SIZE_N + BPAD);
             wmma::mma_sync(frag_c, frag_a, frag_b, frag_c);
         }
         // __syncthreads();
@@ -533,9 +536,6 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* tokens, int* sparse_inde
         __syncthreads();
 
         for(int k=C_BLOCK_ROW_START; k<index_end-index_start; k+=C_TILE_ROW_STRIDE){
-            // if(tid==0){
-            //     printf("bx:%d by:%d k:%d C_BLOCK_COL_START:%d m_index:%d offset:%d result %f\n", bx, by, k, C_BLOCK_COL_START, m_index[k], m_index[k] * N + bx * BLOCK_SIZE_N + C_BLOCK_COL_START,__half2float(Cs[k][C_BLOCK_COL_START]));
-            // }
             FETCH_FLOAT4(C[m_index[k] * N + bx * BLOCK_SIZE_N + C_BLOCK_COL_START]) = FETCH_FLOAT4(Cs[k][C_BLOCK_COL_START]);
         }
     }
