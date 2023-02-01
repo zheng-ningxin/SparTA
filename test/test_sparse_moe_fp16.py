@@ -51,6 +51,7 @@ if __name__ == '__main__':
     # import ipdb; ipdb.set_trace()
     out = moe(data, exp_ids)
     # run_load(moe)
+    # exit()
     measure_time(moe, data, exp_ids)
 
     ref_out =  calculate_ref(data, exps, exp_ids, out_hidden)

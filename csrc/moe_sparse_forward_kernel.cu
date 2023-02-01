@@ -416,7 +416,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* tokens, int* sparse_inde
 
     */
     const int BLOCK_SIZE_M = 32;  // 64
-    const int BLOCK_SIZE_K = 64;  //8
+    const int BLOCK_SIZE_K = 32;  //8
     const int BLOCK_SIZE_N = 32;  //128
     const int THREAD_SIZE_K = 64;
     const int M = GLOBAL_M;
@@ -495,6 +495,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* tokens, int* sparse_inde
         }
         __syncthreads();
         // uint ori_offsetA00 = m_index[ty] * K + k;
+        #pragma unroll
         for(int k_seq=1; k_seq<K/BLOCK_SIZE_K; k_seq++){
             int smem_select = (k_seq & 1) ^ 1;
             int smem_next = smem_select ^ 1;
