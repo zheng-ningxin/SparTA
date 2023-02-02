@@ -307,8 +307,8 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16(half* tokens, int* sparse_index, 
     block sparse matrix (block size: 32x64) X dense matrix -> dense matrix
 
     */
-    const int BLOCK_SIZE_M = 32;  // 64
-    const int BLOCK_SIZE_K = 64;  //8
+    const int BLOCK_SIZE_M = 64;  // 64
+    const int BLOCK_SIZE_K = 32;  //8
     const int BLOCK_SIZE_N = 32;  //128
     const int THREAD_SIZE_K = 64;
     const int M = GLOBAL_M;
@@ -812,8 +812,8 @@ void forward_function(
     const int TMAX
     )
 {
-    const int BLOCK_SIZE_M = 32;
-    const int BLOCK_SIZE_K = 64;
+    const int BLOCK_SIZE_M = 64;
+    const int BLOCK_SIZE_K = 32;
     const int BLOCK_SIZE_N = 32;
     const int max_block = (GLOBAL_M -1 + BLOCK_SIZE_M)/BLOCK_SIZE_M;
     dim3 blockDim(32*BLOCK_SIZE_M*BLOCK_SIZE_N/16/16);
