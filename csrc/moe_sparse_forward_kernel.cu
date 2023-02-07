@@ -1142,7 +1142,7 @@ void forward_function(
         assert(out_hidden==GLOBAL_N);
         const int BLOCK_SIZE_M = 64;
         const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 64;
+        const int BLOCK_SIZE_N = 128;
         const int max_block = (GLOBAL_M -1 + BLOCK_SIZE_M)/BLOCK_SIZE_M;
         dim3 blockDim(256);
         dim3 gridDim(out_hidden/BLOCK_SIZE_N, max_block, n_expert);
