@@ -29,8 +29,11 @@ class DynamicSparseMoE(SparseOPBase):
         self.sparse_index = torch.zeros(self.n_exp, 4096, dtype=torch.int32).to(self.device)
         self.expert_count = torch.zeros(self.n_exp, dtype=torch.int32).to(self.device)
 
-    def forward(self, tokens, expids):
+    def forward(self, tokens, expids, fuse_relu=False):
         sparse_moe.convert_index(expids, self.sparse_index, self.expert_count)
         GLOBAL_M = torch.max(self.expert_count)
         # import ipdb; ipdb.set_trace()
-        return sparse_moe.forward(tokens, self.weight, expids, self.sparse_index, self.expert_count, GLOBAL_M)
+        if not fuse_relu:
+            return sparse_moe.forward(tokens, self.weight, expids, self.sparse_index, self.expert_count, GLOBAL_M)
+        else:
+            return sparse_moe.forward_with_relu(tokens, self.weight, expids, self.sparse_index, self.expert_count, GLOBAL_M)

@@ -10,7 +10,14 @@ at::Tensor moe_sparse_forward(
     torch::Tensor expert_count,
     const int GLOBAL_M
 );
-
+at::Tensor moe_sparse_forward_with_relu(
+    torch::Tensor tokens,
+    torch::Tensor weight,
+    torch::Tensor router_index,
+    torch::Tensor sparse_index,
+    torch::Tensor expert_count,
+    const int GLOBAL_M
+);
 void moe_sparse_convert_index(
     torch::Tensor router_index,
     torch::Tensor sparse_index,
@@ -20,6 +27,7 @@ void moe_sparse_convert_index(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("forward", &moe_sparse_forward, "dynamic sparse forward function of MOE");
+    m.def("forward_with_relu", &moe_sparse_forward_with_relu, "dynamic sparse forward function of MOE");
     m.def("convert_index", &moe_sparse_convert_index, "dynamic sparse index function of MOE");
 
 }
