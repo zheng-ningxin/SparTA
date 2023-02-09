@@ -1279,14 +1279,14 @@ void forward_function(
         const int max_block = (GLOBAL_M -1 + BLOCK_SIZE_M)/BLOCK_SIZE_M;
         dim3 blockDim(256);
         dim3 gridDim(out_hidden/BLOCK_SIZE_N, max_block, n_expert);
-        // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
+        BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
         // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V2<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, 4><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
         /*
         //////////Split Line for SPLIT-K
         */
-        const int SPLITK=2;
-        dim3 gridDim2(out_hidden/BLOCK_SIZE_N, max_block, n_expert*SPLITK);
-        BATCH_BLOCK_SPARSE_MATMUL_FP16_SPLITK_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, SPLITK><<<gridDim2, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
+        // const int SPLITK=2;
+        // dim3 gridDim2(out_hidden/BLOCK_SIZE_N, max_block, n_expert*SPLITK);
+        // BATCH_BLOCK_SPARSE_MATMUL_FP16_SPLITK_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, SPLITK><<<gridDim2, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
 
     }else if(in_hidden==768 && out_hidden==3072){
         const int GLOBAL_K = 768;
