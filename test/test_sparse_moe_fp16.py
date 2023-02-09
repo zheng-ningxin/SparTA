@@ -36,9 +36,9 @@ if __name__ == '__main__':
     B = 32
     S = 128
     N_exp = 8
-    in_hidden = 768
-    out_hidden = 3072
-    with_relu = True
+    in_hidden = 3072
+    out_hidden = 768
+    with_relu = False
     exps = []
     for i in range(N_exp):
         exps.append(torch.nn.Linear(in_hidden, out_hidden, bias=False).cuda().half())
