@@ -769,6 +769,12 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3(half* __restrict__  t
     __shared__ half Bs[2 * BLOCK_SIZE_K][BLOCK_SIZE_N + BPAD];
     __shared__ int m_index[BLOCK_SIZE_M];
     __shared__ half Cs[BLOCK_SIZE_M][BLOCK_SIZE_N + CPAD];
+    
+    int As_base_addr = __cvta_generic_to_shared(&As[0][0]);
+    int Bs_base_addr = __cvta_generic_to_shared(&Bs[0][0]);
+    const int LD_AS = BLOCK_SIZE_K + APAD;
+    const int LD_BS = BLOCK_SIZE_N + BPAD;
+    const int LD_CS = BLOCK_SIZE_N + CPAD;
 
     int n_token = expert_count[exp_id];
     int index_start = exp_id * TMAX + by * BLOCK_SIZE_M;
@@ -811,13 +817,18 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3(half* __restrict__  t
             const int k_seq=0;
             #pragma unroll
             for(int k=A_BLOCK_ROW_START; k<index_end-index_start; k+=A_TILE_ROW_STRIDE){
+                // asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
+                //     : "r"(As_base_addr + OFFSET(k, A_BLOCK_COL_START, LD_AS)), "l"(&tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]));
                 FETCH_FLOAT4(As[k][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
             }
             #pragma unroll
             for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
+                // asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
+                //     : "r"(Bs_base_addr + OFFSET(k, B_BLOCK_COL_START, LD_BS)), "l"(&B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]));
                 FETCH_FLOAT4(Bs[k][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
             }
-
+            // asm ("cp.async.commit_group;\n" ::);
+            // asm ("cp.async.wait_group 0;\n" ::);
         }
 
         #pragma unroll
@@ -827,11 +838,15 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3(half* __restrict__  t
             int smem_next = smem_select ^ 1;
             #pragma unroll
             for(int k=A_BLOCK_ROW_START; k<index_end-index_start; k+=A_TILE_ROW_STRIDE){
-                FETCH_FLOAT4(As[k + smem_next * BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
+                asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
+                    : "r"(As_base_addr + OFFSET(k + smem_next * BLOCK_SIZE_M, A_BLOCK_COL_START, LD_AS)), "l"(&tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]));
+                // FETCH_FLOAT4(As[k + smem_next * BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
             }
             #pragma unroll
             for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
-                FETCH_FLOAT4(Bs[k + smem_next * BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+                asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
+                    : "r"(Bs_base_addr + OFFSET(k + smem_next * BLOCK_SIZE_K, B_BLOCK_COL_START, LD_BS)), "l"(&B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]));
+                // FETCH_FLOAT4(Bs[k + smem_next * BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
             }
             // __syncthreads();
             #pragma unroll
@@ -854,7 +869,8 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3(half* __restrict__  t
                     }
                 }
             }
-
+            asm ("cp.async.commit_group;\n" ::);
+            asm ("cp.async.wait_group 0;\n" ::);
             __syncthreads();
 
         }
