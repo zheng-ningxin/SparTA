@@ -93,7 +93,7 @@ __device__ __forceinline__ const float* add_ptr_f(const float* src, int offset) 
 __device__ __forceinline__ float2  _add(float2 x, float2 y) { float2 res; res.x = x.x + y.x; res.y = x.y + y.y; return res; }
 
 
-__global__ void BATCH_BLOCK_SPARSE_MATMUL(float* tokens, int* sparse_index, int* expert_count, float*B, float*C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
+__global__ void BATCH_BLOCK_SPARSE_MATMUL(float* __restrict__ tokens, int* __restrict__ sparse_index, int* __restrict__ expert_count, float* __restrict__ B, float* __restrict__ C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
 {
     /*
     description:
@@ -305,7 +305,7 @@ template<
     const int BLOCK_SIZE_K,
     const int BLOCK_SIZE_N
 >
-__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE(half* tokens, int* sparse_index, int* expert_count, half*B, half*C, const int TMAX)
+__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE(half* __restrict__ tokens, int* __restrict__ sparse_index, int* __restrict__ expert_count, half* __restrict__ B, half* __restrict__ C, const int TMAX)
 {
     // const int M = GLOBAL_M;
     const int K = GLOBAL_K;
@@ -442,7 +442,7 @@ template<
     const int BLOCK_SIZE_N,
     const int SPLITK
 >
-__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_SPLITK_TEMPLATE(half* tokens, int* sparse_index, int* expert_count, half*B, half*C, const int TMAX)
+__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_SPLITK_TEMPLATE(half* __restrict__ tokens, int* __restrict__ sparse_index, int* __restrict__ expert_count, half* __restrict__ B, half* __restrict__ C, const int TMAX)
 {
     // const int M = GLOBAL_M;
     const int K = GLOBAL_K;
@@ -589,7 +589,7 @@ template<
     const int BLOCK_SIZE_N,
     const int BLOCK_GROUP_SIZE
 >
-__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V2(half* tokens, int* sparse_index, int* expert_count, half*B, half*C, const int TMAX)
+__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V2(half* __restrict__ tokens, int* __restrict__ sparse_index, int* __restrict__  expert_count, half* __restrict__ B, half* __restrict__ C, const int TMAX)
 {
     // const int M = GLOBAL_M;
     const int K = GLOBAL_K;
@@ -733,7 +733,7 @@ template<
     const int BLOCK_SIZE_K,
     const int BLOCK_SIZE_N
 >
-__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3(half* tokens, int* sparse_index, int* expert_count, half*B, half*C, const int TMAX)
+__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3(half* __restrict__  tokens, int* __restrict__  sparse_index, int* __restrict__  expert_count, half* __restrict__ B, half* __restrict__ C, const int TMAX)
 {
     // const int M = GLOBAL_M;
     const int K = GLOBAL_K;
@@ -899,7 +899,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3(half* tokens, int* sp
 }
 
 
-__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16(half* tokens, int* sparse_index, int* expert_count, half*B, half*C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
+__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16(half* __restrict__  tokens, int* __restrict__  sparse_index, int* __restrict__  expert_count, half* __restrict__ B, half* __restrict__ C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
 {
     /*
     description:
@@ -1008,7 +1008,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16(half* tokens, int* sparse_index, 
     
 }
 
-__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* tokens, int* sparse_index, int* expert_count, half*B, half*C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
+__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* __restrict__  tokens, int* __restrict__  sparse_index, int* __restrict__  expert_count, half* __restrict__ B, half* __restrict__ C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
 {
     /*
     description:
@@ -1148,7 +1148,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V2(half* tokens, int* sparse_inde
 
 
 
-__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V3(half* tokens, int* sparse_index, int* expert_count, half*B, half*C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
+__global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V3(half* __restrict__  tokens, int* __restrict__  sparse_index, int* __restrict__  expert_count, half* __restrict__ B, half* __restrict__ C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
 {
     /*
     description:
@@ -1596,7 +1596,7 @@ template<
     const int BLOCK_SIZE_K,
     const int BLOCK_SIZE_N
 >
-__global__ void BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE(half* tokens, int* sparse_index, int* expert_count, half*B, half*C, const int TMAX)
+__global__ void BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE(half* __restrict__  tokens, int* __restrict__  sparse_index, int* __restrict__  expert_count, half* __restrict__ B, half* __restrict__ C, const int TMAX)
 {
     // const int M = GLOBAL_M;
     const int K = GLOBAL_K;
