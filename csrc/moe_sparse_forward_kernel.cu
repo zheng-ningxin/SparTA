@@ -725,7 +725,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V2(half* __restrict__ to
     
 }
 
-#if __CUDA_ARCH__ >= 800
+
 
 template<
     const int GLOBAL_K,
@@ -839,17 +839,23 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3(half* __restrict__  t
             int smem_next = smem_select ^ 1;
             #pragma unroll
             for(int k=A_BLOCK_ROW_START; k<index_end-index_start; k+=A_TILE_ROW_STRIDE){
+#if __CUDA_ARCH__>=800
                 int load_a_s_addr = As_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_M, A_BLOCK_COL_START, LD_AS); 
                 asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
                     : "r"(load_a_s_addr), "l"(&tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]));
-                // FETCH_FLOAT4(As[k + smem_next * BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
+#else
+                FETCH_FLOAT4(As[k + smem_next * BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
+#endif
             }
             #pragma unroll
             for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
+#if __CUDA_ARCH__>=800
                 int load_b_s_addr = Bs_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_K, B_BLOCK_COL_START, LD_BS);
                 asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
                     : "r"(load_b_s_addr), "l"(&B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]));
-                // FETCH_FLOAT4(Bs[k + smem_next * BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+#else
+                FETCH_FLOAT4(Bs[k + smem_next * BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+#endif
             }
             // __syncthreads();
             #pragma unroll
@@ -1030,17 +1036,24 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE_V3(half* __restrict
             int smem_next = smem_select ^ 1;
             #pragma unroll
             for(int k=A_BLOCK_ROW_START; k<index_end-index_start; k+=A_TILE_ROW_STRIDE){
+#if __CUDA_ARCH__ >= 800
                 int load_a_s_addr = As_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_M, A_BLOCK_COL_START, LD_AS); 
                 asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
                     : "r"(load_a_s_addr), "l"(&tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]));
-                // FETCH_FLOAT4(As[k + smem_next * BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
+#else
+                FETCH_FLOAT4(As[k + smem_next * BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
+#endif
             }
             #pragma unroll
             for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
+#if __CUDA_ARCH__ >= 800
                 int load_b_s_addr = Bs_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_K, B_BLOCK_COL_START, LD_BS);
                 asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
                     : "r"(load_b_s_addr), "l"(&B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]));
-                // FETCH_FLOAT4(Bs[k + smem_next * BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+#else
+                FETCH_FLOAT4(Bs[k + smem_next * BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
+#endif
+
             }
             // __syncthreads();
             #pragma unroll
@@ -1115,7 +1128,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE_V3(half* __restrict
     }
     
 }
-#endif
+
 
 __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16(half* __restrict__  tokens, int* __restrict__  sparse_index, int* __restrict__  expert_count, half* __restrict__ B, half* __restrict__ C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
 {
