@@ -960,7 +960,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE_V3(half* __restrict
     __shared__ half Bs[2 * BLOCK_SIZE_K][BLOCK_SIZE_N + BPAD];
     __shared__ int m_index[BLOCK_SIZE_M];
     __shared__ half Cs[BLOCK_SIZE_M][BLOCK_SIZE_N + CPAD];
-    
+    half tmp_reg[8];
     int As_base_addr = __cvta_generic_to_shared(&As[0][0]);
     int Bs_base_addr = __cvta_generic_to_shared(&Bs[0][0]);
     const int LD_AS = BLOCK_SIZE_K + APAD;
