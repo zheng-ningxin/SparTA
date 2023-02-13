@@ -1473,7 +1473,8 @@ void forward_function(
         dim3 gridDim(out_hidden/BLOCK_SIZE_N, max_block, n_expert);
         // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
         // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V2<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, 4><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-        BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
+        //cudaFuncSetAttribute(BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N>, cudaFuncAttributePreferredSharedMemoryCarveout, cudaSharedmemCarveoutMaxShared);
+	BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
         
         /*
         //////////Split Line for SPLIT-K
@@ -1489,11 +1490,12 @@ void forward_function(
         assert(out_hidden==GLOBAL_N);
         const int BLOCK_SIZE_M = 64;
         const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 128;
+        const int BLOCK_SIZE_N = 64;
         const int max_block = (GLOBAL_M -1 + BLOCK_SIZE_M)/BLOCK_SIZE_M;
         dim3 blockDim(256);
         dim3 gridDim(out_hidden/BLOCK_SIZE_N, max_block, n_expert);
-        BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
+        // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
+	BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
         // V2 does not work for the small or middel shapes
         // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V2<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, 8><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
     }else{
