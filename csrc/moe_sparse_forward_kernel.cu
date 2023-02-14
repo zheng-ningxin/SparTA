@@ -839,23 +839,17 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3(half* __restrict__  t
             int smem_next = smem_select ^ 1;
             #pragma unroll
             for(int k=A_BLOCK_ROW_START; k<index_end-index_start; k+=A_TILE_ROW_STRIDE){
-#if __CUDA_ARCH__>=800
                 int load_a_s_addr = As_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_M, A_BLOCK_COL_START, LD_AS); 
                 asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
                     : "r"(load_a_s_addr), "l"(&tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]));
-#else
-                FETCH_FLOAT4(As[k + smem_next * BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
-#endif
+                //FETCH_FLOAT4(As[k + smem_next * BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
             }
             #pragma unroll
             for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
-#if __CUDA_ARCH__>=800
                 int load_b_s_addr = Bs_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_K, B_BLOCK_COL_START, LD_BS);
                 asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
                     : "r"(load_b_s_addr), "l"(&B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]));
-#else
-                FETCH_FLOAT4(Bs[k + smem_next * BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
-#endif
+                //FETCH_FLOAT4(Bs[k + smem_next * BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
             }
             // __syncthreads();
             #pragma unroll
@@ -1036,23 +1030,17 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE_V3(half* __restrict
             int smem_next = smem_select ^ 1;
             #pragma unroll
             for(int k=A_BLOCK_ROW_START; k<index_end-index_start; k+=A_TILE_ROW_STRIDE){
-#if __CUDA_ARCH__ >= 800
                 int load_a_s_addr = As_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_M, A_BLOCK_COL_START, LD_AS); 
                 asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
                     : "r"(load_a_s_addr), "l"(&tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]));
-#else
-                FETCH_FLOAT4(As[k + smem_next * BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
-#endif
+                //FETCH_FLOAT4(As[k + smem_next * BLOCK_SIZE_M][A_BLOCK_COL_START]) = FETCH_FLOAT4(tokens[m_index[k]*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]);
             }
             #pragma unroll
             for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
-#if __CUDA_ARCH__ >= 800
                 int load_b_s_addr = Bs_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_K, B_BLOCK_COL_START, LD_BS);
                 asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
                     : "r"(load_b_s_addr), "l"(&B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]));
-#else
-                FETCH_FLOAT4(Bs[k + smem_next * BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
-#endif
+                //FETCH_FLOAT4(Bs[k + smem_next * BLOCK_SIZE_K][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq*BLOCK_SIZE_K+k)*N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
 
             }
             // __syncthreads();
@@ -1687,11 +1675,8 @@ void forward_function(
         // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
         // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V2<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, 4><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
         //cudaFuncSetAttribute(BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N>, cudaFuncAttributePreferredSharedMemoryCarveout, cudaSharedmemCarveoutMaxShared);
-#if __CUDA_ARCH__>=800
 	    BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-#else
-        BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-#endif
+        //BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
         /*
         //////////Split Line for SPLIT-K
         */
@@ -1711,11 +1696,8 @@ void forward_function(
         dim3 blockDim(256);
         dim3 gridDim(out_hidden/BLOCK_SIZE_N, max_block, n_expert);
         // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-#if __CUDA_ARCH__>=800
 	    BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V3<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-#else
-        BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-#endif
+        //BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
         // V2 does not work for the small or middel shapes
         // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V2<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, 8><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
     }else{
@@ -1998,11 +1980,8 @@ void forward_function_with_relu(
         const int max_block = (GLOBAL_M -1 + BLOCK_SIZE_M)/BLOCK_SIZE_M;
         dim3 blockDim(256);
         dim3 gridDim(out_hidden/BLOCK_SIZE_N, max_block, n_expert);
-#if __CUDA_ARCH__ >= 800
         BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE_V3<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-#else  
-        BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-#endif
+        //BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
     }else if(in_hidden==768 && out_hidden==3072){
         const int GLOBAL_K = 768;
         const int GLOBAL_N = 3072;
@@ -2014,11 +1993,8 @@ void forward_function_with_relu(
         const int max_block = (GLOBAL_M -1 + BLOCK_SIZE_M)/BLOCK_SIZE_M;
         dim3 blockDim(256);
         dim3 gridDim(out_hidden/BLOCK_SIZE_N, max_block, n_expert);
-#if __CUDA_ARCH__ >= 800
         BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE_V3<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-#else
-        BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-#endif        
+        // BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
 
     }
     else{
