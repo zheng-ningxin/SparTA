@@ -726,7 +726,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V2(half* __restrict__ to
 }
 
 
-/*
+
 // Only work for sm-80
 
 template<
@@ -1118,7 +1118,7 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_RELU_FP16_TEMPLATE_V3(half* __restrict
     }
     
 }
-*/
+
 
 __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16(half* __restrict__  tokens, int* __restrict__  sparse_index, int* __restrict__  expert_count, half* __restrict__ B, half* __restrict__ C, int GLOBAL_M, int GLOBAL_K, int GLOBAL_N, const int TMAX)
 {
@@ -1498,9 +1498,11 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V3(half* __restrict__  tokens, in
     int bx =  blockIdx.x;
     int tid = threadIdx.x;
     int offset = bx * blockDim.x + tid;
-    int exp_id = router_index[offset];
-    int pos_id = atomicAdd(&expert_count[exp_id], 1);
-    sparse_index[exp_id*TMAX+pos_id] = offset;
+    if(offset<total_token){
+        int exp_id = router_index[offset];
+        int pos_id = atomicAdd(&expert_count[exp_id], 1);
+        sparse_index[exp_id*TMAX+pos_id] = offset;
+    }
 
 }
 
@@ -1516,7 +1518,7 @@ void convert_index(
 {
     // convert the sparse index on the fly
     dim3 blockDim(256);
-    dim3 gridDim(total_token/256);
+    dim3 gridDim((total_token+255)/256);
     CUDA_SAFE_CALL(cudaMemset((void*)expert_count, 0, sizeof(int)*n_expert));
     convert_sparse_index<<<gridDim, blockDim>>>(router_index, total_token, expert_count, sparse_index, TMAX);
     // compuate the sparse forward with stile
