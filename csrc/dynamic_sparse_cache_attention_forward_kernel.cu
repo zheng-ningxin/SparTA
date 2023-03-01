@@ -44,7 +44,24 @@ using namespace std;
         }                                                                                         \
     } while (0)
 
-__device__ void warpReduce(volatile int* sdata, int tid) {
+__device__ void warpReduce(int* sdata, int tid) {
+    sdata[tid] += sdata[tid + 32]; 
+    sdata[tid] += sdata[tid + 16]; 
+    sdata[tid] += sdata[tid + 8]; 
+    sdata[tid] += sdata[tid + 4]; 
+    sdata[tid] += sdata[tid + 2]; 
+    sdata[tid] += sdata[tid + 1]; 
+}
+__device__ void warpReduce(half* sdata, int tid) {
+    sdata[tid] += sdata[tid + 32]; 
+    sdata[tid] += sdata[tid + 16]; 
+    sdata[tid] += sdata[tid + 8]; 
+    sdata[tid] += sdata[tid + 4]; 
+    sdata[tid] += sdata[tid + 2]; 
+    sdata[tid] += sdata[tid + 1]; 
+}
+
+__device__ void warpReduce(float* sdata, int tid) {
     sdata[tid] += sdata[tid + 32]; 
     sdata[tid] += sdata[tid + 16]; 
     sdata[tid] += sdata[tid + 8]; 
@@ -91,7 +108,7 @@ template<
     const int TILE_SIZE,
     const int THREAD_NUM
 >
-__global__ void BATCH_OUT_SPARSE_MV_NT_FP16(half * A, half * B, half * C,  int k_stride, int inter_result_stride, const int HEAD_NUM, int * pad_len)
+__global__ void BATCH_OUT_SPARSE_MV_NT_FP16(half * A, half * B, half * C,  int k_stride, int inter_result_stride, const int HEAD_NUM, int * pad_len, int current_seq_len)
 {      
     /*
     A: Batchsize, Headnum, 1, Hidden dim
@@ -145,20 +162,81 @@ __global__ void BATCH_OUT_SPARSE_MV_NT_FP16(half * A, half * B, half * C,  int k
         }
         // write back to the global memory
         // use async memory copy to optimize the performance
-        if(COL_START==0){
-
+        if(COL_START==0 && ROW_START>pads && ROW_START<current_seq_len){
             C[ROW_START] = reduction[tid];
-            if(blockIdx.y == (HEAD_NUM+1) && COL_START==0){
-                printf("bx:%d by:%d tid:%d batchid:%d pads:%d ROW_STRIDE:%d ROW_START:%d  COL_START:%d write_offset:%d write_value:%f inter_result_stride:%d C[ROW_START]:%f \n", blockIdx.x, blockIdx.y, tid,batch_id, pads, ROW_STRIDE, ROW_START, COL_START, &C[ROW_START]-ori_c, __half2float(reduction[tid]), inter_result_stride, __half2float(C[ROW_START]));
-            }
+            // if(blockIdx.y == (HEAD_NUM+1) && COL_START==0){
+            //     printf("bx:%d by:%d tid:%d batchid:%d pads:%d ROW_STRIDE:%d ROW_START:%d  COL_START:%d write_offset:%d write_value:%f inter_result_stride:%d C[ROW_START]:%f \n", blockIdx.x, blockIdx.y, tid,batch_id, pads, ROW_STRIDE, ROW_START, COL_START, &C[ROW_START]-ori_c, __half2float(reduction[tid]), inter_result_stride, __half2float(C[ROW_START]));
+            // }
         }
     }
-    
-    
 
-    
 }
 
+
+template<const int LINE_SIZE>
+__global__ void BATCH_SOFTMAX_FP16(half * A, int inter_result_stride, const int HEAD_NUM, int * pad_len, int max_seq_len)
+{
+    int bx = blockIdx.x;
+    int tid = threadIdx.x;
+    int batch_id = blockIdx.x / HEAD_NUM;
+    A += inter_result_stride * blockIdx.x;
+    int pads = pad_len[batch_id];
+    __shared__ half line[LINE_SIZE];
+    __shared__ float reduce[256];
+    half* hreduce = (half*) reduce;
+    const int line_offset = tid * 8;
+    const int global_offset_start = pads / 8 * 8;
+    const int global_offset_end = (max_seq_len +7) / 8 * 8;
+    assert(LINE_SIZE > global_offset_end-global_offset_start);
+
+    int stride = blockDim.x * 8;
+    // load the values to the shared memory
+    for(int pos=line_offset; pos + global_offset_start<global_offset_end; pos+=stride){
+        FETCH_FLOAT4(line[pos]) = FETCH_FLOAT4(A[pos+global_offset_start]);
+    }
+    __syncthreads();
+    half regMax = 0.0;
+    float regSum = 0.0;
+    const int line_offset_start = pads % 8;
+    const int line_offset_end = max_seq_len - global_offset_start;
+
+    for(int i=line_offset_start + tid; i<line_offset_end; i += blockDim.x){
+        regMax = max(regMax, line[i]);
+    }
+    hreduce[tid] = regMax;
+    __syncthreads();
+    // synchronze accross the thread block
+    for(uint s=blockDim.x/2; s>32; s>>=1){
+        if(tid<s)
+            hreduce[tid] += hreduce[tid+s];
+        __syncthreads();
+    }
+    if(tid<32)
+        warpReduce(hreduce, tid);
+    __syncthreads();
+    regMax = hreduce[0];
+    float fregMax = __half2float(regMax);
+
+    // compuate the regSum
+    for(int i=line_offset_start + tid; i<line_offset_end; i += blockDim.x){
+        regSum += expf(__half2float(line[i])-fregMax);
+    }
+    reduce[tid] = regSum;
+    __syncthreads();
+    for(uint s=blockDim.x/2; s>32; s>>=1){
+        if(tid<s)
+            reduce[tid] += reduce[tid+s];
+        __syncthreads();
+    }
+    if(tid<32)
+        warpReduce(reduce, tid);
+    __syncthreads();
+    regSum = reduce[0];
+    // write the results back to the global memory
+    for(int i=line_offset_start+tid; i<line_offset_end; i+=blockDim.x){
+        A[i+global_offset_start] = __float2half(expf(__half2float(line[i])-fregMax)/regSum);
+    }   
+}
 
 
 void forward_function(
@@ -215,6 +293,7 @@ void forward_function(
     c10::Half * output
 )
 {
+    cudaMemset(inter_result, 0, sizeof(half) * batch_size * head_num * inter_result_stride);
     // newQ x K (cachedK:newK)
     if(hidden_dim==64){
         const int TOTAL_THREAD_NUM = 256;
@@ -222,7 +301,8 @@ void forward_function(
         const int TILE_SIZE = TOTAL_THREAD_NUM / THREAD_PER_ROW;
         dim3 qk_gridDim((max_token_len + TILE_SIZE -1) / TILE_SIZE, head_num * batch_size);
         dim3 qk_blockDim(TOTAL_THREAD_NUM);
-        BATCH_OUT_SPARSE_MV_NT_FP16<1, 64, TILE_SIZE, TOTAL_THREAD_NUM><<<qk_gridDim, qk_blockDim>>>((half *)Q, (half *)K, (half *)inter_result, k_stride, inter_result_stride, head_num, pad_len);
+        BATCH_OUT_SPARSE_MV_NT_FP16<1, 64, TILE_SIZE, TOTAL_THREAD_NUM><<<qk_gridDim, qk_blockDim>>>((half *)Q, (half *)K, (half *)inter_result, k_stride, inter_result_stride, head_num, pad_len, max_token_len);
+        // BATCH_SOFTMAX_FP16
     }else{
         throw std::invalid_argument("Not Implemented\n");
     }
