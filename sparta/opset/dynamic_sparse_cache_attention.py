@@ -34,4 +34,13 @@ class DynamicSparseCacheAttention(SparseOPBase):
 
     def ref_forward(self, Q:torch.Tensor, K:torch.Tensor, V:torch.Tensor, max_token_length:int):
         dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
-        return dots
+        # FILL_VAL = 0
+        FILL_VAL = -10000.0
+        dots[:,:,:,max_token_length:] = FILL_VAL
+        for i in range(dots.size(0)):
+            dots[i,:,:,:self.padding_lens[i]] = FILL_VAL
+        dots = dots.to(torch.float32)
+        score = torch.softmax(dots, dim=-1).to(torch.float16)
+        
+        
+        return score

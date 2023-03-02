@@ -44,15 +44,7 @@ using namespace std;
         }                                                                                         \
     } while (0)
 
-__device__ void warpReduce(int* sdata, int tid) {
-    sdata[tid] += sdata[tid + 32]; 
-    sdata[tid] += sdata[tid + 16]; 
-    sdata[tid] += sdata[tid + 8]; 
-    sdata[tid] += sdata[tid + 4]; 
-    sdata[tid] += sdata[tid + 2]; 
-    sdata[tid] += sdata[tid + 1]; 
-}
-__device__ void warpReduce(half* sdata, int tid) {
+__device__ void warpReduce(volatile int* sdata, int tid) {
     sdata[tid] += sdata[tid + 32]; 
     sdata[tid] += sdata[tid + 16]; 
     sdata[tid] += sdata[tid + 8]; 
@@ -61,8 +53,7 @@ __device__ void warpReduce(half* sdata, int tid) {
     sdata[tid] += sdata[tid + 1]; 
 }
 
-
-__device__ void warpReduce(float* sdata, int tid) {
+__device__ void warpReduce(volatile float* sdata, int tid) {
     sdata[tid] += sdata[tid + 32]; 
     sdata[tid] += sdata[tid + 16]; 
     sdata[tid] += sdata[tid + 8]; 
@@ -163,7 +154,7 @@ __global__ void BATCH_OUT_SPARSE_MV_NT_FP16(half * A, half * B, half * C,  int k
         }
         // write back to the global memory
         // use async memory copy to optimize the performance
-        if(COL_START==0 && ROW_START>pads && ROW_START<current_seq_len){
+        if(COL_START==0 && ROW_START>=pads && ROW_START<current_seq_len){
             C[ROW_START] = reduction[tid];
             // if(blockIdx.y == (HEAD_NUM+1) && COL_START==0){
             //     printf("bx:%d by:%d tid:%d batchid:%d pads:%d ROW_STRIDE:%d ROW_START:%d  COL_START:%d write_offset:%d write_value:%f inter_result_stride:%d C[ROW_START]:%f \n", blockIdx.x, blockIdx.y, tid,batch_id, pads, ROW_STRIDE, ROW_START, COL_START, &C[ROW_START]-ori_c, __half2float(reduction[tid]), inter_result_stride, __half2float(C[ROW_START]));
@@ -228,11 +219,19 @@ __global__ void BATCH_SOFTMAX_FP16(half * A, int inter_result_stride, const int 
 
     // compuate the regSum
     for(int i=line_offset_start + tid; i<line_offset_end; i += blockDim.x){
+
         regSum += expf(__half2float(line[i])-fregMax);
+        // if(bx==0){
+        //     // printf("tid:%d bx:%d RegMax:%f RegSum:%f \n", tid, bx, fregMax, regSum);
+        //     // printf("tid:%d bx:%d line_start:%d line_end:%d RegMax:%f RegSum:%f \n", tid, bx, line_offset_start, line_offset_end, fregMax, regSum);
+        //     // printf("tid:%d bx:%d line_start:%d line_end:%d line[i]:%f line[i]-max:%f RegMax:%f RegSum:%f \n", tid, bx, line_offset_start, line_offset_end, __half2float(line[i]), __half2float(line[i])-fregMax, fregMax, regSum);
+        //     printf("tid:%d bx:%d line_start:%d line_end:%d line[i]:%f RegMax:%f RegSum:%f \n", tid, bx, line_offset_start, line_offset_end, __half2float(line[i]), __half2float(regMax), regSum);
+        // }
     }
 
     reduce[tid] = regSum;
     __syncthreads();
+
     for(uint s=blockDim.x/2; s>32; s>>=1){
         if(tid<s)
             reduce[tid] += reduce[tid+s];
@@ -245,9 +244,10 @@ __global__ void BATCH_SOFTMAX_FP16(half * A, int inter_result_stride, const int 
 
     // write the results back to the global memory
     for(int i=line_offset_start+tid; i<line_offset_end; i+=blockDim.x){
-        // if(tid==10){
-        //     // printf("tid:%d bx:%d line_start:%d line_end:%d RegMax:%f RegSum:%f \n", tid, bx, line_offset_start, line_offset_end, fregMax, regSum);
-        //     printf("tid:%d bx:%d line_start:%d line_end:%d line[i]:%f line[i]-max:%f RegMax:%f RegSum:%f \n", tid, bx, line_offset_start, line_offset_end, __half2float(line[i]), __half2float(line[i])-fregMax, fregMax, regSum);
+        // if(bx==0 && tid==0){
+        //     // printf("tid:%d bx:%d RegMax:%f RegSum:%f \n", tid, bx, fregMax, regSum);
+        //     printf("tid:%d bx:%d line_start:%d line_end:%d RegMax:%f RegSum:%f debugSUm:%f \n", tid, bx, line_offset_start, line_offset_end, fregMax, regSum, debug0);
+        //     // printf("tid:%d bx:%d line_start:%d line_end:%d line[i]:%f line[i]-max:%f RegMax:%f RegSum:%f \n", tid, bx, line_offset_start, line_offset_end, __half2float(line[i]), __half2float(line[i])-fregMax, fregMax, regSum);
         //     // printf("tid:%d bx:%d line_start:%d line_end:%d line[i]:%f RegMax:%f RegSum:%f \n", tid, bx, line_offset_start, line_offset_end, __half2float(line[i]), __half2float(regMax), regSum);
         // }
         A[i+global_offset_start] = __float2half(expf(__half2float(line[i])-fregMax)/regSum);
