@@ -61,6 +61,7 @@ __device__ void warpReduce(half* sdata, int tid) {
     sdata[tid] += sdata[tid + 1]; 
 }
 
+
 __device__ void warpReduce(float* sdata, int tid) {
     sdata[tid] += sdata[tid + 32]; 
     sdata[tid] += sdata[tid + 16]; 
@@ -201,6 +202,7 @@ __global__ void BATCH_SOFTMAX_FP16(half * A, int inter_result_stride, const int 
     const int line_offset_end = max_seq_len - global_offset_start;
 
     for(int i=line_offset_start + tid; i<line_offset_end; i += blockDim.x){
+
         regMax = max(regMax, line[i]);
     }
     hreduce[tid] = regMax;
@@ -208,11 +210,18 @@ __global__ void BATCH_SOFTMAX_FP16(half * A, int inter_result_stride, const int 
     // synchronze accross the thread block
     for(uint s=blockDim.x/2; s>32; s>>=1){
         if(tid<s)
-            hreduce[tid] += hreduce[tid+s];
+            hreduce[tid] = max(hreduce[tid+s], hreduce[tid]);
         __syncthreads();
     }
-    if(tid<32)
-        warpReduce(hreduce, tid);
+    if(tid<32){
+        hreduce[tid] = max(hreduce[tid + 32], hreduce[tid]); 
+        hreduce[tid] = max(hreduce[tid + 16], hreduce[tid]); 
+        hreduce[tid] = max(hreduce[tid + 8], hreduce[tid]); 
+        hreduce[tid] = max(hreduce[tid + 4], hreduce[tid]); 
+        hreduce[tid] = max(hreduce[tid + 2], hreduce[tid]); 
+        hreduce[tid] = max(hreduce[tid + 1], hreduce[tid]); 
+    }
+        // warpReduceMax(hreduce, tid);
     __syncthreads();
     regMax = hreduce[0];
     float fregMax = __half2float(regMax);
@@ -221,6 +230,7 @@ __global__ void BATCH_SOFTMAX_FP16(half * A, int inter_result_stride, const int 
     for(int i=line_offset_start + tid; i<line_offset_end; i += blockDim.x){
         regSum += expf(__half2float(line[i])-fregMax);
     }
+
     reduce[tid] = regSum;
     __syncthreads();
     for(uint s=blockDim.x/2; s>32; s>>=1){
@@ -232,8 +242,14 @@ __global__ void BATCH_SOFTMAX_FP16(half * A, int inter_result_stride, const int 
         warpReduce(reduce, tid);
     __syncthreads();
     regSum = reduce[0];
+
     // write the results back to the global memory
     for(int i=line_offset_start+tid; i<line_offset_end; i+=blockDim.x){
+        // if(tid==10){
+        //     // printf("tid:%d bx:%d line_start:%d line_end:%d RegMax:%f RegSum:%f \n", tid, bx, line_offset_start, line_offset_end, fregMax, regSum);
+        //     printf("tid:%d bx:%d line_start:%d line_end:%d line[i]:%f line[i]-max:%f RegMax:%f RegSum:%f \n", tid, bx, line_offset_start, line_offset_end, __half2float(line[i]), __half2float(line[i])-fregMax, fregMax, regSum);
+        //     // printf("tid:%d bx:%d line_start:%d line_end:%d line[i]:%f RegMax:%f RegSum:%f \n", tid, bx, line_offset_start, line_offset_end, __half2float(line[i]), __half2float(regMax), regSum);
+        // }
         A[i+global_offset_start] = __float2half(expf(__half2float(line[i])-fregMax)/regSum);
     }   
 }
@@ -302,7 +318,9 @@ void forward_function(
         dim3 qk_gridDim((max_token_len + TILE_SIZE -1) / TILE_SIZE, head_num * batch_size);
         dim3 qk_blockDim(TOTAL_THREAD_NUM);
         BATCH_OUT_SPARSE_MV_NT_FP16<1, 64, TILE_SIZE, TOTAL_THREAD_NUM><<<qk_gridDim, qk_blockDim>>>((half *)Q, (half *)K, (half *)inter_result, k_stride, inter_result_stride, head_num, pad_len, max_token_len);
-        // BATCH_SOFTMAX_FP16
+        dim3 soft_gridDim(head_num*batch_size);
+        dim3 soft_blockDim(TOTAL_THREAD_NUM);
+        BATCH_SOFTMAX_FP16<4096><<<soft_gridDim, soft_blockDim>>>((half*)inter_result, inter_result_stride, head_num, pad_len, max_token_len);
     }else{
         throw std::invalid_argument("Not Implemented\n");
     }
