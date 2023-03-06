@@ -25,12 +25,14 @@ class DynamicSparseCacheAttention(SparseOPBase):
             self.inter_result = torch.empty(batch_size, head_num, 1, max_token_length + 64, dtype=Q.dtype, device=Q.device)
         elif self.inter_result.size(1) < max_token_length+64:
             self.inter_result = torch.empty(batch_size, head_num, 1, max_token_length+64, dtype=Q.dtype, device=Q.device)
-        out = sparse_cache_atten.forward(Q, K, V, self.inter_result, self.padding_lens, max_token_length)
+        out = sparse_cache_atten.forward(Q, K, V, self.inter_result, self.padding_lens, max_token_length, self.min_padding_len)
         return out
 
     def update_padding_lens(self, padding_lens):
         self.padding_lens = padding_lens.cuda()
-        self.cum_paddings = torch.cumsum(self.padding_lens, dim=0)
+        self.min_padding_len = torch.min(self.padding_lens).item()
+        # self.cum_paddings = torch.cumsum(self.padding_lens, dim=0)
+        
 
     def ref_forward(self, Q:torch.Tensor, K:torch.Tensor, V:torch.Tensor, max_token_length:int):
         dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
@@ -41,6 +43,5 @@ class DynamicSparseCacheAttention(SparseOPBase):
             dots[i,:,:,:self.padding_lens[i]] = FILL_VAL
         dots = dots.to(torch.float32)
         score = torch.softmax(dots, dim=-1).to(torch.float16)
-        
-        
-        return score
+        ref_out = torch.einsum('b h m n, b h n k -> b h m k', score, V)
+        return ref_out

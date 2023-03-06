@@ -8,7 +8,8 @@ at::Tensor dynamic_sparse_cache_attention_forward(
     torch::Tensor V,
     torch::Tensor inter_result,
     torch::Tensor pad_len,
-    int max_token_len
+    int max_token_len,
+    int min_padding_len
 );
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

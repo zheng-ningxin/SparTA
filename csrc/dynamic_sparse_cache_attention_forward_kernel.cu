@@ -10,6 +10,7 @@ using namespace std;
 #include <cuda.h>
 #define OFFSET(row, col, ld) ((row) * ld + col)
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4*>(&pointer))[0]
+#define FETCH_HALF2(pointer) (reinterpret_cast<half2*>(&pointer))[0]
 #define FETCH_UINT32(pointer) (reinterpret_cast<unsigned int*>(&(pointer))[0])
 #define FETCH_UINT4(pointer) (reinterpret_cast<uint4*>(&(pointer))[0])
 #define FETCH_INT4(pointer) (reinterpret_cast<int4*>(&(pointer))[0])
@@ -164,6 +165,69 @@ __global__ void BATCH_OUT_SPARSE_MV_NT_FP16(half * A, half * B, half * C,  int k
 
 }
 
+template<
+    const int GLOBAL_N,
+    const int BLOCK_SIZE_K,
+    const int BLOCK_SIZE_N,
+    const int SPAD
+>
+__global__ void BATCH_SPARSE_MV_NN_FP16(half * A, half * B, half * C,  int v_stride, int inter_result_stride, const int HEAD_NUM, int * pad_len, int current_seq_len)
+{
+    const int bx = blockIdx.x;
+    const int by = blockIdx.y;
+    const int bz = blockIdx.z;
+    const int tid = threadIdx.x;
+    const int bid = blockIdx.z / HEAD_NUM;
+
+    A += bz * inter_result_stride;
+    B += bz * v_stride * GLOBAL_N; // B: KxN
+    C += bz * GLOBAL_N;
+    const int pads = pad_len[bid];
+    __shared__ half Bs[BLOCK_SIZE_K][BLOCK_SIZE_N+SPAD];
+    __shared__ half As[BLOCK_SIZE_K];
+    __shared__ half reduce[256];
+
+    if(by * BLOCK_SIZE_K <= current_seq_len-pads){
+        const int THREAD_PER_ROW = BLOCK_SIZE_N/8;
+        const int ROW_STRIDE = blockDim.x / THREAD_PER_ROW;
+        assert(blockDim.x % THREAD_PER_ROW==0);
+        const int COL_START = tid % THREAD_PER_ROW * 8;
+        const int GLOBAL_K_OFFSET = pads + by * BLOCK_SIZE_K;
+        const int ROW_START = tid / THREAD_PER_ROW;
+        for(int rid = ROW_START; rid < BLOCK_SIZE_K && rid + GLOBAL_K_OFFSET < current_seq_len; rid+=ROW_STRIDE){
+            // FETCH_FLOAT4(Bs[rid][COL_START]) = FETCH_FLOAT4(B[rid+GLOBAL_K_OFFSET][COL_START]);
+            // float4 tmp;
+            // if(COL_START==0)
+            //     printf("bx:%d by:%d bz:%d tid:%d rid:%d global_rid:%d\n", bx, by, bz, tid, rid, rid+GLOBAL_K_OFFSET);
+            FETCH_FLOAT4(Bs[rid][COL_START]) = FETCH_FLOAT4(B[OFFSET(rid+GLOBAL_K_OFFSET, COL_START, GLOBAL_N)]);
+            // FETCH_FLOAT4(Bs[rid][COL_START]) = tmp;
+        }
+        assert(blockDim.x>=BLOCK_SIZE_K);
+        // FETCH_FLOAT4(As[tid*8]) = A[]
+        if(tid+by*BLOCK_SIZE_K<current_seq_len-pads)
+            As[tid] = A[pads + by*BLOCK_SIZE_K + tid];
+        __syncthreads();
+        // compuate the mv
+        const int thread_per_row = BLOCK_SIZE_N/2;
+        const int row_stride = blockDim.x /thread_per_row;
+        const int row_start = tid / thread_per_row;
+        const int col_start = tid % thread_per_row * 2;
+        half2 sum = {0, 0};
+        for(int rid = row_start; rid < BLOCK_SIZE_K && rid < current_seq_len-pads-by*BLOCK_SIZE_K; rid+=row_stride){
+            
+            half2 tmp = {As[rid], As[rid]};
+            tmp = __hmul2(tmp, FETCH_HALF2(Bs[rid][col_start]));        
+            sum = __hadd2(sum, tmp);
+            // if(bx==0 && by==3 && bz ==0 && col_start==0)
+            //     printf("bx:%d by:%d bz:%d tid:%d rid:%d As[rid]:%f Bs[rid][col_start]:%d global_rid:%d %f %f\n", bx, by, bz, tid, rid, __half2float(As[rid]), __half2float(Bs[rid][col_start]), rid+GLOBAL_K_OFFSET, __half2float(sum.x), __half2float(sum.y));
+
+        }
+        atomicAdd((half2*)&C[bx*BLOCK_SIZE_N+col_start], sum);
+
+
+    }
+
+}
 
 template<const int LINE_SIZE>
 __global__ void BATCH_SOFTMAX_FP16(half * A, int inter_result_stride, const int HEAD_NUM, int * pad_len, int max_seq_len)
@@ -268,6 +332,7 @@ void forward_function(
     int hidden_dim,
     int k_stride,
     int inter_result_stride,
+    int min_padding_len,
     float * output
 )
 {
@@ -287,6 +352,7 @@ void forward_function(
     int hidden_dim,
     int k_stride,
     int inter_result_stride,
+    int min_padding_len,
     double * output
 )
 {
@@ -306,10 +372,13 @@ void forward_function(
     int hidden_dim,
     int k_stride,
     int inter_result_stride,
+    int min_padding_len,
     c10::Half * output
 )
 {
     cudaMemset(inter_result, 0, sizeof(half) * batch_size * head_num * inter_result_stride);
+    cudaMemset(output, 0, sizeof(half) * batch_size * head_num * hidden_dim);
+    
     // newQ x K (cachedK:newK)
     if(hidden_dim==64){
         const int TOTAL_THREAD_NUM = 256;
@@ -321,6 +390,13 @@ void forward_function(
         dim3 soft_gridDim(head_num*batch_size);
         dim3 soft_blockDim(TOTAL_THREAD_NUM);
         BATCH_SOFTMAX_FP16<4096><<<soft_gridDim, soft_blockDim>>>((half*)inter_result, inter_result_stride, head_num, pad_len, max_token_len);
+        const int BLOCK_SIZE_K = 32;
+        const int BLOCK_SIZE_N = 64;
+        const int max_k_block_n = (max_token_len - min_padding_len + BLOCK_SIZE_K -1)/BLOCK_SIZE_K;
+        dim3 v_gridDim(hidden_dim/BLOCK_SIZE_N, max_k_block_n, head_num*batch_size );
+        dim3 v_blockDim(TOTAL_THREAD_NUM);
+        // printf("xV kernel config: %d %d %d \n", min_padding_len, max_token_len, max_k_block_n );
+        BATCH_SPARSE_MV_NN_FP16<64, BLOCK_SIZE_K, BLOCK_SIZE_N, 0><<<v_gridDim, v_blockDim >>>((half*)inter_result, (half*)V, (half*) output, k_stride, inter_result_stride, head_num, pad_len, max_token_len);
     }else{
         throw std::invalid_argument("Not Implemented\n");
     }
@@ -335,7 +411,8 @@ at::Tensor dynamic_sparse_cache_attention_forward(
     torch::Tensor V,
     torch::Tensor inter_result,
     torch::Tensor pad_len,
-    int max_token_len
+    int max_token_len,
+    int min_padding_len
 )
 {   
     // B: Batch size
@@ -368,6 +445,7 @@ at::Tensor dynamic_sparse_cache_attention_forward(
                                         hidden_dim,
                                         k_stride,
                                         inter_result_stride,
+                                        min_padding_len,
                                         output.data_ptr<scalar_t>()
                                     ); }));
     return output;
