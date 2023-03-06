@@ -9,9 +9,20 @@ _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
 class DynamicSparseCacheAttention(SparseOPBase):
-    def __init__(self, padding_lens ):
+    global_padding_len = None
+    global_min_padding_len = None
+    global_padding_updated = False
+    @staticmethod
+    def update_global_padding_lens(padding_len):
+        DynamicSparseCacheAttention.global_padding_updated = True
+        DynamicSparseCacheAttention.global_padding_len = padding_len.cuda()
+        DynamicSparseCacheAttention.global_min_padding_len = torch.min(DynamicSparseCacheAttention.global_padding_len).item()
+    
+    def __init__(self, padding_lens, global_mode=False):
         super(DynamicSparseCacheAttention, self).__init__()
-        self.update_padding_lens(padding_lens)
+        self.global_mode = global_mode
+        if not global_mode:
+            self.update_padding_lens(padding_lens)
         self.batch_size = padding_lens.size(0)
         self.inter_result = None
         
@@ -19,6 +30,10 @@ class DynamicSparseCacheAttention(SparseOPBase):
         """
         max_token_length: the number of the regressive iterations
         """
+        if self.global_mode and DynamicSparseCacheAttention.global_padding_updated:
+            self.padding_lens = DynamicSparseCacheAttention.global_padding_len.to(Q.device)
+            self.min_padding_len = DynamicSparseCacheAttention.global_min_padding_len
+            DynamicSparseCacheAttention.global_padding_updated = False
         head_num = Q.size(1)
         batch_size = Q.size(0)
         if self.inter_result is None:
@@ -35,6 +50,10 @@ class DynamicSparseCacheAttention(SparseOPBase):
         
 
     def ref_forward(self, Q:torch.Tensor, K:torch.Tensor, V:torch.Tensor, max_token_length:int):
+        if self.global_mode and DynamicSparseCacheAttention.global_padding_updated:
+            self.padding_lens = DynamicSparseCacheAttention.global_padding_len.to(Q.device)
+            self.min_padding_len = DynamicSparseCacheAttention.global_min_padding_len
+            DynamicSparseCacheAttention.global_padding_updated = False
         dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
         # FILL_VAL = 0
         FILL_VAL = -10000.0
