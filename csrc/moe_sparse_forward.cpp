@@ -23,6 +23,13 @@ void moe_sparse_convert_index(
     torch::Tensor sparse_index,
     torch::Tensor expert_count
 );
+void moe_sparse_convert_index(
+    torch::Tensor seq_lens,
+    torch::Tensor router_index,
+    torch::Tensor sparse_index,
+    torch::Tensor expert_count,
+    bool is_padding
+);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {

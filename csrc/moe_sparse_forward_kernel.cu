@@ -1505,7 +1505,32 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V3(half* __restrict__  tokens, in
     }
 
 }
+ __global__ void convert_sparse_index_seq_lens(int *seq_lens, int * router_index, int token_per_batch, int * expert_count, int *sparse_index, const int TMAX, const int batch_size, const bool is_padding)
+{
+    int bx =  blockIdx.x;
+    int tid = threadIdx.x;
+    int len_current_batch = seq_lens[bx];
+    int offset_start, offset_end;
+    if(!is_padding){
+        // seq_lens represents the effective lengths of the sequences
+        // padding is at the end of the sequence
+        offset_start = bx * token_per_batch + tid;
+        offset_end = offset_start + len_current_batch;
+    }else{
+        // the padding is at the beginning of the sequence
+        // and seq_lens represents the lengths of the paddings
+        offset_start = bx * token_per_batch + len_current_batch + tid;
+        offset_end = offset_start + token_per_batch;
+    }
+    #pragma unroll
+    for(int offset = offset_start; offset<offset_end; offset+=blockDim.x){
+        int exp_id = router_index[offset];
+        int pos_id = atomicAdd(&expert_count[exp_id], 1);
+        sparse_index[exp_id*TMAX+pos_id] = offset;
+        
+    }
 
+}
 
 void convert_index(
     int * router_index,
@@ -1521,6 +1546,29 @@ void convert_index(
     dim3 gridDim((total_token+255)/256);
     CUDA_SAFE_CALL(cudaMemset((void*)expert_count, 0, sizeof(int)*n_expert));
     convert_sparse_index<<<gridDim, blockDim>>>(router_index, total_token, expert_count, sparse_index, TMAX);
+    // compuate the sparse forward with stile
+
+}
+
+
+void convert_index_seq_lens(
+    int * seq_lens,
+    int * router_index,
+    int * sparse_index,
+    int * expert_count,
+    int total_token,
+    int n_expert,
+    const int TMAX,
+    const int batch_size,
+    bool is_padding
+    )
+{
+    // convert the sparse index on the fly
+    assert(total_token%batch_size==0);
+    dim3 blockDim(256);
+    dim3 gridDim(batch_size);
+    CUDA_SAFE_CALL(cudaMemset((void*)expert_count, 0, sizeof(int)*n_expert));
+    convert_sparse_index_seq_lens<<<gridDim, blockDim>>>(seq_lens, router_index, total_token/batch_size, expert_count, sparse_index, TMAX, batch_size, is_padding);
     // compuate the sparse forward with stile
 
 }
@@ -1750,6 +1798,39 @@ void moe_sparse_convert_index(
                                     total_token,
                                     n_expert,
                                     TMAX
+                                ); }));
+
+
+
+}
+
+
+void moe_sparse_convert_index(
+    torch::Tensor seq_lens,
+    torch::Tensor router_index,
+    torch::Tensor sparse_index,
+    torch::Tensor expert_count,
+    bool is_padding // whether the seq_lens represents the padding
+)
+{
+    // Seq_lens means the effective length of each sequence in the batch
+    int batch_size = seq_lens.size(0);
+    cudaSetDevice(router_index.get_device());
+    int total_token = router_index.size(0);
+    int n_expert = expert_count.size(0);
+    const int TMAX = sparse_index.size(1); // the max token each expert can take
+    assert(router_index.size(0) == total_token);
+    AT_DISPATCH_INTEGRAL_TYPES(router_index.type(), "seqlen_dynamic_sparse_attention", ([&]
+                            { convert_index_seq_lens(
+                                    seq_lens.data_ptr<int>()
+                                    router_index.data_ptr<int>(),
+                                    sparse_index.data_ptr<int>(),
+                                    expert_count.data_ptr<int>(),
+                                    total_token,
+                                    n_expert,
+                                    TMAX,
+                                    batch_size,
+                                    is_padding
                                 ); }));
 
 
