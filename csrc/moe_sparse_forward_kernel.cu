@@ -1804,7 +1804,6 @@ void moe_sparse_convert_index(
 
 }
 
-
 void moe_sparse_convert_index(
     torch::Tensor seq_lens,
     torch::Tensor router_index,
@@ -1822,7 +1821,7 @@ void moe_sparse_convert_index(
     assert(router_index.size(0) == total_token);
     AT_DISPATCH_INTEGRAL_TYPES(router_index.type(), "seqlen_dynamic_sparse_attention", ([&]
                             { convert_index_seq_lens(
-                                    seq_lens.data_ptr<int>()
+                                    seq_lens.data_ptr<int>(),
                                     router_index.data_ptr<int>(),
                                     sparse_index.data_ptr<int>(),
                                     expert_count.data_ptr<int>(),
