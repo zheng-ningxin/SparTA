@@ -21,12 +21,12 @@ def run_load(moe):
     import ipdb; ipdb.set_trace()
     pass
 
-def measure_time(model, data, exp_ids, with_relu=False):
+def measure_time(model, data, exp_ids, with_relu=False, seq_lens=None):
     torch.cuda.synchronize()
     t_start = time.time()
     RUNTIME = 1000
     for i in range(RUNTIME):
-        _out = model(data, exp_ids, with_relu)
+        _out = model(data, exp_ids, with_relu, seq_lens)
     torch.cuda.synchronize()
     t_end = time.time()
     print((t_end-t_start)*1000/RUNTIME)
@@ -39,6 +39,7 @@ if __name__ == '__main__':
     in_hidden = 3072
     out_hidden = 768
     with_relu = False
+
     exps = []
     for i in range(N_exp):
         exps.append(torch.nn.Linear(in_hidden, out_hidden, bias=False).cuda().half())
@@ -46,14 +47,18 @@ if __name__ == '__main__':
     #     exps[i].weight.data[:]=1
     moe = DynamicSparseMoE(N_exp, exps)
     data = torch.rand(B*S, in_hidden).half().cuda()
+    seqlens = torch.zeros(B, dtype=torch.int32, device=data.device)
+    seqlens[:] = S//2
+    
     # data[:] = 1.0
     # exp_ids = torch.randint(0, N_exp, (B*S,)).to(torch.int32).cuda()
     exp_ids = torch.load('expids.pth')
     # import ipdb; ipdb.set_trace()
-    out = moe(data, exp_ids, with_relu)
+    out = moe(data, exp_ids, with_relu, seqlens)
     # run_load(moe)
     # exit()
     measure_time(moe, data, exp_ids, with_relu)
+    measure_time(moe, data, exp_ids, with_relu, seqlens)
 
     ref_out =  calculate_ref(data, exps, exp_ids, out_hidden)
     import ipdb; ipdb.set_trace()
