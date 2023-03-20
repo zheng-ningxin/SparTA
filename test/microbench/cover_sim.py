@@ -5,8 +5,8 @@ import csv
 from sparta.common.utils import convert_bcsr
 
 shape = [(4096, 4096)]
-sparsity_ratios = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
-ori_blocks = [(2,1), (3, 1), (2, 2), (4, 4)]
+sparsity_ratios = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.96, 0.97, 0.98, 0.99]
+ori_blocks = [(1,1)]
 data_tiles = [(4,1), (8,1), (16,1), (32,1)]
 def convert_to_full_mask(block_layout, block_size):
     full_mask = block_layout.repeat_interleave(block_size[0], dim=0)

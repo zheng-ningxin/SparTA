@@ -432,12 +432,12 @@ int main(int argc, char*argv[])
     M = 4096;
     K = 4096;
     N = 4096;
-    const int n_iter = 1000;
+    const int n_iter = 100;
     float sparsity_ratio = atof(argv[1]);
     // float sparsity_ratio = 0.99;
     const int BLOCK_SIZE_M = 4;
     const int BLOCK_SIZE_K = 32;
-    const int BLOCK_SIZE_N = 128;
+    const int BLOCK_SIZE_N = 256;
     const int THREAD_SIZE_M = 2;
     const int THREAD_SIZE_K = 4;
     const int THREAD_SIZE_N = 2;
