@@ -1804,7 +1804,7 @@ void moe_sparse_convert_index(
 
 }
 
-void moe_sparse_convert_index(
+void moe_sparse_convert_index_with_seqlen(
     torch::Tensor seq_lens,
     torch::Tensor router_index,
     torch::Tensor sparse_index,

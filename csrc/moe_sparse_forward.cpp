@@ -23,7 +23,7 @@ void moe_sparse_convert_index(
     torch::Tensor sparse_index,
     torch::Tensor expert_count
 );
-void moe_sparse_convert_index(
+void moe_sparse_convert_index_with_seqlen(
     torch::Tensor seq_lens,
     torch::Tensor router_index,
     torch::Tensor sparse_index,
@@ -36,5 +36,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("forward", &moe_sparse_forward, "dynamic sparse forward function of MOE");
     m.def("forward_with_relu", &moe_sparse_forward_with_relu, "dynamic sparse forward function of MOE");
     m.def("convert_index", &moe_sparse_convert_index, "dynamic sparse index function of MOE");
+    m.def("convert_index_seqlen", &moe_sparse_convert_index_with_seqlen, "dynamic sparse index function of MOE");
 
 }
