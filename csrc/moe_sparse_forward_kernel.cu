@@ -1515,12 +1515,12 @@ __global__ void BATCH_BLOCK_SPARSE_MATMUL_FP16_V3(half* __restrict__  tokens, in
         // seq_lens represents the effective lengths of the sequences
         // padding is at the end of the sequence
         offset_start = bx * token_per_batch + tid;
-        offset_end = offset_start + len_current_batch;
+        offset_end = bx * token_per_batch + len_current_batch;
     }else{
         // the padding is at the beginning of the sequence
         // and seq_lens represents the lengths of the paddings
         offset_start = bx * token_per_batch + len_current_batch + tid;
-        offset_end = offset_start + token_per_batch;
+        offset_end = bx * token_per_batch + token_per_batch;
     }
     #pragma unroll
     for(int offset = offset_start; offset<offset_end; offset+=blockDim.x){
