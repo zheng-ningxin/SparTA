@@ -4,7 +4,8 @@ os.makedirs('log', exist_ok=True)
 
 sparsity = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
 shape = [(4096, 4096, 4096), (4096, 768, 3072)]
-blocksize = [(32, 1), (1, 64), (32, 64)]
+# blocksize = [(1, 1), (32, 1), (1, 64), (32, 64)]
+blocksize = [(1, 1)]
 
 def run_cusparse():
     for s in sparsity:
@@ -40,6 +41,6 @@ def run_triton():
 
 if __name__ == '__main__':
     # run_cusparse()
-    # run_sputnik()
-    run_triton()
+    run_sputnik()
+    # run_triton()
 

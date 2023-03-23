@@ -7,8 +7,8 @@ import csv
 #sparsity_ratio=(0.5, 0.75, 0.9)
 sparsity = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
 shape = [(4096, 4096, 4096), (4096, 768, 3072)]
-blocksize = [(1, 32), (64, 1), (64, 32)]
-
+# blocksize = [(1, 1), (32, 1), (1, 64), (32, 64)]
+blocksize = [(1, 1)]
 # result = []
 # for s in sparsity_ratio:
 #     for b in baseline:
@@ -76,6 +76,6 @@ def summary_triton():
 
 
 if __name__ == '__main__':
-    summary_cusparse()
+    # summary_cusparse()
     summary_sputnik()
-    summary_triton()
+    # summary_triton()

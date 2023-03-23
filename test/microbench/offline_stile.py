@@ -19,7 +19,7 @@ if __name__ == '__main__':
     
     with open('stile_offline.csv', 'w') as f:
         writer = csv.writer(f, delimiter=',')
-        for sparsity in np.arange(0, 1.0, 0.05):
+        for sparsity in np.arange(0.5, 1.0, 0.02):
             sparsity = round(sparsity, 2)
             print(sparsity)
             fpath = f'log/stile_{sparsity}.log'

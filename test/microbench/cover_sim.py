@@ -37,7 +37,7 @@ def sim(sparsity, h, w, ori_block_h, ori_block_w, new_block_h, new_block_w):
 
 
 if __name__ == '__main__':
-    with open('cover_sim.csv', 'w') as f:
+    with open('cover_1x1_sim.csv', 'w') as f:
         writer = csv.writer(f, delimiter=',')
         for h, w in shape:
             for ori_block_h, ori_block_w in ori_blocks:
