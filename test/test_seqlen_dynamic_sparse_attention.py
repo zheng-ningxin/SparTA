@@ -89,7 +89,7 @@ def dense_speed(sparse_attention, seq_len_pattern, head_num, max_seq_len, hidden
     print('Dense Forward Implementation', end-st)
 
 def debug_reference_forward(Q, K, V, attention_mask):
-    add_mask = torch.zeros(attention_mask.size(), dtype=Q.dtype()).to(Q.device)
+    add_mask = torch.zeros(attention_mask.size(), dtype=Q.dtype).to(Q.device)
     add_mask[attention_mask == 0] = float(-inf)
     dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
     # return dots
