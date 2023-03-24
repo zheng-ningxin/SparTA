@@ -16,6 +16,7 @@ using namespace std;
 using namespace nvcuda;
 
 #define OFFSET(row, col, ld) ((row) * ld + col)
+#define FETCH_HALF2(pointer) (reinterpret_cast<half2*>(&pointer))[0]
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4*>(&pointer))[0]
 #define FETCH_UINT32(pointer) (reinterpret_cast<unsigned int*>(&(pointer))[0])
 #define FETCH_UINT4(pointer) (reinterpret_cast<uint4*>(&(pointer))[0])
@@ -465,6 +466,83 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
 
 
     }
+}
+
+template
+<
+    const int GLOBAL_M,
+    const int GLOBAL_N,
+    const int MAX_LEN,
+    const int ROW_TILE,
+>
+__global__ void SPARSE_SOFTMAX(
+    half* C_val,
+    int* seqlens
+){
+    const int M = GLOBAL_M;
+    const int N = GLOBAL_N;
+    assert(MAX_LEN>=N);
+    assert(ROW_TILE*32==blockDim.x);
+    __shared__ half Cs[ROW_TILE][MAX_LEN];
+    uint cur_seq_len = seqlens[blockIdx.z];
+    uint tmp_seq_len = int((cur_seq_len+31)/32)*32;
+    assert(M%32==0 && N%32==0);
+    uint row_idx = blockIdx.x * ROW_TILE;
+    uint bm = threadIdx.x / 32;
+    uint bn = threadIdx.x % 32;
+    uint head_idx = blockIdx.y + gridDim.y * blockIdx.z;
+    C_val += M * N * head_idx;
+    half2 regC = {0, 0};
+    half regSum = 0;
+    half regMax = -10000;
+    uint pos;
+    int COL_START = bn * 8;
+    int COL_STRIDE = 32 * 8; 
+    if(row_idx + bm < cur_seq_len){
+        // need to perform the softmax
+        #pragma unroll
+        for(int pos=COL_START; pos<cur_seq_len; pos+=COL_STRIDE){
+            FETCH_FLOAT4(Cs[dm][pos]) = FETCH_FLOAT4(C_val[OFFSET(row_idx + bm, pos, N)]);
+        }
+        __syncthreads();
+        // scan once for the max value
+        #pragma unroll
+        for(int pos=bn; pos*2 < cur_seq_len; pos += 32){
+            half2 tmp = FETCH_HALF2(Cs[bm][pos*2]);
+            regMax = max(regMax, tmp.x);
+            if(pos*2+1< cur_seq_len){
+                regMax=max(regMax, tmp.y);
+            }
+        }
+        for (int offset = 16; offset > 0; offset /= 2) {
+            regMax = max(regMax, __shfl_down_sync(FULL_MASK, regMax, offset));
+        }
+        regMax = __shfl_sync(FULL_MASK, regMax, 0);
+        #pragma unroll
+        for(int pos=bn; pos * 2 < cur_seq_len; pos += 32){
+            half2 tmp = FETCH_HALF2(Cs[bm][pos*2]);
+            regSum += hexp(tmp.x-regMax);
+            if(pos*2+1< cur_seq_len){
+                regSum+=hexp(tmp.y-regMax);
+            }
+        }
+        for (int offset = 16; offset > 0; offset /= 2) {
+            regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
+        }
+        regSum = __shfl_sync(FULL_MASK, regSum, 0);
+        for (int index = bn; index < tmp_seq_len; index+=32) {
+            pos = (row_idx+bm) * N + index;
+            if(index<cur_seq_len){
+                C_val[pos] = hexp(C_val[pos]-regMax) / regSum;
+            }else{
+                C_val[pos] = 0;
+            }
+
+        }
+
+    }
+
+
 }
 __global__ void SPARSE_SOFTMAX(
     float* C_val,
