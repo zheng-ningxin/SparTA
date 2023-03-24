@@ -177,7 +177,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
             FETCH_FLOAT4(As[k][A_BLOCK_COL_START]) = FETCH_FLOAT4(A[(by*BLOCK_SIZE_M+k)*K + k_seq*BLOCK_SIZE_K + A_BLOCK_COL_START]);
         }
         #pragma unroll
-        for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_N; k+=B_TILE_ROW_STRIDE{
+        for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_N; k+=B_TILE_ROW_STRIDE){
             FETCH_FLOAT4(Bs[k][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(bx*BLOCK_SIZE_N+k)*K + k_seq*BLOCK_SIZE_K + B_BLOCK_COL_START]);
         }
         #pragma unroll
