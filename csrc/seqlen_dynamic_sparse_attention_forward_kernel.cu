@@ -97,7 +97,8 @@ template<
     const int GLOBAL_N,
     const int BLOCK_SIZE_M,
     const int BLOCK_SIZE_K,
-    const int BLOCK_SIZE_N
+    const int BLOCK_SIZE_N,
+    const int N_WARP
 >
 __global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
     half* __restrict__ A,
@@ -112,8 +113,8 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
     const int APAD = 8;
     const int BPAD = 8;
     const int CPAD = 8;
-    const int N_WARP = 8;
-    const int WARP_PER_ROW = 4;
+    // const int N_WARP = 8;
+    const int WARP_PER_ROW = 2;
     assert(N_WARP * 32 == blockDim.x); // thread num: 256
     const int WARP_COUNT_N = BLOCK_SIZE_N / 16;
     const int WARP_COUNT_M = BLOCK_SIZE_M / 16;
@@ -675,13 +676,13 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
     const dim3 dimBlock(32*N_WARP);
     const dim3 dimGrid(block_nnz, head_num, batch_size);
     if(max_seq_length==128 && hidden_dim==64){
-        BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
     }else if(max_seq_length==512 && hidden_dim==64){
-        BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
     }else if(max_seq_length==1024 && hidden_dim==64){
-        BLOCK_SPARSE_MATMUL_OUT_FP16<1024, 64, 1024, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<1024, 64, 1024, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
     }else if(max_seq_length==4096 && hidden_dim==64){
-        BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
     }else{
         // please add more shape here
         assert(false);
