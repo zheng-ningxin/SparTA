@@ -252,7 +252,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
             for(int frag_x=0; frag_x<WARP_COL_STRIDE; frag_x++){
                 int y = wy * WARP_ROW_STRIDE + frag_y;
                 int x = wx * WARP_COL_STRIDE + frag_x;
-                wmma::store_matrix_sync(&C[OFFSET(by * BLOCK_SIZE_M + y * 16, bx * BLOCK_SIZE_N + x * 16, N)], frag_c[frag_y][frag_x], N, wmma::mem_row_major);                        
+                wmma::store_matrix_sync(&C_val[OFFSET(by * BLOCK_SIZE_M + y * 16, bx * BLOCK_SIZE_N + x * 16, N)], frag_c[frag_y][frag_x], N, wmma::mem_row_major);                        
             }
         }
     }
