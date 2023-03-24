@@ -126,7 +126,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
     A += GLOBAL_K * GLOBAL_M * head_idx;
     B += GLOBAL_K * GLOBAL_N * head_idx;
     C_val += GLOBAL_M * GLOBAL_N * head_idx;
-    uint cur_seq_Len = seqlens[batch_idx];
+    uint cur_seq_len = seqlens[batch_idx];
     int tid = threadIdx.x;
     int wid = tid >> 5; // warp id
     uint bx = (blockIdx.x % (GLOBAL_N / BLOCK_SIZE_N));
