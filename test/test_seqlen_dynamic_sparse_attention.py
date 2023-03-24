@@ -103,8 +103,10 @@ def debug_reference_forward(Q, K, V, attention_mask):
     return dots
 
 def test_correctness(sparse_attention, seq_len_pattern, HEAD_NUM, max_seq_len, hidden_n, device, dtype):
-    q, k, v = torch.randn(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=dtype, device=device), torch.randn(batch_size, HEAD_NUM, max_seq_len,
-                                                                                                           hidden_n, dtype=dtype, device=device), torch.randn(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=dtype, device=device)
+    # q, k, v = torch.randn(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=dtype, device=device), torch.randn(batch_size, HEAD_NUM, max_seq_len,
+    #                                                                                                        hidden_n, dtype=dtype, device=device), torch.randn(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=dtype, device=device)
+    q, k, v = torch.ones(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=dtype, device=device), torch.ones(batch_size, HEAD_NUM, max_seq_len,
+                                                                                                           hidden_n, dtype=dtype, device=device), torch.ones(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=dtype, device=device)
     # q, k, v = joblib.load('qkv.pkl')
     # q = torch.load('q.pth').to(device)
     # k = torch.load('k.pth').to(device)
