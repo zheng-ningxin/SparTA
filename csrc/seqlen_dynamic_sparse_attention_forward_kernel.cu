@@ -529,7 +529,7 @@ __global__ void SPARSE_SOFTMAX(
         }
         regSum = __shfl_sync(FULL_MASK, regSum, 0);
         for (int index = bn; index < tmp_seq_len; index+=32) {
-            pos = (row_idx+bm) * N + index;
+            int pos = (row_idx+bm) * N + index;
             if(index<cur_seq_len){
                 C_val[pos] = hexp(C_val[pos]-regMax) / regSum;
             }else{
