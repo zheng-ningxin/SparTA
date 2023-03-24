@@ -494,14 +494,13 @@ __global__ void SPARSE_SOFTMAX(
     half2 regC = {0, 0};
     half regSum = 0;
     half regMax = -10000;
-    uint pos;
     int COL_START = bn * 8;
     int COL_STRIDE = 32 * 8; 
     if(row_idx + bm < cur_seq_len){
         // need to perform the softmax
         #pragma unroll
         for(int pos=COL_START; pos<cur_seq_len; pos+=COL_STRIDE){
-            FETCH_FLOAT4(Cs[dm][pos]) = FETCH_FLOAT4(C_val[OFFSET(row_idx + bm, pos, N)]);
+            FETCH_FLOAT4(Cs[bm][pos]) = FETCH_FLOAT4(C_val[OFFSET(row_idx + bm, pos, N)]);
         }
         __syncthreads();
         // scan once for the max value
