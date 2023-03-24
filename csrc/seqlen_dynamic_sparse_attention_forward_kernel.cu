@@ -666,7 +666,27 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
                     c10::Half * inter_result, int * seqlens,
                     int batch_size, int head_num, int max_seq_length, int hidden_dim, c10::Half* output)
 {
-
+    const int BLOCK_SIZE_M = 32;
+    const int BLOCK_SIZE_K = 64;
+    const int BLOCK_SIZE_N = 32;
+    const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+    int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
+    CUDA_SAFE_CALL(cudaMemset(inter_result, 0, sizeof(half) * max_seq_length * max_seq_length * batch_size * head_num));
+    const dim3 dimBlock(32*N_WARP);
+    const dim3 dimGrid(block_nnz, head_num, batch_size);
+    if(max_seq_length==128 && hidden_dim==64){
+        BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N>(Q, K, inter_result, seqlens);
+    }else if(max_seq_length==512 && hidden_dim==64){
+        BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N>(Q, K, inter_result, seqlens);
+    }else if(max_seq_length==1024 && hidden_dim==64){
+        BLOCK_SPARSE_MATMUL_OUT_FP16<1024, 64, 1024, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N>(Q, K, inter_result, seqlens);
+    }else if(max_seq_length==4096 && hidden_dim==64){
+        BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N>(Q, K, inter_result, seqlens);
+    }else{
+        // please add more shape here
+        assert(false);
+    }
+    // BLOCK_SPARSE_MATMUL_OUT_FP16<>
 }
 void seqlen_dynamic_forward_function(double* Q, double* K, double* V,
                     double * inter_result, int * seqlens,
