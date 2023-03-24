@@ -677,6 +677,8 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
     const dim3 dimGrid(block_nnz, head_num, batch_size);
     if(max_seq_length==128 && hidden_dim==64){
         BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+    }else if(max_seq_length==256 && hidden_dim==64){
+        BLOCK_SPARSE_MATMUL_OUT_FP16<256, 64, 256, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
     }else if(max_seq_length==512 && hidden_dim==64){
         BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
     }else if(max_seq_length==1024 && hidden_dim==64){
