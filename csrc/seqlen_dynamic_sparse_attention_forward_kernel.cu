@@ -9,6 +9,10 @@ using namespace std;
 #include <assert.h>
 // CUDA runtime
 #include <cuda.h>
+#include <cuda_fp16.h>
+#include <mma.h>
+#include <cuda_runtime.h>
+
 #define OFFSET(row, col, ld) ((row) * ld + col)
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4*>(&pointer))[0]
 #define FETCH_UINT32(pointer) (reinterpret_cast<unsigned int*>(&(pointer))[0])
