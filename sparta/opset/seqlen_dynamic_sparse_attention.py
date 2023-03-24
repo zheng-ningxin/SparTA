@@ -116,7 +116,7 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
         assert hidden_dim % 32 == 0
         if self.inter_result is None or self.inter_result.numel() < batch_size * head_num * max_seq_len * max_seq_len:
             self.inter_result = torch.zeros(batch_size * head_num * max_seq_len * max_seq_len,
-                          dtype=torch.float32, device=Q.device)
+                          dtype=Q.dtype, device=Q.device)
         result = SeqlenDynamicSparseAttentionFunction.apply(Q, K, V,
                                                       self.inter_result,
                                                       seqlens,

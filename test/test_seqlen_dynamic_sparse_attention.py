@@ -102,9 +102,9 @@ def debug_reference_forward(Q, K, V, attention_mask):
     ref_out = torch.einsum('b h m n, b h n k -> b h m k', attn, V)
     return ref_out
 
-def test_correctness(sparse_attention, seq_len_pattern, HEAD_NUM, max_seq_len, hidden_n, device):
-    q, k, v = torch.randn(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=torch.float32, device=device), torch.randn(batch_size, HEAD_NUM, max_seq_len,
-                                                                                                           hidden_n, dtype=torch.float32, device=device), torch.randn(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=torch.float32, device=device)
+def test_correctness(sparse_attention, seq_len_pattern, HEAD_NUM, max_seq_len, hidden_n, device, dtype):
+    q, k, v = torch.randn(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=dtype, device=device), torch.randn(batch_size, HEAD_NUM, max_seq_len,
+                                                                                                           hidden_n, dtype=dtype, device=device), torch.randn(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=dtype, device=device)
     # q, k, v = joblib.load('qkv.pkl')
     # q = torch.load('q.pth').to(device)
     # k = torch.load('k.pth').to(device)
@@ -181,13 +181,14 @@ if __name__ == '__main__':
     max_seq_len = 256
     HEAD_NUM = 12
     hidden_n = 64
+    test_type = torch.float32
     device = torch.device('cuda:0')
     seqlens = random_seqlen(batch_size, max_seq_len).to(device)
     print('Sequence length:', seqlens)
 
     spa = SeqlenDynamicSparseAttention(True)
     SeqlenDynamicSparseAttention.set_global_seqlens(seqlens)
-    test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
+    # test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
     # dense_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
-    # test_correctness(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
-    test_triton(seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
+    test_correctness(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, dtype=test_type)
+    # test_triton(seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
