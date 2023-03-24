@@ -85,6 +85,174 @@ __device__ __forceinline__ const float* add_ptr_f(const float* src, int offset) 
 __device__ __forceinline__ float2  _add(float2 x, float2 y) { float2 res; res.x = x.x + y.x; res.y = x.y + y.y; return res; }
 
 
+template<
+    const int GLOBAL_M,
+    const int GLOBAL_K,
+    const int GLOBAL_N,
+    const int BLOCK_SIZE_M,
+    const int BLOCK_SIZE_K,
+    const int BLOCK_SIZE_N
+>
+__global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
+    half* __restrict__ A,
+    half* __restrict__ B,
+    half* __restrict__ C_val,
+    int * seqlens
+)
+{
+    const int M = GLOBAL_M;
+    const int K = GLOBAL_K;
+    const int N = GLOBAL_N;
+    const int APAD = 8;
+    const int BPAD = 8;
+    const int CPAD = 8;
+    const int N_WARP = 8;
+    const int WARP_PER_ROW = 4;
+    assert(N_WARP * 32 == blockDim.x); // thread num: 256
+    const int WARP_COUNT_N = BLOCK_SIZE_N / 16;
+    const int WARP_COUNT_M = BLOCK_SIZE_M / 16;
+    
+    const int WARP_N_ROWS = N_WARP / WARP_PER_ROW; // 4
+    const int WARP_ROW_STRIDE = WARP_COUNT_M / WARP_N_ROWS;
+    const int WARP_COL_STRIDE = WARP_COUNT_N / WARP_PER_ROW;
+    int batch_idx = blockIdx.z;
+    int head_idx = blockIdx.y + gridDim.y * blockIdx.z;
+    A += GLOBAL_K * GLOBAL_M * head_idx;
+    B += GLOBAL_K * GLOBAL_N * head_idx;
+    C_val += GLOBAL_M * GLOBAL_N * head_idx;
+    uint cur_seq_Len = seqlens[batch_idx];
+    int tid = threadIdx.x;
+    int wid = tid >> 5; // warp id
+    uint bx = (blockIdx.x % (GLOBAL_N / BLOCK_SIZE_N));
+    uint by = (blockIdx.x / (GLOBAL_N / BLOCK_SIZE_N));
+    int wy = wid / WARP_PER_ROW;
+    int wx = wid % WARP_PER_ROW;
+    __shared__ half As[2 * BLOCK_SIZE_M][BLOCK_SIZE_K + APAD];
+    __shared__ half Bs[2 * BLOCK_SIZE_K][BLOCK_SIZE_N + BPAD];
+    // __shared__ half Cs[BLOCK_SIZE_M][BLOCK_SIZE_N + CPAD];
+    int As_base_addr = __cvta_generic_to_shared(&As[0][0]);
+    int Bs_base_addr = __cvta_generic_to_shared(&Bs[0][0]);
+    const int LD_AS = BLOCK_SIZE_K + APAD;
+    const int LD_BS = BLOCK_SIZE_K + BPAD;
+    const int LD_CS = BLOCK_SIZE_N + CPAD;
+    if (bx * BLOCK_SIZE_N < cur_seq_len && by * BLOCK_SIZE_M < cur_seq_len){
+        // perform the computation
+        const int A_THREAD_PER_ROW = BLOCK_SIZE_K / 8; // 1 float4 = 8 half
+        const int B_THREAD_PER_ROW = BLOCK_SIZE_K / 8;
+        const int C_THREAD_PER_ROW = BLOCK_SIZE_N / 8;
+
+        const int A_TILE_ROW_STRIDE = (32 * N_WARP) / A_THREAD_PER_ROW;
+        const int B_TILE_ROW_STRIDE = (32 * N_WARP) / B_THREAD_PER_ROW;
+        const int C_TILE_ROW_STRIDE = (32 * N_WARP) / C_THREAD_PER_ROW;
+    
+        const int A_BLOCK_ROW_START = tid / A_THREAD_PER_ROW;
+        const int B_BLOCK_ROW_START = tid / B_THREAD_PER_ROW;
+        const int C_BLOCK_ROW_START = tid / C_THREAD_PER_ROW;
+
+        const int A_BLOCK_COL_START = tid % A_THREAD_PER_ROW * 8;
+        const int B_BLOCK_COL_START = tid % B_THREAD_PER_ROW * 8;
+        const int C_BLOCK_COL_START = tid % C_THREAD_PER_ROW * 8;
+
+        wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> frag_a[WARP_ROW_STRIDE];
+        wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::col_major> frag_b[WARP_COL_STRIDE];
+        wmma::fragment<wmma::accumulator, 16, 16, 16, half> frag_c[WARP_ROW_STRIDE][WARP_COL_STRIDE];
+        // reset to zero for all the accumulators
+        #pragma unroll
+        for(int i=0; i<WARP_ROW_STRIDE; i++){
+            #pragma unroll
+            for(int j=0; j<WARP_COL_STRIDE; j++){
+                wmma::fill_fragment(frag_c[i][j], 0.0);
+            }
+        }
+        // double buffer initialization
+        const int k_seq=0;
+        #pragma unroll
+        for(int k=A_BLOCK_ROW_START; k<BLOCK_SIZE_M; k+=A_TILE_ROW_STRIDE){
+            FETCH_FLOAT4(As[k][A_BLOCK_COL_START]) = FETCH_FLOAT4(A[(by*BLOCK_SIZE_M+k)*K + k_seq*BLOCK_SIZE_K + A_BLOCK_COL_START]);
+        }
+        #pragma unroll
+        for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_N; k+=B_TILE_ROW_STRIDE{
+            FETCH_FLOAT4(Bs[k][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(bx*BLOCK_SIZE_N+k)*K + k_seq*BLOCK_SIZE_K + B_BLOCK_COL_START]);
+        }
+        #pragma unroll
+        for(int k_seq=1; k_seq<K/BLOCK_SIZE_K; k_seq++){
+            int smem_select = (k_seq & 1) ^ 1;
+            int smem_next = smem_select ^ 1;
+            #pragma unroll
+            for(int k=A_BLOCK_ROW_START; k<BLOCK_SIZE_M; k+=A_TILE_ROW_STRIDE){
+                int load_a_s_addr = As_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_M, A_BLOCK_COL_START, LD_AS); 
+                asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
+                    : "r"(load_a_s_addr), "l"(&A[(by*BLOCK_SIZE_M+k)*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]));
+            }
+            #pragma unroll
+            for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
+                int load_b_s_addr = Bs_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_N, B_BLOCK_COL_START, LD_BS);
+                asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
+                    : "r"(load_b_s_addr), "l"(&B[(bx * BLOCK_SIZE_N+k)*K + k_seq * BLOCK_SIZE_K +  B_BLOCK_COL_START]));
+                
+            }
+            #pragma unroll
+            for(int k_step=0; k_step<BLOCK_SIZE_K/16; k_step++){
+                #pragma unroll
+                for(int frag_y=0; frag_y<WARP_ROW_STRIDE; frag_y++){
+                    int y = wy * WARP_ROW_STRIDE + frag_y;
+                    wmma::load_matrix_sync(frag_a[frag_y], &As[y*16+smem_select*BLOCK_SIZE_M][k_step*16], LD_AS);                   
+                }
+                #pragma unroll
+                for(int frag_x=0; frag_x<WARP_COL_STRIDE; frag_x++){
+                    int x = wx * WARP_COL_STRIDE + frag_x;
+                    // wmma::load_matrix_sync(frag_b[frag_x], &Bs[k_step*16+][x*16], LD_BS);               
+                    wmma::load_matrix_sync(frag_b[frag_x], &Bs[x*16+smem_select*BLOCK_SIZE_N][k_step*16], LD_BS);               
+                }
+                #pragma unroll
+                for(int frag_y=0; frag_y<WARP_ROW_STRIDE; frag_y++){
+                    #pragma unroll
+                    for(int frag_x=0; frag_x<WARP_COL_STRIDE; frag_x++){
+                        wmma::mma_sync(frag_c[frag_y][frag_x], frag_a[frag_y], frag_b[frag_x], frag_c[frag_y][frag_x]);                        
+                    }
+                }
+            }
+
+            asm ("cp.async.commit_group;\n" ::);
+            asm ("cp.async.wait_group 0;\n" ::);
+            __syncthreads();
+
+        }
+        int smem_select = ((K/BLOCK_SIZE_K) & 1) ^ 1;
+        #pragma unroll
+        for(int k_step=0; k_step<BLOCK_SIZE_K/16; k_step++){
+            #pragma unroll
+            for(int frag_y=0; frag_y<WARP_ROW_STRIDE; frag_y++){
+                int y = wy * WARP_ROW_STRIDE + frag_y;
+                wmma::load_matrix_sync(frag_a[frag_y], &As[y*16+smem_select*BLOCK_SIZE_M][k_step*16], LD_AS);                   
+            }
+            #pragma unroll
+            for(int frag_x=0; frag_x<WARP_COL_STRIDE; frag_x++){
+                int x = wx * WARP_COL_STRIDE + frag_x;
+                // wmma::load_matrix_sync(frag_b[frag_x], &Bs[k_step*16+][x*16], LD_BS);               
+                wmma::load_matrix_sync(frag_b[frag_x], &Bs[x*16+smem_select*BLOCK_SIZE_N][k_step*16], LD_BS);               
+            }
+            #pragma unroll
+            for(int frag_y=0; frag_y<WARP_ROW_STRIDE; frag_y++){
+                #pragma unroll
+                for(int frag_x=0; frag_x<WARP_COL_STRIDE; frag_x++){
+                    wmma::mma_sync(frag_c[frag_y][frag_x], frag_a[frag_y], frag_b[frag_x], frag_c[frag_y][frag_x]);                        
+                }
+            }
+        }
+        #pragma unroll
+        for(int frag_y=0; frag_y<WARP_ROW_STRIDE; frag_y++){
+            #pragma unroll
+            for(int frag_x=0; frag_x<WARP_COL_STRIDE; frag_x++){
+                int y = wy * WARP_ROW_STRIDE + frag_y;
+                int x = wx * WARP_COL_STRIDE + frag_x;
+                wmma::store_matrix_sync(&C[OFFSET(by * BLOCK_SIZE_M + y * 16, bx * BLOCK_SIZE_N + x * 16)], frag_c[frag_y][frag_x], N, wmma::mem_row_major);                        
+            }
+        }
+    }
+
+}
+
 __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     float* A,
     float* B,
@@ -488,6 +656,18 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD(float* A, float * B, float* C, int* seql
 
 }
 
+void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
+                    c10::Half * inter_result, int * seqlens,
+                    int batch_size, int head_num, int max_seq_length, int hidden_dim, c10::Half* output)
+{
+
+}
+void seqlen_dynamic_forward_function(double* Q, double* K, double* V,
+                    double * inter_result, int * seqlens,
+                    int batch_size, int head_num, int max_seq_length, int hidden_dim, double* output)
+{
+
+}
 
 void seqlen_dynamic_forward_function(float* Q, float* K, float* V,
                     float * inter_result, int * seqlens,
@@ -564,19 +744,33 @@ at::Tensor seqlen_dynamic_sparse_attention_forward(
     int hidden_dim = Q.size(3);
     torch::Tensor output = torch::zeros({batch_size, head_num, max_seq_length, hidden_dim}, Q.options());
     // printf("bs:%d head_num:%d seq_len:%d hidden_dim:%d\n", batch_size, head_num, max_seq_length, hidden_dim);
-    AT_DISPATCH_FLOATING_TYPES(Q.type(), "seqlen_dynamic_sparse_attention", ([&]
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(Q.type(), "seqlen_dynamic_sparse_attention", ([&]
                             { seqlen_dynamic_forward_function(
-                                    Q.data_ptr<float>(),
-                                    K.data_ptr<float>(),
-                                    V.data_ptr<float>(),
-                                    inter_result.data_ptr<float>(),
+                                    Q.data_ptr<scalar_t>(),
+                                    K.data_ptr<scalar_t>(),
+                                    V.data_ptr<scalar_t>(),
+                                    inter_result.data_ptr<scalar_t>(),
                                     seqlens.data_ptr<int>(),
                                     batch_size,
                                     head_num,
                                     max_seq_length,
                                     hidden_dim,
-                                    output.data_ptr<float>()
+                                    output.data_ptr<scalar_t>()
                                 ); }));
+
+    // AT_DISPATCH_FLOATING_TYPES(Q.type(), "seqlen_dynamic_sparse_attention", ([&]
+    //                         { seqlen_dynamic_forward_function(
+    //                                 Q.data_ptr<float>(),
+    //                                 K.data_ptr<float>(),
+    //                                 V.data_ptr<float>(),
+    //                                 inter_result.data_ptr<float>(),
+    //                                 seqlens.data_ptr<int>(),
+    //                                 batch_size,
+    //                                 head_num,
+    //                                 max_seq_length,
+    //                                 hidden_dim,
+    //                                 output.data_ptr<float>()
+    //                             ); }));
     return output;
 }
 
