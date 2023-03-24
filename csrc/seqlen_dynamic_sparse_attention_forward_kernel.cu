@@ -135,7 +135,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
     int wy = wid / WARP_PER_ROW;
     int wx = wid % WARP_PER_ROW;
     __shared__ half As[2 * BLOCK_SIZE_M][BLOCK_SIZE_K + APAD];
-    __shared__ half Bs[2 * BLOCK_SIZE_K][BLOCK_SIZE_N + BPAD];
+    __shared__ half Bs[2 * BLOCK_SIZE_N][BLOCK_SIZE_K + BPAD];
     // __shared__ half Cs[BLOCK_SIZE_M][BLOCK_SIZE_N + CPAD];
     int As_base_addr = __cvta_generic_to_shared(&As[0][0]);
     int Bs_base_addr = __cvta_generic_to_shared(&Bs[0][0]);
@@ -189,7 +189,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
             for(int k=A_BLOCK_ROW_START; k<BLOCK_SIZE_M; k+=A_TILE_ROW_STRIDE){
                 int load_a_s_addr = As_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_M, A_BLOCK_COL_START, LD_AS); 
                 asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
-                    : "r"(load_a_s_addr), "l"(&A[(by*BLOCK_SIZE_M+k)*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]));
+                    : "r"(load_a_s_addr), "l"(&A[(by * BLOCK_SIZE_M+k)*K + k_seq * BLOCK_SIZE_K + A_BLOCK_COL_START]));
             }
             #pragma unroll
             for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
