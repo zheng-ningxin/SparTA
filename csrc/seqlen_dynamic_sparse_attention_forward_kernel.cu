@@ -12,6 +12,8 @@ using namespace std;
 #include <cuda_fp16.h>
 #include <mma.h>
 #include <cuda_runtime.h>
+using namespace std;
+using namespace nvcuda;
 
 #define OFFSET(row, col, ld) ((row) * ld + col)
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4*>(&pointer))[0]
