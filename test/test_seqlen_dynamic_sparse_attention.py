@@ -130,8 +130,8 @@ def test_correctness(sparse_attention, seq_len_pattern, HEAD_NUM, max_seq_len, h
 
 
     out = sparse_attention(q1, k1, v1)
-
-    # import ipdb; ipdb.set_trace()
+    dots = sparse_attention.inter_result
+    import ipdb; ipdb.set_trace()
     # mask the useless token manually here
     for bid in range(seq_len_pattern.size(0)):
         cur_len = seq_len_pattern[bid]
