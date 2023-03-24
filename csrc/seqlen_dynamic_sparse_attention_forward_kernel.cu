@@ -468,12 +468,11 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     }
 }
 
-template
-<
+template<
     const int GLOBAL_M,
     const int GLOBAL_N,
     const int MAX_LEN,
-    const int ROW_TILE,
+    const int ROW_TILE
 >
 __global__ void SPARSE_SOFTMAX(
     half* C_val,
