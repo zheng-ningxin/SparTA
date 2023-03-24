@@ -675,13 +675,13 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
     const dim3 dimBlock(32*N_WARP);
     const dim3 dimGrid(block_nnz, head_num, batch_size);
     if(max_seq_length==128 && hidden_dim==64){
-        BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
     }else if(max_seq_length==512 && hidden_dim==64){
-        BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
     }else if(max_seq_length==1024 && hidden_dim==64){
-        BLOCK_SPARSE_MATMUL_OUT_FP16<1024, 64, 1024, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<1024, 64, 1024, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
     }else if(max_seq_length==4096 && hidden_dim==64){
-        BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
     }else{
         // please add more shape here
         assert(false);
