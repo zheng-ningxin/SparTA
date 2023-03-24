@@ -89,7 +89,7 @@ def dense_speed(sparse_attention, seq_len_pattern, head_num, max_seq_len, hidden
     print('Dense Forward Implementation', end-st)
 
 def debug_reference_forward(Q, K, V, attention_mask):
-    add_mask = torch.zeros(attention_mask.size()).to(Q.device)
+    add_mask = torch.zeros(attention_mask.size(), dtype=Q.dtype()).to(Q.device)
     add_mask[attention_mask == 0] = float(-inf)
     dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
     # return dots
@@ -100,7 +100,7 @@ def debug_reference_forward(Q, K, V, attention_mask):
     attn[nan_pos] = 0.0
     # return attn
     ref_out = torch.einsum('b h m n, b h n k -> b h m k', attn, V)
-    return ref_out
+    return dots
 
 def test_correctness(sparse_attention, seq_len_pattern, HEAD_NUM, max_seq_len, hidden_n, device, dtype):
     q, k, v = torch.randn(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=dtype, device=device), torch.randn(batch_size, HEAD_NUM, max_seq_len,
@@ -181,7 +181,7 @@ if __name__ == '__main__':
     max_seq_len = 256
     HEAD_NUM = 12
     hidden_n = 64
-    test_type = torch.float32
+    test_type = torch.float16
     device = torch.device('cuda:0')
     seqlens = random_seqlen(batch_size, max_seq_len).to(device)
     print('Sequence length:', seqlens)
