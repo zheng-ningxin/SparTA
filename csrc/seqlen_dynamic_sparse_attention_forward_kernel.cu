@@ -641,7 +641,7 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_FP16(
     const int BPAD = 8;
     const int CPAD = 8;
     // const int N_WARP = 8;
-    const int WARP_PER_ROW = 2;
+    const int WARP_PER_ROW = 4;
     assert(N_WARP * 32 == blockDim.x); // thread num: 256
     const int WARP_COUNT_N = BLOCK_SIZE_N / 16;
     const int WARP_COUNT_M = BLOCK_SIZE_M / 16;
