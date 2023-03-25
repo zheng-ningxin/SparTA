@@ -491,9 +491,10 @@ __global__ void SPARSE_SOFTMAX(
     uint bn = threadIdx.x % 32;
     uint head_idx = blockIdx.y + gridDim.y * blockIdx.z;
     C_val += M * N * head_idx;
-    half2 regC = {0, 0};
+    // half2 regC = {0, 0};
     half regSum = 0;
-    half regMax = -10000;
+    half regMax = -1000
+    half tmp[2];
     int COL_START = bn * 8;
     int COL_STRIDE = 32 * 8; 
     if(row_idx + bm < cur_seq_len){
@@ -506,10 +507,10 @@ __global__ void SPARSE_SOFTMAX(
         // scan once for the max value
         #pragma unroll
         for(int pos=bn; pos*2 < cur_seq_len; pos += 32){
-            half2 tmp = FETCH_HALF2(Cs[bm][pos*2]);
-            regMax = max(regMax, tmp.x);
+            FETCH_HALF2(tmp) = FETCH_HALF2(Cs[bm][pos*2]);
+            regMax = max(regMax, tmp[0]);
             if(pos*2+1< cur_seq_len){
-                regMax=max(regMax, tmp.y);
+                regMax=max(regMax, tmp[1]);
             }
         }
         for (int offset = 16; offset > 0; offset /= 2) {
