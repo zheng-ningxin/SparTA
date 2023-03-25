@@ -779,7 +779,7 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         SPARSE_SOFTMAX_FP16<1024, 1024, 1024, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens);
     }else if(max_seq_length==4096 && hidden_dim==64){
         BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
-        const int ROWTILE = 8;
+        const int ROWTILE = 4;
         const dim3 softBlock(32*ROWTILE);
         const dim3 softGrid(4096/ROWTILE, head_num, batch_size);
         SPARSE_SOFTMAX_FP16<4096, 4096, 4096, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens);
