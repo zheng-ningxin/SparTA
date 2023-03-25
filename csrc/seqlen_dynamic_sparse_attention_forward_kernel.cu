@@ -493,7 +493,7 @@ __global__ void SPARSE_SOFTMAX(
     C_val += M * N * head_idx;
     // half2 regC = {0, 0};
     half regSum = 0;
-    half regMax = -1000
+    half regMax = -1000;
     half tmp[2];
     int COL_START = bn * 8;
     int COL_STRIDE = 32 * 8; 
@@ -508,9 +508,9 @@ __global__ void SPARSE_SOFTMAX(
         #pragma unroll
         for(int pos=bn; pos*2 < cur_seq_len; pos += 32){
             FETCH_HALF2(tmp) = FETCH_HALF2(Cs[bm][pos*2]);
-            regMax = max(regMax, tmp[0]);
+            regMax = __hmax(regMax, tmp[0]);
             if(pos*2+1< cur_seq_len){
-                regMax=max(regMax, tmp[1]);
+                regMax=__hmax(regMax, tmp[1]);
             }
         }
         for (int offset = 16; offset > 0; offset /= 2) {
