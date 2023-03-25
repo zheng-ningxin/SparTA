@@ -927,9 +927,9 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         const int BLOCK_SIZE_K = 64;
         const int BLOCK_SIZE_N = 32;
         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const dim3 dimBlock(32*N_WARP);
         const dim3 dimGrid(block_nnz, head_num, batch_size);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
         const int ROWTILE = 8;
         const dim3 softBlock(32*ROWTILE);
@@ -949,11 +949,10 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         const int BLOCK_SIZE_K = 64;
         const int BLOCK_SIZE_N = 32;
         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const dim3 dimBlock(32*N_WARP);
         const dim3 dimGrid(block_nnz, head_num, batch_size);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         BLOCK_SPARSE_MATMUL_OUT_FP16<256, 64, 256, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const int ROWTILE = 8;
         const dim3 softBlock(32*ROWTILE);
         const dim3 softGrid(256/ROWTILE, head_num, batch_size);
@@ -972,9 +971,9 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         const int BLOCK_SIZE_K = 64;
         const int BLOCK_SIZE_N = 32;
         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const dim3 dimBlock(32*N_WARP);
         const dim3 dimGrid(block_nnz, head_num, batch_size);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
         const int ROWTILE = 8;
         const dim3 softBlock(32*ROWTILE);
@@ -994,9 +993,9 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         const int BLOCK_SIZE_K = 64;
         const int BLOCK_SIZE_N = 32;
         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const dim3 dimBlock(32*N_WARP);
         const dim3 dimGrid(block_nnz, head_num, batch_size);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         BLOCK_SPARSE_MATMUL_OUT_FP16<1024, 64, 1024, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
         const int ROWTILE = 8;
         const dim3 softBlock(32*ROWTILE);
@@ -1017,9 +1016,9 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         const int BLOCK_SIZE_K = 64;
         const int BLOCK_SIZE_N = 32;
         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const dim3 dimBlock(32*N_WARP);
         const dim3 dimGrid(block_nnz, head_num, batch_size);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
         const int ROWTILE = 4;
         const dim3 softBlock(32*ROWTILE);
