@@ -652,7 +652,7 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_FP16(
     int head_idx = blockIdx.y + gridDim.y * blockIdx.z;
     A += GLOBAL_K * GLOBAL_M * head_idx;
     B += GLOBAL_K * GLOBAL_N * head_idx;
-    C_val += GLOBAL_M * GLOBAL_N * head_idx;
+    C += GLOBAL_M * GLOBAL_N * head_idx;
     uint cur_seq_len = seqlens[batch_idx];
     int tid = threadIdx.x;
     int wid = tid >> 5; // warp id
@@ -709,7 +709,7 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_FP16(
             FETCH_FLOAT4(Bs[k][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq * BLOCK_SIZE_K + k) * N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
         }
         #pragma unroll
-        for(int k_seq=1; k_seq<(cur_seq_len + BLOCK_SIZE_K-1) / BLOCK_SIZE_K;; k_seq++){
+        for(int k_seq=1; k_seq<(cur_seq_len + BLOCK_SIZE_K-1) / BLOCK_SIZE_K; k_seq++){
             int smem_select = (k_seq & 1) ^ 1;
             int smem_next = smem_select ^ 1;
             #pragma unroll
