@@ -443,6 +443,25 @@ void seqlen_dynamic_forward_function(float* activation, float* weight,
     
 }
 
+void seqlen_dynamic_forward_function(c10::Half* activation, c10::Half* weight,
+                    c10::Half * bias, int * seqlens, int M, int K, int N, int batchsize, c10::Half*output)
+{    
+        // dense x dense^T -> sparse output
+    const int BLOCK_SIZE_M = 32;
+    const int BLOCK_SIZE_K = 64;
+    const int BLOCK_SIZE_N = 32;
+    
+    dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
+    dim3 blockDim(256);
+    // printf("gridDim: %d %d %d")
+    // BLOCK_SPARSE_MATMUL_BIAS_OPENAI<<<gridDim, blockDim>>>(activation, weight, bias, seqlens, M,K,N, batchsize, output);
+    
+}
+
+void seqlen_dynamic_forward_function(double* activation, double* weight,
+                    double * bias, int * seqlens, int M, int K, int N, int batchsize, double*output)
+{    
+}
 
 at::Tensor seqlen_dynamic_sparse_linear_forward(
     torch::Tensor activation,
@@ -461,16 +480,24 @@ at::Tensor seqlen_dynamic_sparse_linear_forward(
     int N = out_hidden;
     // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
     torch::Tensor output = torch::empty({batch_size, max_seq_len, out_hidden}, activation.options());
-    
-    AT_DISPATCH_FLOATING_TYPES(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
                             {       seqlen_dynamic_forward_function(
-                                    activation.data_ptr<float>(),
-                                    weight.data_ptr<float>(),
-                                    bias.data_ptr<float>(),
+                                    activation.data_ptr<scalar_t>(),
+                                    weight.data_ptr<scalar_t>(),
+                                    bias.data_ptr<scalar_t>(),
                                     seqlens.data_ptr<int>(),
                                     M, K, N, batch_size,
-                                    output.data_ptr<float>()
+                                    output.data_ptr<scalar_t>()
                                 ); }));
+    // AT_DISPATCH_FLOATING_TYPES(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
+    //                         {       seqlen_dynamic_forward_function(
+    //                                 activation.data_ptr<float>(),
+    //                                 weight.data_ptr<float>(),
+    //                                 bias.data_ptr<float>(),
+    //                                 seqlens.data_ptr<int>(),
+    //                                 M, K, N, batch_size,
+    //                                 output.data_ptr<float>()
+    //                             ); }));
     return output;
 }
 
