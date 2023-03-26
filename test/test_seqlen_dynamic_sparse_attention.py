@@ -100,7 +100,7 @@ def debug_reference_forward(Q, K, V, attention_mask):
     attn[nan_pos] = 0.0
     # return attn
     ref_out = torch.einsum('b h m n, b h n k -> b h m k', attn, V)
-    return attn
+    return ref_out
 
 def test_correctness(sparse_attention, seq_len_pattern, HEAD_NUM, max_seq_len, hidden_n, device, dtype):
     q, k, v = torch.randn(batch_size, HEAD_NUM, max_seq_len, hidden_n, dtype=dtype, device=device), torch.randn(batch_size, HEAD_NUM, max_seq_len,
