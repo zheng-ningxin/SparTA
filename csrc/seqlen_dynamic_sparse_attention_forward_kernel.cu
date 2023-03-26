@@ -755,7 +755,7 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_FP16(
             __syncthreads();
 
         }
-        int smem_select = ((K/BLOCK_SIZE_K) & 1) ^ 1;
+        int smem_select = (((cur_seq_len + BLOCK_SIZE_K-1) / BLOCK_SIZE_K) & 1) ^ 1;
         #pragma unroll
         for(int k_step=0; k_step<BLOCK_SIZE_K/16; k_step++){
             #pragma unroll
