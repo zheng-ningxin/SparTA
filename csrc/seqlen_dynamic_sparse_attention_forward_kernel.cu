@@ -722,7 +722,7 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_FP16(
             }
             #pragma unroll
             for(int k=B_BLOCK_ROW_START; k<BLOCK_SIZE_K; k+=B_TILE_ROW_STRIDE){
-                int load_b_s_addr = Bs_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_N, B_BLOCK_COL_START, LD_BS);
+                int load_b_s_addr = Bs_base_addr + sizeof(half) * OFFSET(k + smem_next * BLOCK_SIZE_K, B_BLOCK_COL_START, LD_BS);
                 asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
                     : "r"(load_b_s_addr), "l"(&B[(k_seq * BLOCK_SIZE_K + k) * N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]));
                 
