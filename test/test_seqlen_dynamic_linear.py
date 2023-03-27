@@ -13,8 +13,8 @@ def random_seqlen(batchsize, max_seqlen):
     return seqlens
 
 
-def test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n):
-    activation = torch.rand(batch_size, max_seqlen, hidden_n)
+def test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n, dtype):
+    activation = torch.rand(batch_size, max_seqlen, hidden_n, dtype=dtype)
     a1 = activation.clone().detach().cuda()
     a2 = activation.clone().detach().cuda()
     o1 = spl(a1)
@@ -52,13 +52,14 @@ if __name__ == '__main__':
     batch_size = 8
     max_seqlen = 128
     hidden_n = 768
+    test_type = torch.float16
     seqlens = random_seqlen(batch_size, max_seqlen).cuda()
 
-    ori_linear = torch.nn.Linear(hidden_n, hidden_n, bias=True).cuda()
+    ori_linear = torch.nn.Linear(hidden_n, hidden_n, bias=True).cuda().to(test_type)
     spl = SeqlenDynamicSparseLinear(ori_linear, True)
     SeqlenDynamicSparseLinear.set_global_seqlens(seqlens)
     print(seqlens)
-    sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n)
-    dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n)
-    test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n)
+    # sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n)
+    # dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n)
+    test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n, dtype=test_type)
 
