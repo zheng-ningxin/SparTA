@@ -25,8 +25,8 @@ def test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n, dtype):
         assert torch.allclose(o1[bid][:cur_seq_len], o2[bid][:cur_seq_len], rtol=1e-02, atol=1e-02)
     print('correctness passed')
 
-def sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n, dtpye):
-    activation = torch.rand(batch_size, max_seqlen, hidden_n, dtpye=dtpye).cuda()
+def sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n, dtype):
+    activation = torch.rand(batch_size, max_seqlen, hidden_n, dtype=dtype).cuda()
     runtimes = 1000
     torch.cuda.synchronize()
     st = time.time()
