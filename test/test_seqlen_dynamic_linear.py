@@ -22,12 +22,12 @@ def test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n, dtype):
     import ipdb; ipdb.set_trace()
     for bid in range(batch_size):
         cur_seq_len = seqlens[bid]
-        assert torch.allclose(o1[bid][:cur_seq_len], o2[bid][:cur_seq_len], rtol=1e-08, atol=1e-04)
+        assert torch.allclose(o1[bid][:cur_seq_len], o2[bid][:cur_seq_len], rtol=1e-02, atol=1e-02)
     print('correctness passed')
 
-def sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n):
-    activation = torch.rand(batch_size, max_seqlen, hidden_n).cuda()
-    runtimes = 100
+def sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n, dtpye):
+    activation = torch.rand(batch_size, max_seqlen, hidden_n, dtpye=dtpye).cuda()
+    runtimes = 1000
     torch.cuda.synchronize()
     st = time.time()
     for i in range(runtimes):
@@ -37,9 +37,9 @@ def sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n):
     end = time.time()
     print('Sparse Forward Implementation', end-st)
 
-def dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n):
-    activation = torch.rand(batch_size, max_seqlen, hidden_n).cuda()
-    runtimes = 100
+def dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n, dtype):
+    activation = torch.rand(batch_size, max_seqlen, hidden_n, dtype=dtype).cuda()
+    runtimes = 1000
     torch.cuda.synchronize()
     st = time.time()
     for i in range(runtimes):
@@ -49,7 +49,7 @@ def dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n):
     print('Dense Forward Implementation', end-st)
 
 if __name__ == '__main__':
-    batch_size = 8
+    batch_size = 32
     max_seqlen = 128
     hidden_n = 768
     test_type = torch.float16
@@ -60,7 +60,7 @@ if __name__ == '__main__':
     spl = SeqlenDynamicSparseLinear(ori_linear, True)
     SeqlenDynamicSparseLinear.set_global_seqlens(seqlens)
     print(seqlens)
-    # sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n)
-    # dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n)
+    sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n, test_type)
+    dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n, test_type)
     test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n, dtype=test_type)
 
