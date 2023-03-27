@@ -8,6 +8,11 @@ at::Tensor seqlen_dynamic_sparse_linear_forward(
     torch::Tensor bias,
     torch::Tensor seqlens
 );
+at::Tensor seqlen_dynamic_sparse_linear_forward(
+    torch::Tensor activation,
+    torch::Tensor weight,
+    torch::Tensor seqlens
+);
 
 std::vector<at::Tensor> seqlen_dynamic_sparse_linear_backward(
     torch::Tensor activation,
