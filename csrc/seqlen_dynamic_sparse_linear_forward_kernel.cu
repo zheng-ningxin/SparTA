@@ -609,7 +609,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OPENAI(
                 c2[i] = _add(c2[i], c2[i+j]);
 
         //-> store((bhalf2*)C, c2[0]);
-        *(float2*)C_val = c2[0];
+        *(float2*)output = c2[0];
         // *(float2*)output = _add(c2[0], *(float2*)(bias_share+tx*2));
         // if(threadIdx.x==0 && blockIdx.z==1 && by==0 && bx==0){
         //     printf("output value: %f\n", *output);
@@ -631,7 +631,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OPENAI(
                 c2[i] = _add(c2[i], c2[i+j]);
 
         output += 16 * N;
-        *(float2*)C_val = c2[0];
+        *(float2*)output = c2[0];
         // *(float2*)output = _add(c2[0], *(float2*)(bias_share+tx*2));
 
     }
