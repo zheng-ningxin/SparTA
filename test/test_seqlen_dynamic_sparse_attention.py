@@ -190,7 +190,7 @@ if __name__ == '__main__':
 
     spa = SeqlenDynamicSparseAttention(True)
     SeqlenDynamicSparseAttention.set_global_seqlens(seqlens)
-    # test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
-    # dense_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
+    test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
+    dense_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
     test_correctness(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, dtype=test_type)
     # test_triton(seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
