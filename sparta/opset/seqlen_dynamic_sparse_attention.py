@@ -128,7 +128,7 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
         """
         Calculate the reference result the sparse attention to test the correctness.
         """
-        add_mask = torch.zeros(attention_mask.size()).to(Q.device)
+        add_mask = torch.zeros(attention_mask.size(), dtype=Q.dtype).to(Q.device)
         add_mask[attention_mask == 0] = float(-inf)
         dots = torch.einsum('b h m k, b h n k -> b h m n', Q, K)
         added = torch.add(dots, add_mask)
