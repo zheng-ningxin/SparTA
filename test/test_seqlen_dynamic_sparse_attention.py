@@ -24,14 +24,14 @@ def random_sparse_pattern_v2(seq_len, sparsity):
     pattern[:512, 0] = 1
     return pattern
 
-def test_speed(sparse_attention, sparse_pattern, head_num, seq_len, hidden_n, device):
+def test_speed(sparse_attention, sparse_pattern, head_num, seq_len, hidden_n, device, dtype):
     # warmup
     q = torch.rand(batch_size, head_num, seq_len, hidden_n,
-                   dtype=torch.float32, device=device)
+                   dtype=dtype, device=device)
     k = torch.rand(batch_size, head_num, seq_len, hidden_n,
-                   dtype=torch.float32, device=device)
+                   dtype=dtype, device=device)
     v = torch.rand(batch_size, head_num, seq_len, hidden_n,
-                   dtype=torch.float32, device=device)
+                   dtype=dtype, device=device)
     # import ipdb; ipdb.set_trace()
 
     out = sparse_attention(q, k, v)
@@ -41,12 +41,12 @@ def test_speed(sparse_attention, sparse_pattern, head_num, seq_len, hidden_n, de
     st = time.time()
     for _ in range(1000):
         sparse_attention.set_global_seqlens(sparse_pattern)
-        q = torch.rand(batch_size, head_num, seq_len, hidden_n,
-                       dtype=torch.float32, device=device)
-        k = torch.rand(batch_size, head_num, seq_len, hidden_n,
-                       dtype=torch.float32, device=device)
-        v = torch.rand(batch_size, head_num, seq_len, hidden_n,
-                       dtype=torch.float32, device=device)
+        # q = torch.rand(batch_size, head_num, seq_len, hidden_n,
+        #                dtype=torch.float32, device=device)
+        # k = torch.rand(batch_size, head_num, seq_len, hidden_n,
+        #                dtype=torch.float32, device=device)
+        # v = torch.rand(batch_size, head_num, seq_len, hidden_n,
+        #                dtype=torch.float32, device=device)
         sparse_attention(q, k, v)
     torch.cuda.synchronize()
     end = time.time()
@@ -62,27 +62,27 @@ def convert_to_attention_mask(seq_lens, max_seq_len):
     return attention_mask
 
 
-def dense_speed(sparse_attention, seq_len_pattern, head_num, max_seq_len, hidden_n, device):
+def dense_speed(sparse_attention, seq_len_pattern, head_num, max_seq_len, hidden_n, device, dtype):
     # warmup
     attention_mask = convert_to_attention_mask(seq_len_pattern, max_seq_len).to(device)
     q = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
-                   dtype=torch.float32, device=device)
+                   dtype=dtype, device=device)
     k = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
-                   dtype=torch.float32, device=device)
+                   dtype=dtype, device=device)
     v = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
-                   dtype=torch.float32, device=device)
+                   dtype=dtype, device=device)
     out = sparse_attention.reference_forward(q, k, v, attention_mask)
     out_grad = torch.rand_like(out)
 
     torch.cuda.synchronize()
     st = time.time()
     for _ in range(1000):
-        q = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
-                       dtype=torch.float32, device=device)
-        k = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
-                       dtype=torch.float32, device=device)
-        v = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
-                       dtype=torch.float32, device=device)
+        # q = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
+        #                dtype=torch.float32, device=device)
+        # k = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
+        #                dtype=torch.float32, device=device)
+        # v = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
+        #                dtype=torch.float32, device=device)
         out = sparse_attention.reference_forward(q, k, v, attention_mask)
     torch.cuda.synchronize()
     end = time.time()
@@ -179,8 +179,8 @@ def test_triton(seqlens, head_num, seq_len, hidden_n, device):
 
     print('Triton Forward Implementation', end-st)
 if __name__ == '__main__':
-    batch_size = 20
-    max_seq_len = 256
+    batch_size = 32
+    max_seq_len = 128
     HEAD_NUM = 12
     hidden_n = 64
     test_type = torch.float16
