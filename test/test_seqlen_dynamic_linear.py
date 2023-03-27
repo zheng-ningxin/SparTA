@@ -56,6 +56,7 @@ if __name__ == '__main__':
     seqlens = random_seqlen(batch_size, max_seqlen).cuda()
 
     ori_linear = torch.nn.Linear(hidden_n, hidden_n, bias=True).cuda().to(test_type)
+    ori_linear.bias.data[:] = 0
     spl = SeqlenDynamicSparseLinear(ori_linear, True)
     SeqlenDynamicSparseLinear.set_global_seqlens(seqlens)
     print(seqlens)
