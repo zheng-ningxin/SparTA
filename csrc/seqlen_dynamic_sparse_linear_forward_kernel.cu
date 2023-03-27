@@ -931,7 +931,7 @@ at::Tensor seqlen_dynamic_sparse_linear_forward_2(
     int K = in_hidden;
     int N = out_hidden;
     // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
-    torch::Tensor output = torch::empty({batch_size, max_seq_len, out_hidden}, activation.options());
+    torch::Tensor output = torch::zeros({batch_size, max_seq_len, out_hidden}, activation.options());
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
                             {       seqlen_dynamic_forward_function(
                                     activation.data_ptr<scalar_t>(),
@@ -961,7 +961,7 @@ at::Tensor seqlen_dynamic_sparse_linear_forward(
     int K = in_hidden;
     int N = out_hidden;
     // Q, K, V should have the same shape which is {batchsize, seq_length, hidden_dim}
-    torch::Tensor output = torch::empty({batch_size, max_seq_len, out_hidden}, activation.options());
+    torch::Tensor output = torch::zeros({batch_size, max_seq_len, out_hidden}, activation.options());
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(activation.type(), "seqlen_dynamic_sparse_linear", ([&]
                             {       seqlen_dynamic_forward_function(
                                     activation.data_ptr<scalar_t>(),
