@@ -19,7 +19,7 @@ def test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n, dtype):
     a2 = activation.clone().detach().cuda()
     o1 = spl(a1)
     o2 = spl.reference_forward(a2)
-    # import ipdb; ipdb.set_trace()
+    import ipdb; ipdb.set_trace()
     for bid in range(batch_size):
         cur_seq_len = seqlens[bid]
         assert torch.allclose(o1[bid][:cur_seq_len], o2[bid][:cur_seq_len], rtol=1e-08, atol=1e-04)
