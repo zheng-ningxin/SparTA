@@ -917,7 +917,7 @@ void seqlen_dynamic_forward_function(double* activation, double* weight,
 {    
 }
 
-at::Tensor seqlen_dynamic_sparse_linear_forward(
+at::Tensor seqlen_dynamic_sparse_linear_forward_2(
     torch::Tensor activation,
     torch::Tensor weight,
     torch::Tensor seqlens

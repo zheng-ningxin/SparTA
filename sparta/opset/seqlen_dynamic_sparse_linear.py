@@ -37,7 +37,7 @@ class SeqlenDynamicSparseLinearFunction(torch.autograd.Function):
                 seqlens
             )
         else:
-            return seqlen_dynamic_sparse_linear_cpp.forward(
+            return seqlen_dynamic_sparse_linear_cpp.forward2(
                 activation,
                 weight,
                 seqlens
