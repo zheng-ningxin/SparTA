@@ -2,12 +2,16 @@
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
 #include <torch/extension.h>
-using namespace std;
 // Macro definition for the cuda and cusparse
 
 #include <assert.h>
 // CUDA runtime
 #include <cuda.h>
+#include <cuda_fp16.h>
+#include <mma.h>
+#include <cuda_runtime.h>
+using namespace std;
+using namespace nvcuda;
 #define OFFSET(row, col, ld) ((row) * ld + col)
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4*>(&pointer))[0]
 #define FETCH_UINT32(pointer) (reinterpret_cast<unsigned int*>(&(pointer))[0])
