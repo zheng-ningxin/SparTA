@@ -105,7 +105,8 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
     half* __restrict__ A,
     half* __restrict__ B,
     half* __restrict__ C_val,
-    int * seqlens
+    int * seqlens,
+    bool triangle
 )
 {
     const int M = GLOBAL_M;
@@ -143,6 +144,10 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
     const int LD_AS = BLOCK_SIZE_K + APAD;
     const int LD_BS = BLOCK_SIZE_K + BPAD;
     const int LD_CS = BLOCK_SIZE_N + CPAD;
+    if(triangle && by<bx){
+        // only compute the left triangle of the attention region
+        return;
+    }
     if (bx * BLOCK_SIZE_N < cur_seq_len && by * BLOCK_SIZE_M < cur_seq_len){
         // perform the computation
         const int A_THREAD_PER_ROW = BLOCK_SIZE_K / 8; // 1 float4 = 8 half
@@ -476,7 +481,8 @@ template<
 >
 __global__ void SPARSE_SOFTMAX_FP16(
     half* C_val,
-    int* seqlens
+    int* seqlens,
+    bool triangle
 ){
     const int M = GLOBAL_M;
     const int N = GLOBAL_N;
@@ -496,20 +502,24 @@ __global__ void SPARSE_SOFTMAX_FP16(
     half regMax = -1000;
     half tmp[2];
     int COL_START = bn * 8;
-    int COL_STRIDE = 32 * 8; 
+    int COL_STRIDE = 32 * 8;
+    int line_end = cur_seq_len;
+    if(triangle){
+        line_end = min(line_end, row_idx + bm);
+    }
     if(row_idx + bm < cur_seq_len){
         // need to perform the softmax
         #pragma unroll
-        for(int pos=COL_START; pos<cur_seq_len; pos+=COL_STRIDE){
+        for(int pos=COL_START; pos<line_end; pos+=COL_STRIDE){
             FETCH_FLOAT4(Cs[bm][pos]) = FETCH_FLOAT4(C_val[OFFSET(row_idx + bm, pos, N)]);
         }
         __syncthreads();
         // scan once for the max value
         #pragma unroll
-        for(int pos=bn; pos*2 < cur_seq_len; pos += 32){
+        for(int pos=bn; pos*2 < line_end; pos += 32){
             FETCH_HALF2(tmp) = FETCH_HALF2(Cs[bm][pos*2]);
             regMax = __hmax(regMax, tmp[0]);
-            if(pos*2+1< cur_seq_len){
+            if(pos*2+1< line_end){
                 regMax=__hmax(regMax, tmp[1]);
             }
         }
@@ -518,10 +528,10 @@ __global__ void SPARSE_SOFTMAX_FP16(
         }
         regMax = __shfl_sync(FULL_MASK, regMax, 0);
         #pragma unroll
-        for(int pos=bn; pos * 2 < cur_seq_len; pos += 32){
+        for(int pos=bn; pos * 2 < line_end; pos += 32){
             half2 tmp = FETCH_HALF2(Cs[bm][pos*2]);
             regSum += hexp(tmp.x-regMax);
-            if(pos*2+1< cur_seq_len){
+            if(pos*2+1< line_end){
                 regSum+=hexp(tmp.y-regMax);
             }
         }
@@ -531,7 +541,7 @@ __global__ void SPARSE_SOFTMAX_FP16(
         regSum = __shfl_sync(FULL_MASK, regSum, 0);
         for (int index = bn; index < tmp_seq_len; index+=32) {
             int pos = (row_idx+bm) * N + index;
-            if(index<cur_seq_len){
+            if(index<line_end){
                 C_val[pos] = hexp(C_val[pos]-regMax) / regSum;
             }else{
                 C_val[pos] = 0;
@@ -631,7 +641,8 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_FP16(
     half* __restrict__ B,
     half* __restrict__ C,
     int * seqlens,
-    int HEAD_NUM
+    int HEAD_NUM,
+    bool triangle
 )
 {
     const int M = GLOBAL_M;
@@ -670,6 +681,10 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_FP16(
     const int LD_AS = BLOCK_SIZE_K + APAD;
     const int LD_BS = BLOCK_SIZE_N + BPAD;
     const int LD_CS = BLOCK_SIZE_N + CPAD;
+    int line_end = cur_seq_len;
+    if(triangle){
+        line_end = min(cur_seq_len, by * BLOCK_SIZE_M);
+    }
     if (by * BLOCK_SIZE_M < cur_seq_len){
         // perform the computation
         const int A_THREAD_PER_ROW = BLOCK_SIZE_K / 8; // 1 float4 = 8 half
@@ -711,7 +726,7 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_FP16(
             FETCH_FLOAT4(Bs[k][B_BLOCK_COL_START]) = FETCH_FLOAT4(B[(k_seq * BLOCK_SIZE_K + k) * N + bx * BLOCK_SIZE_N + B_BLOCK_COL_START]);
         }
         #pragma unroll
-        for(int k_seq=1; k_seq<(cur_seq_len + BLOCK_SIZE_K-1) / BLOCK_SIZE_K; k_seq++){
+        for(int k_seq=1; k_seq<(line_end + BLOCK_SIZE_K-1) / BLOCK_SIZE_K; k_seq++){
             int smem_select = (k_seq & 1) ^ 1;
             int smem_next = smem_select ^ 1;
             #pragma unroll
@@ -755,7 +770,7 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD_FP16(
             __syncthreads();
 
         }
-        int smem_select = (((cur_seq_len + BLOCK_SIZE_K-1) / BLOCK_SIZE_K) & 1) ^ 1;
+        int smem_select = (((line_end + BLOCK_SIZE_K-1) / BLOCK_SIZE_K) & 1) ^ 1;
         #pragma unroll
         for(int k_step=0; k_step<BLOCK_SIZE_K/16; k_step++){
             #pragma unroll
@@ -919,7 +934,7 @@ __global__ void BLOCK_SPARSE_MATMUL_SDD(float* A, float * B, float* C, int* seql
 
 void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
                     c10::Half * inter_result, int * seqlens,
-                    int batch_size, int head_num, int max_seq_length, int hidden_dim, c10::Half* output)
+                    int batch_size, int head_num, int max_seq_length, int hidden_dim, c10::Half* output, bool triangle=false)
 {
     CUDA_SAFE_CALL(cudaMemset(inter_result, 0, sizeof(half) * max_seq_length * max_seq_length * batch_size * head_num));
     if(max_seq_length==128 && hidden_dim==64){
@@ -930,18 +945,18 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const dim3 dimBlock(32*N_WARP);
         const dim3 dimGrid(block_nnz, head_num, batch_size);
-        BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
         const int ROWTILE = 8;
         const dim3 softBlock(32*ROWTILE);
         const dim3 softGrid(128/ROWTILE, head_num, batch_size);
-        SPARSE_SOFTMAX_FP16<128, 128, 128, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens);
+        SPARSE_SOFTMAX_FP16<128, 128, 128, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
         const int BLOCK_SIZE_M_2 = 32;
         const int BLOCK_SIZE_K_2 = 32;
         const int BLOCK_SIZE_N_2 = 64;
         const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
         const dim3 dimBlock_2(32*N_WARP_2);
         const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
-        BLOCK_SPARSE_MATMUL_SDD_FP16<128, 128, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num);
+        BLOCK_SPARSE_MATMUL_SDD_FP16<128, 128, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
     
     
     }else if(max_seq_length==256 && hidden_dim==64){
@@ -952,18 +967,18 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const dim3 dimBlock(32*N_WARP);
         const dim3 dimGrid(block_nnz, head_num, batch_size);
-        BLOCK_SPARSE_MATMUL_OUT_FP16<256, 64, 256, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<256, 64, 256, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
         const int ROWTILE = 8;
         const dim3 softBlock(32*ROWTILE);
         const dim3 softGrid(256/ROWTILE, head_num, batch_size);
-        SPARSE_SOFTMAX_FP16<256, 256, 256, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens);
+        SPARSE_SOFTMAX_FP16<256, 256, 256, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
         const int BLOCK_SIZE_M_2 = 32;
         const int BLOCK_SIZE_K_2 = 32;
         const int BLOCK_SIZE_N_2 = 64;
         const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
         const dim3 dimBlock_2(32*N_WARP_2);
         const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
-        BLOCK_SPARSE_MATMUL_SDD_FP16<256, 256, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num);
+        BLOCK_SPARSE_MATMUL_SDD_FP16<256, 256, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
 
 
     }else if(max_seq_length==512 && hidden_dim==64){
@@ -974,18 +989,18 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const dim3 dimBlock(32*N_WARP);
         const dim3 dimGrid(block_nnz, head_num, batch_size);
-        BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
         const int ROWTILE = 8;
         const dim3 softBlock(32*ROWTILE);
         const dim3 softGrid(512/ROWTILE, head_num, batch_size);
-        SPARSE_SOFTMAX_FP16<512, 512, 512, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens);
+        SPARSE_SOFTMAX_FP16<512, 512, 512, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
         const int BLOCK_SIZE_M_2 = 32;
         const int BLOCK_SIZE_K_2 = 32;
         const int BLOCK_SIZE_N_2 = 64;
         const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
         const dim3 dimBlock_2(32*N_WARP_2);
         const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
-        BLOCK_SPARSE_MATMUL_SDD_FP16<512, 512, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num);
+        BLOCK_SPARSE_MATMUL_SDD_FP16<512, 512, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
 
     
     }else if(max_seq_length==1024 && hidden_dim==64){
@@ -996,18 +1011,18 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const dim3 dimBlock(32*N_WARP);
         const dim3 dimGrid(block_nnz, head_num, batch_size);
-        BLOCK_SPARSE_MATMUL_OUT_FP16<1024, 64, 1024, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<1024, 64, 1024, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
         const int ROWTILE = 8;
         const dim3 softBlock(32*ROWTILE);
         const dim3 softGrid(1024/ROWTILE, head_num, batch_size);
-        SPARSE_SOFTMAX_FP16<1024, 1024, 1024, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens);
+        SPARSE_SOFTMAX_FP16<1024, 1024, 1024, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
         const int BLOCK_SIZE_M_2 = 32;
         const int BLOCK_SIZE_K_2 = 32;
         const int BLOCK_SIZE_N_2 = 64;
         const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
         const dim3 dimBlock_2(32*N_WARP_2);
         const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
-        BLOCK_SPARSE_MATMUL_SDD_FP16<1024, 1024, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num);
+        BLOCK_SPARSE_MATMUL_SDD_FP16<1024, 1024, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
 
 
 
@@ -1019,18 +1034,18 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
         const dim3 dimBlock(32*N_WARP);
         const dim3 dimGrid(block_nnz, head_num, batch_size);
-        BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens);
+        BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
         const int ROWTILE = 4;
         const dim3 softBlock(32*ROWTILE);
         const dim3 softGrid(4096/ROWTILE, head_num, batch_size);
-        SPARSE_SOFTMAX_FP16<4096, 4096, 4096, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens);
+        SPARSE_SOFTMAX_FP16<4096, 4096, 4096, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
         const int BLOCK_SIZE_M_2 = 32;
         const int BLOCK_SIZE_K_2 = 32;
         const int BLOCK_SIZE_N_2 = 64;
         const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
         const dim3 dimBlock_2(32*N_WARP_2);
         const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
-        BLOCK_SPARSE_MATMUL_SDD_FP16<4096, 4096, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num);
+        BLOCK_SPARSE_MATMUL_SDD_FP16<4096, 4096, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
 
     
     }else{
@@ -1041,14 +1056,14 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
 }
 void seqlen_dynamic_forward_function(double* Q, double* K, double* V,
                     double * inter_result, int * seqlens,
-                    int batch_size, int head_num, int max_seq_length, int hidden_dim, double* output)
+                    int batch_size, int head_num, int max_seq_length, int hidden_dim, double* output, bool triangle=false)
 {
 
 }
 
 void seqlen_dynamic_forward_function(float* Q, float* K, float* V,
                     float * inter_result, int * seqlens,
-                    int batch_size, int head_num, int max_seq_length, int hidden_dim, float* output)
+                    int batch_size, int head_num, int max_seq_length, int hidden_dim, float* output, bool triangle=false)
 {
     int block_nnz = max_seq_length * max_seq_length / 32 / 32;
     CUDA_SAFE_CALL(cudaMemset(inter_result, 0, sizeof(float) * max_seq_length * max_seq_length * batch_size * head_num));
@@ -1110,7 +1125,8 @@ at::Tensor seqlen_dynamic_sparse_attention_forward(
     torch::Tensor V,
     torch::Tensor inter_result,
     torch::Tensor seqlens,
-    int head_num
+    int head_num,
+    bool triangle=false
 )
 {
     cudaSetDevice(Q.get_device());
@@ -1132,7 +1148,8 @@ at::Tensor seqlen_dynamic_sparse_attention_forward(
                                     head_num,
                                     max_seq_length,
                                     hidden_dim,
-                                    output.data_ptr<scalar_t>()
+                                    output.data_ptr<scalar_t>(),
+                                    triangle
                                 ); }));
 
     // AT_DISPATCH_FLOATING_TYPES(Q.type(), "seqlen_dynamic_sparse_attention", ([&]

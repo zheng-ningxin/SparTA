@@ -8,7 +8,8 @@ at::Tensor seqlen_dynamic_sparse_attention_forward(
     torch::Tensor V,
     torch::Tensor inter_result,
     torch::Tensor seqlens,
-    int head_num
+    int head_num,
+    bool triangle=false
 );
 std::vector<at::Tensor> seqlen_dynamic_sparse_attention_backward(
     torch::Tensor grad,
