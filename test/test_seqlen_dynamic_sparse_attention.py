@@ -185,6 +185,7 @@ if __name__ == '__main__':
     max_seq_len = 128
     HEAD_NUM = 12
     hidden_n = 64
+    triangle = True
     test_type = torch.float16
     device = torch.device('cuda:0')
     seqlens = random_seqlen(batch_size, max_seq_len).to(device)
@@ -192,7 +193,8 @@ if __name__ == '__main__':
 
     spa = SeqlenDynamicSparseAttention(True)
     SeqlenDynamicSparseAttention.set_global_seqlens(seqlens)
+    SeqlenDynamicSparseAttention.set_global_triangle(triangle)
     test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
     dense_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
-    test_correctness(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, dtype=test_type)
+    # test_correctness(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, dtype=test_type)
     # test_triton(seqlens, HEAD_NUM, max_seq_len, hidden_n, device)

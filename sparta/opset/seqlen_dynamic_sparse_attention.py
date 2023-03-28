@@ -28,7 +28,8 @@ class SeqlenDynamicSparseAttentionFunction(torch.autograd.Function):
         V,
         inter_result,
         seqlens,
-        head_num
+        head_num,
+        triangle
     ):
         # ctx.save_for_backward(
         # )
@@ -39,7 +40,8 @@ class SeqlenDynamicSparseAttentionFunction(torch.autograd.Function):
             V,
             inter_result,
             seqlens,
-            head_num
+            head_num,
+            triangle
         )
 
     @staticmethod
@@ -56,7 +58,7 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
     # no need to convert the sparse pattern for each module. Set the global_mode
     # to be true when initialize the module
     global_seqlen = None
-
+    global_triangle = False
     @staticmethod
     def set_global_seqlens(seqlens):
         # seqlens is an one-dimension tensor with size of [Batchsize]
@@ -66,6 +68,10 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
         assert seqlens.is_cuda
         assert seqlens.dtype == torch.int32, "only support int32 type"
         SeqlenDynamicSparseAttention.global_seqlen = seqlens
+        
+    def set_global_triangle(triangle):
+        assert isinstance(triangle, bool)
+        SeqlenDynamicSparseAttention.global_triangle = triangle
         
 
     def __init__(self, global_mode=True):
@@ -85,7 +91,7 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
         # currently only support 32 x 64
         self.inter_result = None  # tensor to store the internal results
 
-    def forward(self, Q, K, V, seqlens=None):
+    def forward(self, Q, K, V, seqlens=None, triangle=False):
         """
         Q, K, V are the output tensors of the corresponding
         projection linear layers.
@@ -101,6 +107,7 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
             assert isinstance(seqlens, torch.Tensor)
             assert seqlens.size(0) == Q.size(0)
         else:
+            triangle = SeqlenDynamicSparseAttention.global_triangle
             seqlens = SeqlenDynamicSparseAttention.global_seqlen
         # need create val each time
         assert isinstance(Q, torch.Tensor)
@@ -120,7 +127,8 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
         result = SeqlenDynamicSparseAttentionFunction.apply(Q, K, V,
                                                       self.inter_result,
                                                       seqlens,
-                                                      head_num)
+                                                      head_num,
+                                                      triangle)
 
         return result
 
