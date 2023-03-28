@@ -65,13 +65,15 @@ def convert_to_attention_mask(seq_lens, max_seq_len):
 def dense_speed(sparse_attention, seq_len_pattern, head_num, max_seq_len, hidden_n, device, dtype):
     # warmup
     attention_mask = convert_to_attention_mask(seq_len_pattern, max_seq_len).to(device)
+    add_mask = torch.zeros(attention_mask.size(), dtype=dtype).to(device)
+    add_mask[attention_mask == 0] = float(-inf)
     q = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
                    dtype=dtype, device=device)
     k = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
                    dtype=dtype, device=device)
     v = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
                    dtype=dtype, device=device)
-    out = sparse_attention.reference_forward(q, k, v, attention_mask)
+    out = sparse_attention.reference_forward(q, k, v, add_mask)
     out_grad = torch.rand_like(out)
 
     torch.cuda.synchronize()
@@ -83,7 +85,7 @@ def dense_speed(sparse_attention, seq_len_pattern, head_num, max_seq_len, hidden
         #                dtype=torch.float32, device=device)
         # v = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
         #                dtype=torch.float32, device=device)
-        out = sparse_attention.reference_forward(q, k, v, attention_mask)
+        out = sparse_attention.reference_forward(q, k, v, add_mask)
     torch.cuda.synchronize()
     end = time.time()
     print('Dense Forward Implementation', end-st)
