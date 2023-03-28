@@ -39,7 +39,7 @@ def test_speed(sparse_attention, sparse_pattern, head_num, seq_len, hidden_n, de
 
     torch.cuda.synchronize()
     st = time.time()
-    for _ in range(1000):
+    for _ in range(10000):
         sparse_attention.set_global_seqlens(sparse_pattern)
         # q = torch.rand(batch_size, head_num, seq_len, hidden_n,
         #                dtype=torch.float32, device=device)
@@ -78,7 +78,7 @@ def dense_speed(sparse_attention, seq_len_pattern, head_num, max_seq_len, hidden
 
     torch.cuda.synchronize()
     st = time.time()
-    for _ in range(1000):
+    for _ in range(10000):
         # q = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
         #                dtype=torch.float32, device=device)
         # k = torch.rand(batch_size, head_num, max_seq_len, hidden_n,
@@ -195,7 +195,6 @@ if __name__ == '__main__':
 
     spa = SeqlenDynamicSparseAttention(True, triangle)
     SeqlenDynamicSparseAttention.set_global_seqlens(seqlens)
-    SeqlenDynamicSparseAttention.set_global_triangle(triangle)
     test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
     dense_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
     # test_correctness(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, dtype=test_type)
