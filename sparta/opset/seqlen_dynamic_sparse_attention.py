@@ -58,7 +58,6 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
     # no need to convert the sparse pattern for each module. Set the global_mode
     # to be true when initialize the module
     global_seqlen = None
-    global_triangle = False
     @staticmethod
     def set_global_seqlens(seqlens):
         # seqlens is an one-dimension tensor with size of [Batchsize]
@@ -68,13 +67,8 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
         assert seqlens.is_cuda
         assert seqlens.dtype == torch.int32, "only support int32 type"
         SeqlenDynamicSparseAttention.global_seqlen = seqlens
-        
-    def set_global_triangle(triangle):
-        assert isinstance(triangle, bool)
-        SeqlenDynamicSparseAttention.global_triangle = triangle
-        
 
-    def __init__(self, global_mode=True):
+    def __init__(self, global_mode=True, triangle=False):
         """
         Parameters
         ----------
@@ -90,8 +84,9 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
         self.global_mode = global_mode
         # currently only support 32 x 64
         self.inter_result = None  # tensor to store the internal results
+        self.triangle = triangle
 
-    def forward(self, Q, K, V, seqlens=None, triangle=False):
+    def forward(self, Q, K, V, seqlens=None):
         """
         Q, K, V are the output tensors of the corresponding
         projection linear layers.
@@ -107,7 +102,6 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
             assert isinstance(seqlens, torch.Tensor)
             assert seqlens.size(0) == Q.size(0)
         else:
-            triangle = SeqlenDynamicSparseAttention.global_triangle
             seqlens = SeqlenDynamicSparseAttention.global_seqlen
         # need create val each time
         assert isinstance(Q, torch.Tensor)
@@ -128,7 +122,7 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
                                                       self.inter_result,
                                                       seqlens,
                                                       head_num,
-                                                      triangle)
+                                                      self.triangle)
 
         return result
 

@@ -188,10 +188,12 @@ if __name__ == '__main__':
     triangle = True
     test_type = torch.float16
     device = torch.device('cuda:0')
+    
+    
     seqlens = random_seqlen(batch_size, max_seq_len).to(device)
     print('Sequence length:', seqlens)
 
-    spa = SeqlenDynamicSparseAttention(True)
+    spa = SeqlenDynamicSparseAttention(True, triangle)
     SeqlenDynamicSparseAttention.set_global_seqlens(seqlens)
     SeqlenDynamicSparseAttention.set_global_triangle(triangle)
     test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
