@@ -4,6 +4,7 @@ import copy
 import json
 from array import array
 from pickle import NONE
+from select import select
 from shutil import copy
 from sklearn.datasets import make_sparse_uncorrelated
 import torch
@@ -817,6 +818,62 @@ def generate_hipsparse_sparse_cfg(tesa_path, state_path, id_map_path, out_dir):
             f.write(f"{tesaid} HipSparse\n")
             continue
 
+def write_balance_constant_v32(dir_path, tesaid, name, state_dict, tesa, sparsity, align):
+    import random 
+    weight = state_dict['.'.join([name, 'weight'])].t()
+    bias = state_dict['.'.join([name, 'bias'])]
+    weight_tesa = tesa[tesaid]['weight'].t()
+    # bias_tesa = tesa[tesaid]['bias']
+    value = []
+    index = []
+
+    k, n = weight.size()
+    k_sparse = int(k * (1-sparsity))
+    vecNum = k
+    bank_val = 32
+    num_bank = vecNum//bank_val
+    tmp_index= list(range(vecNum//num_bank))
+    w = k_sparse
+
+    value = torch.rand(n, k_sparse) # random value
+    value = np.reshape(np.array(value), (n, k_sparse)).transpose().flatten().tolist()
+    index = torch.zeros(n*k_sparse, dtype=torch.int32)
+    t_index = torch.zeros(n*k_sparse, dtype=torch.int32)
+    """
+        for (int j=0; j<h; j += ALIGN_N){
+            for (int i=0; i<w; i+=w/NUM_BANK){
+                std::random_shuffle(tmp_index,tmp_index+vecNum/NUM_BANK);
+                std::sort(tmp_index, tmp_index+w/NUM_BANK);
+                for (int k=0; k<w/NUM_BANK; ++k){
+                    for(int j_in = 0; j_in < ALIGN_N; j_in += 1){
+                        mat_index[i + k + (j + j_in) * w] = tmp_index[k]+i/sparse; // tmp_index[k] + delta(vecNum/NUM_BANK)
+                        mat_index_for_gpu[(i + k)*h + (j + j_in)] = mat_index[i + k + (j + j_in) * w];
+                    }
+                }
+            }
+        }
+    """
+    for j in range(0, n, align):
+        for i in range(0, w, w//num_bank):
+            random.shuffle(tmp_index)
+            selected = tmp_index[:w//num_bank]
+            selected = sorted(selected)
+            for k in range(0, w//num_bank):
+                for j_in in range(0, align):
+                    index[i+k + (j+j_in)*w] = selected[k]+ int(i/(1-sparsity))
+                    t_index[(i+k)*n+j+j_in] = index[i+k+(j+j_in)*w]
+    index = np.array(index).tolist()
+    t_index = np.array(t_index).tolist()
+    # import ipdb; ipdb.set_trace()
+    value_path = os.path.join(dir_path, f"value_{tesaid}.bin")
+    index_path = os.path.join(dir_path, f"index_{tesaid}.bin")
+    bias_path = os.path.join(dir_path, f"bias_{tesaid}.bin")
+    write_array(value, value_path, "f")
+    write_array(t_index, index_path)
+    write_array(bias, bias_path, "f")
+
+    return value_path, index_path, bias_path
+
 def write_balance_constant(dir_path, tesaid, name, state_dict, tesa, sparsity):
     weight = state_dict['.'.join([name, 'weight'])].t()
     bias = state_dict['.'.join([name, 'bias'])]
@@ -847,26 +904,80 @@ def write_balance_constant(dir_path, tesaid, name, state_dict, tesa, sparsity):
     return value_path, index_path, bias_path
 
 def write_balance_constant_int8(dir_path, tesaid, name, state_dict, tesa, sparsity, align):
-    weight = state_dict['.'.join([name, 'weight'])]
-    bias = state_dict['.'.join([name, 'bias'])]
-    weight_tesa = tesa[tesaid]['weight']
-    # bias_tesa = tesa[tesaid]['bias']
+    # weight = state_dict['.'.join([name, 'weight'])]
+    # bias = state_dict['.'.join([name, 'bias'])]
+    # weight_tesa = tesa[tesaid]['weight']
+    # # bias_tesa = tesa[tesaid]['bias']
 
-    n, k = weight.size()
+    # n, k = weight.size()
+    # k_sparse = int(k * (1-sparsity))
+    # index_2d = torch.zeros(n, k_sparse, dtype=torch.int32)
+    # for i in range(n//align):
+    #     kid = 0
+    #     for j in range(k):
+    #         tmp_sum = torch.sum(weight_tesa[i*align:(i+1)*align, j])
+    #         if  tmp_sum > 0:
+    #             # import ipdb; ipdb.set_trace()
+    #             index_2d[i*align:(i+1)*align, kid] = j
+    #             kid+=1
+    #     # print("kid", kid)
+    # value = torch.rand(n, k_sparse)
+    # value = np.reshape(np.array(value), (n, k_sparse)).transpose().flatten().tolist()
+    # index = np.reshape(np.array(index_2d), (n, k_sparse)).flatten().tolist()
+    # # import ipdb; ipdb.set_trace()
+    # value_path = os.path.join(dir_path, f"value_{tesaid}.bin")
+    # index_path = os.path.join(dir_path, f"index_{tesaid}.bin")
+    # bias_path = os.path.join(dir_path, f"bias_{tesaid}.bin")
+    # write_array(value, value_path, "f")
+    # write_array(index, index_path)
+    # write_array(bias, bias_path, "f")
+
+    # return value_path, index_path, bias_path
+    import random 
+    weight = state_dict['.'.join([name, 'weight'])].t()
+    bias = state_dict['.'.join([name, 'bias'])]
+    weight_tesa = tesa[tesaid]['weight'].t()
+    # bias_tesa = tesa[tesaid]['bias']
+    value = []
+    index = []
+
+    k, n = weight.size()
     k_sparse = int(k * (1-sparsity))
-    index_2d = torch.zeros(n, k_sparse, dtype=torch.int32)
-    for i in range(n//align):
-        kid = 0
-        for j in range(k):
-            tmp_sum = torch.sum(weight_tesa[i*align:(i+1)*align, j])
-            if  tmp_sum > 0:
-                # import ipdb; ipdb.set_trace()
-                index_2d[i*align:(i+1)*align, kid] = j
-                kid+=1
-        # print("kid", kid)
-    value = torch.rand(n, k_sparse)
+    vecNum = k
+    bank_val = 32
+    num_bank = vecNum//bank_val
+    tmp_index= list(range(vecNum//num_bank))
+    w = k_sparse
+
+    value = torch.rand(n, k_sparse) # random value
     value = np.reshape(np.array(value), (n, k_sparse)).transpose().flatten().tolist()
-    index = np.reshape(np.array(index_2d), (n, k_sparse)).flatten().tolist()
+    index = torch.zeros(n*k_sparse, dtype=torch.int32)
+    t_index = torch.zeros(n*k_sparse, dtype=torch.int32)
+    """
+        for (int j=0; j<h; j += ALIGN_N){
+            for (int i=0; i<w; i+=w/NUM_BANK){
+                std::random_shuffle(tmp_index,tmp_index+vecNum/NUM_BANK);
+                std::sort(tmp_index, tmp_index+w/NUM_BANK);
+                for (int k=0; k<w/NUM_BANK; ++k){
+                    for(int j_in = 0; j_in < ALIGN_N; j_in += 1){
+                        mat_index[i + k + (j + j_in) * w] = tmp_index[k]+i/sparse; // tmp_index[k] + delta(vecNum/NUM_BANK)
+                        mat_index_for_gpu[(i + k)*h + (j + j_in)] = mat_index[i + k + (j + j_in) * w];
+                    }
+                }
+            }
+        }
+    """
+    for j in range(0, n, align):
+        for i in range(0, w, w//num_bank):
+            random.shuffle(tmp_index)
+            selected = tmp_index[:w//num_bank]
+            selected = sorted(selected)
+            for k in range(0, w//num_bank):
+                for j_in in range(0, align):
+                    index[i+k + (j+j_in)*w] = selected[k]+ int(i/(1-sparsity))
+                    t_index[(i+k)*n+j+j_in] = index[i+k+(j+j_in)*w]
+    index = np.array(index).tolist()
+    t_index = np.array(t_index).tolist()
     # import ipdb; ipdb.set_trace()
     value_path = os.path.join(dir_path, f"value_{tesaid}.bin")
     index_path = os.path.join(dir_path, f"index_{tesaid}.bin")
@@ -916,7 +1027,8 @@ def generate_balance_cfg(dir_path, align_n, balance_k, sparsity):
         data[tesaid]['align_n'] = align_n
         data[tesaid]['balance_k'] = balance_k
         data[tesaid]['sparsity'] = sparsity
-        write_balance_constant(constant_dir, tesaid, name, state, tesa, sparsity)
+        # write_balance_constant(constant_dir, tesaid, name, state, tesa, sparsity)
+        write_balance_constant_v32(constant_dir, tesaid, name, state, tesa, sparsity, align_n)
     with open(os.path.join(dir_path, 'config'), 'w') as f:
         for tesaid in id_map:
             kernel_name = f'kernel_{tesaid}'
