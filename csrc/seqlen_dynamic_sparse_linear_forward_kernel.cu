@@ -657,7 +657,7 @@ void seqlen_dynamic_forward_function(float* activation, float* weight,
 
 }
 
-
+#if (__CUDA_ARCH__ == 800)
 
 template<
     const int GLOBAL_M,
@@ -826,13 +826,13 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_FP16(
 
 }
 
-
+#endif
 
 void seqlen_dynamic_forward_function(c10::Half* activation, c10::Half* weight,
                     c10::Half * bias, int * seqlens, int M, int K, int N, int batchsize, c10::Half*output)
 {    
         // dense x dense^T -> sparse output
-
+#if (__CUDA_ARCH__ == 800)
     if(M==128 && K==768 && N==768){
         const int BLOCK_SIZE_M = 32;
         const int BLOCK_SIZE_K = 64;
@@ -909,7 +909,7 @@ void seqlen_dynamic_forward_function(c10::Half* activation, c10::Half* weight,
         printf("Please extend the shape accordingly for the seqlens linear\n");
         assert(false);
     }
-
+#endif
 }
 
 void seqlen_dynamic_forward_function(double* activation, double* weight,

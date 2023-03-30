@@ -60,16 +60,16 @@ def _setup():
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(dynamic_linear_ext)
 
-        # seqlen_dynamic_attention_ext = CUDAExtension(name='seqlen_dynamic_sparse_attention_cpp', sources=['csrc/seqlen_dynamic_sparse_attention_forward.cpp',
-        #                                                         'csrc/seqlen_dynamic_sparse_attention_forward_kernel.cu'],
-        #                             extra_compile_args=['-std=c++14', '-O3',  '-lineinfo', "-U__CUDA_NO_HALF_OPERATORS__",
-        #                                                 "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
-        # ext_modules.append(seqlen_dynamic_attention_ext)
-        # seqlen_dynamic_linear_ext = CUDAExtension(name='seqlen_dynamic_sparse_linear_cpp', sources=['csrc/seqlen_dynamic_sparse_linear_forward.cpp',
-        #                                                         'csrc/seqlen_dynamic_sparse_linear_forward_kernel.cu'],
-        #                             extra_compile_args=['-std=c++14', '-O3',  '-lineinfo', "-U__CUDA_NO_HALF_OPERATORS__",
-        #                                                 "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
-        # ext_modules.append(seqlen_dynamic_linear_ext)
+        seqlen_dynamic_attention_ext = CUDAExtension(name='seqlen_dynamic_sparse_attention_cpp', sources=['csrc/seqlen_dynamic_sparse_attention_forward.cpp',
+                                                                'csrc/seqlen_dynamic_sparse_attention_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-O3',  '-lineinfo', "-U__CUDA_NO_HALF_OPERATORS__",
+                                                        "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
+        ext_modules.append(seqlen_dynamic_attention_ext)
+        seqlen_dynamic_linear_ext = CUDAExtension(name='seqlen_dynamic_sparse_linear_cpp', sources=['csrc/seqlen_dynamic_sparse_linear_forward.cpp',
+                                                                'csrc/seqlen_dynamic_sparse_linear_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-O3',  '-lineinfo', "-U__CUDA_NO_HALF_OPERATORS__",
+                                                        "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
+        ext_modules.append(seqlen_dynamic_linear_ext)
 
         longformer_dynamic_attention_ext = CUDAExtension(name='longformer_dynamic_attention_cpp', sources=['csrc/longformer_dynamic_sparse_attention_forward.cpp',
                                                                 'csrc/longformer_dynamic_sparse_attention_forward_kernel.cu'],
@@ -108,11 +108,11 @@ def _setup():
         #                                                 "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
         # ext_modules.append(moe_ext)
 
-        # cache_atten_ext = CUDAExtension(name='sparse_cache_atten', sources=['csrc/dynamic_sparse_cache_attention_forward.cpp',\
-        #                                                         'csrc/dynamic_sparse_cache_attention_forward_kernel.cu'],
-        #                             extra_compile_args=['-std=c++14', '-O3',  '-lineinfo', "-U__CUDA_NO_HALF_OPERATORS__",
-        #                                                 "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
-        # ext_modules.append(cache_atten_ext)
+        cache_atten_ext = CUDAExtension(name='sparse_cache_atten', sources=['csrc/dynamic_sparse_cache_attention_forward.cpp',\
+                                                                'csrc/dynamic_sparse_cache_attention_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-O3',  '-lineinfo', "-U__CUDA_NO_HALF_OPERATORS__",
+                                                        "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
+        ext_modules.append(cache_atten_ext)
 
         
     print(rootdir)
