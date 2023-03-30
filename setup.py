@@ -114,6 +114,9 @@ def _setup():
                                                         "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
         ext_modules.append(cache_atten_ext)
 
+        sparse_act_convert_ext = CUDAExtension(name='sparse_act_convert', sources=['csrc/sparse_act_convert.cpp', 'csrc/sparse_act_convert_kernel.cu'],
+                                               extra_compile_args=['-std=c++14', '-O3'])
+        ext_modules.append(sparse_act_convert_ext)
         
     print(rootdir)
     setup(
