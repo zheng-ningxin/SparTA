@@ -6,9 +6,10 @@ for sparsity in [0.98, 0.985, 0.99, 0.995, 0.999]:
     linear = torch.nn.Linear(20480, 5120, bias=False).cuda()
     in_linear = InSparseLinear(linear)
     # data = torch.ones(32, 128, 3072).cuda()
-    data = torch.rand(1, 128, 20480).cuda()
+    # data = torch.rand(1, 128, 20480).cuda()
+    data = torch.rand(128, 20480).cuda()
     seqlens = torch.zeros(1, dtype=torch.int32, device=data.device)
-    seqlens[:]=32
+    seqlens[:]=31
     mask = data < sparsity
     data[mask] = 0
     RUNTIME = 1000

@@ -72,8 +72,9 @@ class InSparseLinear(SparseOPBase):
         if InSparseLinear.global_seqlen is None:
             convert_bcsr_cpp.forward_v2(activation, self.row, self.col, self.ext_buffer, self.w, self.h, 1, self.block_w)
         else:
-            assert( len(activation.size()) == 3)
-            convert_bcsr_cpp.forward_v3(activation, self.row, self.col, self.ext_buffer, InSparseLinear.global_seqlen, self.w, self.h, 1, self.block_w, activation.size(0))
+            # assert( len(activation.size()) == 3)
+            batch_size = InSparseLinear.global_seqlen.size(0)
+            convert_bcsr_cpp.forward_v3(activation, self.row, self.col, self.ext_buffer, InSparseLinear.global_seqlen, self.w, self.h, 1, self.block_w, batch_size)
         out = torch.empty(self.out_shape, device=activation.device)
         # current the result is not correct just to simulate the speed
         openai_bmm_cpp.forward_condense(self.row, self.col, activation, self.weight, self.h, self.w, self.weight.size(0), self.block_w, 1 , 1, 1)
