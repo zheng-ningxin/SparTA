@@ -26,6 +26,7 @@ using namespace std;
 #define FETCH_INT4(pointer) (reinterpret_cast<int4*>(&(pointer))[0])
 #define FETCH_INT32(pointer) (reinterpret_cast<int*>(&(pointer))[0])
 #define MAX_BLOCK_THREAD_COUNT 1024
+#define FULL_MASK 0xffffffff
 
 #define CUBLAS_SAFE_CALL(func)                                                                  \
     do                                                                                          \
@@ -303,4 +304,284 @@ std::vector<at::Tensor> convert_bcsr_forward(
             ); }));
     std::vector<torch::Tensor> bcsr({csr_row, csr_col, csr_row_pos, csr_values, block_index});
     return bcsr;
+}
+
+template<
+    const int BLOCK_SIZE_H,
+    const int BLOCK_SIZE_W
+>
+__global__ void convert_bcsr_v2_kernel_1(float* activation, int h, int w, int * row, int * col, int * extra_buffer)
+{
+    const int N_WARP = BLOCK_SIZE_H;
+    const int BLOCK_W = BLOCK_SIZE_W;
+    assert(N_WARP*32==blockDim.x);
+    assert(BLOCK_W == BLOCK_SIZE_W); // currently only support the same
+    __shared__ float s_data[BLOCK_SIZE_H][BLOCK_SIZE_W];
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tid = threadIdx.x;
+    const int TOTAL_THREADS = N_WARP * 32;
+    const int THREAD_PER_ROW = BLOCK_SIZE_W / 4; // float4 load
+    int ROW_START = tid / THREAD_PER_ROW;
+    int ROW_STRIDE = TOTAL_THREADS / THREAD_PER_ROW;
+    int COL_START = tid % THREAD_PER_ROW;
+    // Load to shared memory
+    for(int rid=ROW_START; rid<BLOCK_SIZE_H; rid+=ROW_STRIDE){
+        FETCH_FLOAT4(s_data[rid][COL_START*4]) = FETCH_FLOAT4(activation[OFFSET(by * BLOCK_SIZE_H + rid, bx * BLOCK_SIZE_W + COL_START * 4, w)]);
+    }
+    __syncthreads();
+    // go through the values
+    const int wid =  tid / 32;
+    const int tid_ = tid % 32; // tid within the warp
+    // each warp is responsible for a row whose size is BLOCK_W
+    int have_val = 0;
+    float reg;
+    
+    #pragma unroll
+    for(int step=0; step<BLOCK_SIZE_W/32; step++){
+        reg = s_data[wid][step*32+tid_];
+        have_val += (reg!=0); // < threshold
+    
+    }
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        have_val += __shfl_down_sync(FULL_MASK, have_val, offset);
+    }
+    have_val = __shfl_sync(FULL_MASK, have_val, 0);
+    int pos_id;
+    // if(tid_==0){
+    //     printf("bx:%d by%d wid:%d have_val:%d w/block_w:%d row[w/BLOCK_W]:%d\n", bx, by, wid, have_val, w/BLOCK_W, row[w/BLOCK_W]);
+    // }
+    if(tid_==0 && have_val>0){
+        pos_id= atomicAdd(&extra_buffer[bx], 1);
+        atomicAdd(&extra_buffer[bx+w], 1);
+        atomicAdd(&row[w/BLOCK_W], 1);
+        extra_buffer[2*w + h * bx + pos_id] = wid + by * BLOCK_SIZE_H;
+    }    
+
+} 
+
+template<
+    const int BLOCK_SIZE_H,
+    const int BLOCK_SIZE_W
+>
+__global__ void convert_bcsr_v2_kernel_2(float* activation, int h, int w, int * row, int * col, int * extra_buffer)
+{
+    uint bx = blockIdx.x;
+    uint tid = threadIdx.x;
+    int pos_id, ori_bx, ori_by;
+    __shared__ int prefix_count;
+    __shared__ int remain_count;
+    if(tid==0){
+        prefix_count = 0;
+        for(int i=0; i<bx;i++){
+            prefix_count +=  extra_buffer[w+i];
+        }
+        remain_count = extra_buffer[w+bx];
+        row[bx] = prefix_count;
+    }
+    __syncthreads();
+    for(int tmp=tid; tmp<remain_count;tmp+=blockDim.x){
+        pos_id = atomicSub(&extra_buffer[bx], 1);
+        pos_id-=1;
+        if(pos_id>=0){
+            ori_bx = bx;
+            ori_by = extra_buffer[ 2 * w + bx * h + pos_id];       
+            row[bx] = prefix_count;
+            col[prefix_count + pos_id] = ori_by;
+        }
+    }
+
+} 
+
+void convert_bcsr_v2(float * dense, int h, int w,
+    int block_h, int block_w, int * row, int *col,
+    int * extra_buffer, int ext_buffer_size)
+{
+    // printf("wtf??\n");
+    CUDA_SAFE_CALL(cudaMemset(extra_buffer, 0, sizeof(float)*ext_buffer_size));
+    CUDA_SAFE_CALL(cudaMemset(row+w/block_w, 0, sizeof(int)));
+    if(block_w==32){
+        const int BLOCK_SIZE_H = 16;
+        const int BLOCK_SIZE_W = 32;
+        dim3 blockDim1(BLOCK_SIZE_H * 32);
+        dim3 gridDim1(w/BLOCK_SIZE_W, h/BLOCK_SIZE_H);
+        convert_bcsr_v2_kernel_1<BLOCK_SIZE_H, BLOCK_SIZE_W><<<gridDim1, blockDim1>>>(dense, h, w, row, col, extra_buffer);
+        dim3 gridDim2(w/BLOCK_SIZE_W);
+        dim3 blockDim2(256);        
+        convert_bcsr_v2_kernel_2<BLOCK_SIZE_H, BLOCK_SIZE_W><<<gridDim2, blockDim2>>>(dense, h, w, row, col, extra_buffer);
+    }
+    else{
+        assert(false);
+    }
+
+}
+
+void convert_bcsr_forward_v2(
+    torch::Tensor sparse_act,
+    torch::Tensor row,
+    torch::Tensor col,
+    torch::Tensor ext_buffer,
+    int h,
+    int w,
+    int block_h, 
+    int block_w)
+{
+    assert(h % block_h==0);
+    assert(w % block_w==0);
+    AT_DISPATCH_FLOATING_TYPES(sparse_act.type(), "convert_bcsr", ([&]
+    { convert_bcsr_v2(
+                sparse_act.data_ptr<float>(),
+                h, w, block_h, block_w,
+                row.data_ptr<int>(),
+                col.data_ptr<int>(),
+                ext_buffer.data_ptr<int>(),
+                ext_buffer.numel()
+            ); }));
+}
+
+
+
+template<
+    const int BLOCK_SIZE_H,
+    const int BLOCK_SIZE_W
+>
+__global__ void convert_bcsr_v3_kernel_1(float* activation, int h, int w, int * row, int * col, int * extra_buffer, const int max_seq_len, int * seqlens)
+{
+    const int N_WARP = BLOCK_SIZE_H;
+    const int BLOCK_W = BLOCK_SIZE_W;
+    assert(N_WARP*32==blockDim.x);
+    assert(BLOCK_W == BLOCK_SIZE_W); // currently only support the same
+    __shared__ float s_data[BLOCK_SIZE_H][BLOCK_SIZE_W];
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int batch_id = bx / (max_seq_len/BLOCK_SIZE_W);
+    int cur_seq_len =  seqlens[batch_id];
+    int bx_within_batch = bx % (max_seq_len/BLOCK_SIZE_W);
+    if(bx_within_batch * BLOCK_SIZE_W >= cur_seq_len)
+        return;
+    int tid = threadIdx.x;
+    const int TOTAL_THREADS = N_WARP * 32;
+    const int THREAD_PER_ROW = BLOCK_SIZE_W / 4; // float4 load
+    int ROW_START = tid / THREAD_PER_ROW;
+    int ROW_STRIDE = TOTAL_THREADS / THREAD_PER_ROW;
+    int COL_START = tid % THREAD_PER_ROW;
+    // Load to shared memory
+    for(int rid=ROW_START; rid<BLOCK_SIZE_H; rid+=ROW_STRIDE){
+        FETCH_FLOAT4(s_data[rid][COL_START*4]) = FETCH_FLOAT4(activation[OFFSET(by * BLOCK_SIZE_H + rid, bx * BLOCK_SIZE_W + COL_START * 4, w)]);
+    }
+    __syncthreads();
+    // go through the values
+    const int wid =  tid / 32;
+    const int tid_ = tid % 32; // tid within the warp
+    // each warp is responsible for a row whose size is BLOCK_W
+    int have_val = 0;
+    float reg;
+    
+    #pragma unroll
+    for(int step=0; step<BLOCK_SIZE_W/32; step++){
+        reg = s_data[wid][step*32+tid_];
+        have_val += (reg!=0); // < threshold
+    
+    }
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        have_val += __shfl_down_sync(FULL_MASK, have_val, offset);
+    }
+    have_val = __shfl_sync(FULL_MASK, have_val, 0);
+    int pos_id;
+    // if(tid_==0){
+    //     printf("bx:%d by%d wid:%d have_val:%d w/block_w:%d row[w/BLOCK_W]:%d\n", bx, by, wid, have_val, w/BLOCK_W, row[w/BLOCK_W]);
+    // }
+    if(tid_==0 && have_val>0){
+        pos_id= atomicAdd(&extra_buffer[bx], 1);
+        atomicAdd(&extra_buffer[bx+w], 1);
+        atomicAdd(&row[w/BLOCK_W], 1);
+        extra_buffer[2*w + h * bx + pos_id] = wid + by * BLOCK_SIZE_H;
+    }    
+
+} 
+
+template<
+    const int BLOCK_SIZE_H,
+    const int BLOCK_SIZE_W
+>
+__global__ void convert_bcsr_v3_kernel_2(float* activation, int h, int w, int * row, int * col, int * extra_buffer)
+{
+    uint bx = blockIdx.x;
+    uint tid = threadIdx.x;
+    int pos_id, ori_bx, ori_by;
+    __shared__ int prefix_count;
+    __shared__ int remain_count;
+    if(tid==0){
+        prefix_count = 0;
+        for(int i=0; i<bx;i++){
+            prefix_count +=  extra_buffer[w+i];
+        }
+        remain_count = extra_buffer[w+bx];
+        row[bx] = prefix_count;
+    }
+    __syncthreads();
+    for(int tmp=tid; tmp<remain_count;tmp+=blockDim.x){
+        pos_id = atomicSub(&extra_buffer[bx], 1);
+        pos_id-=1;
+        if(pos_id>=0){
+            ori_bx = bx;
+            ori_by = extra_buffer[ 2 * w + bx * h + pos_id];       
+            row[bx] = prefix_count;
+            col[prefix_count + pos_id] = ori_by;
+        }
+    }
+
+} 
+
+void convert_bcsr_v3(float * dense, int h, int w,
+    int block_h, int block_w, int * row, int *col,
+    int * extra_buffer, int ext_buffer_size, int batch_size, int max_seq_len, int * seqlens)
+{
+    // printf("wtf??\n");
+    CUDA_SAFE_CALL(cudaMemset(extra_buffer, 0, sizeof(float)*ext_buffer_size));
+    CUDA_SAFE_CALL(cudaMemset(row+w/block_w, 0, sizeof(int)));
+    if(block_w==32){
+        const int BLOCK_SIZE_H = 16;
+        const int BLOCK_SIZE_W = 32;
+        dim3 blockDim1(BLOCK_SIZE_H * 32);
+        dim3 gridDim1(w/BLOCK_SIZE_W, h/BLOCK_SIZE_H/batch_size, batch_size);
+        convert_bcsr_v3_kernel_1<BLOCK_SIZE_H, BLOCK_SIZE_W><<<gridDim1, blockDim1>>>(dense, h, w, row, col, extra_buffer, max_seq_len, seqlens);
+        dim3 gridDim2(w/BLOCK_SIZE_W);
+        dim3 blockDim2(256);        
+        convert_bcsr_v3_kernel_2<BLOCK_SIZE_H, BLOCK_SIZE_W><<<gridDim2, blockDim2>>>(dense, h, w, row, col, extra_buffer);
+    }
+    else{
+        assert(false);
+    }
+
+}
+
+
+void convert_bcsr_forward_v3(
+    torch::Tensor sparse_act,
+    torch::Tensor row,
+    torch::Tensor col,
+    torch::Tensor ext_buffer,
+    torch::Tensor seq_lens,
+    int h, int w,
+    int block_h, 
+    int block_w,
+    int batch_size)
+
+{
+    assert(h%batch_size==0);
+    assert(h % block_h==0);
+    assert(w % block_w==0);
+    AT_DISPATCH_FLOATING_TYPES(sparse_act.type(), "convert_bcsr", ([&]
+    { convert_bcsr_v3(
+                sparse_act.data_ptr<float>(),
+                h, w, block_h, block_w,
+                row.data_ptr<int>(),
+                col.data_ptr<int>(),
+                ext_buffer.data_ptr<int>(),
+                ext_buffer.numel(),
+                batch_size, h/batch_size, seq_lens.data_ptr<int>()
+            ); }));
 }
