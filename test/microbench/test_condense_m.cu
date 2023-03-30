@@ -434,11 +434,11 @@ void openai_bmm_32_64_32_condense_dim_m_launch(float* A_val, int* A_row, int* A_
 int main()
 {
     int M, K, N;
-    M = 1024;
-    K = 1024;
-    N = 1024;
-    const int n_iter = 10;
-    float sparsity_ratio = 0.0;
+    M = 4096;
+    K = 4096;
+    N = 4096;
+    const int n_iter = 1000;
+    float sparsity_ratio = 0.99;
     const int BLOCK_H = 1;
     const int BLOCK_W = 64;
     // const int BLOCK_W = 1;
