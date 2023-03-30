@@ -427,6 +427,7 @@ void convert_bcsr_forward_v2(
     int block_h, 
     int block_w)
 {
+    cudaSetDevice(sparse_act.get_device());
     assert(h % block_h==0);
     assert(w % block_w==0);
     AT_DISPATCH_FLOATING_TYPES(sparse_act.type(), "convert_bcsr", ([&]
@@ -571,6 +572,7 @@ void convert_bcsr_forward_v3(
     int batch_size)
 
 {
+    cudaSetDevice(sparse_act.get_device());
     assert(h%batch_size==0);
     assert(h % block_h==0);
     assert(w % block_w==0);
