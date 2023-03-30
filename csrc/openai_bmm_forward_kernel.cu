@@ -1036,6 +1036,7 @@ at::Tensor openai_bmm_32_64_32(
     int batchsize,
     int block_nnz)
 {
+    cudaSetDevice(values.get_device());
     int sparse_val_size = block_nnz * 32 * 64;
     torch::Tensor output= torch::empty({batchsize, M, N}, B.options());
     AT_DISPATCH_FLOATING_TYPES(B.type(), "openai_bmm_forward", ([&]
@@ -1070,6 +1071,7 @@ at::Tensor openai_bmm_32_64_32_condense(
     int batchsize,
     int block_nnz)
 {
+    cudaSetDevice(values.get_device());
     int sparse_val_size = block_nnz * block_h * block_w;
     torch::Tensor output= torch::empty({batchsize, M, N}, B.options());
     AT_DISPATCH_FLOATING_TYPES(B.type(), "openai_bmm_forward_CONDENSE", ([&]
@@ -1105,6 +1107,7 @@ at::Tensor openai_bmm_32_64_32_condense_dim_m(
     int batchsize,
     int block_nnz)
 {
+    cudaSetDevice(values.get_device());
     int sparse_val_size = block_nnz * block_h * block_w;
     torch::Tensor output= torch::zeros({batchsize, M, N}, B.options());
     AT_DISPATCH_FLOATING_TYPES(B.type(), "openai_bmm_forward_dim_m", ([&]
@@ -1140,6 +1143,7 @@ at::Tensor openai_bmm_32_64_32_condense_dim_m_v2(
     int batchsize,
     int block_nnz)
 {
+    cudaSetDevice(values.get_device());
     int sparse_val_size = block_nnz * block_h * block_w;
     torch::Tensor output= torch::zeros({batchsize, M, N}, B.options());
     AT_DISPATCH_FLOATING_TYPES(B.type(), "openai_bmm_forward_dim_m_v2", ([&]
