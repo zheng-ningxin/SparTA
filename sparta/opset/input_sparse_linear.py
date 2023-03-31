@@ -15,7 +15,7 @@ from .sparse_opbase import SparseOPBase
 
 class InSparseLinear(SparseOPBase):
     global_seqlen = None
-
+    instances = []
     @staticmethod
     def set_global_seqlens(seqlens):
         # seqlens is an one-dimension tensor with size of [Batchsize]
@@ -25,7 +25,13 @@ class InSparseLinear(SparseOPBase):
         assert seqlens.is_cuda
         assert seqlens.dtype == torch.int32, "only support int32 type"
         InSparseLinear.global_seqlen = seqlens
-
+        InSparseLinear.update_all_instances() # set the sequence lengths for all instance
+        
+    @staticmethod
+    def update_all_instance(seqlens):
+        for obj in InSparseLinear.instances:
+            device = obj.seq_lens.device
+            obj.seq_lens = seqlens.to(device)
 
     def __init__(self, ori_linear):
         super(InSparseLinear, self).__init__()
@@ -36,7 +42,8 @@ class InSparseLinear(SparseOPBase):
         self.col = None
         self.block_w = 32
         self.out_shape = None
-
+        InSparseLinear.instances.append(self)
+        self.seq_lens = None
     # def forward(self, activation):
     #     if self.ext_buffer is None:
     #         act_size = activation.size()
@@ -69,12 +76,14 @@ class InSparseLinear(SparseOPBase):
             self.ext_buffer = torch.empty(2 * self.h + row_size * self.w, dtype=torch.int32, device=activation.device)
             self.row = torch.empty(row_size+1, dtype=torch.int32, device=activation.device)
             self.col = torch.empty(row_size*self.w, dtype=torch.int32, device=activation.device)
-        if InSparseLinear.global_seqlen is None:
+            if InSparseLinear.global_seqlen is not None:
+                self.seq_lens = InSparseLinear.global_seqlen.to(activation.device)
+        if self.seq_lens is None:
             convert_bcsr_cpp.forward_v2(activation, self.row, self.col, self.ext_buffer, self.w, self.h, 1, self.block_w)
         else:
             # assert( len(activation.size()) == 3)
             batch_size = InSparseLinear.global_seqlen.size(0)
-            convert_bcsr_cpp.forward_v3(activation, self.row, self.col, self.ext_buffer, InSparseLinear.global_seqlen, self.w, self.h, 1, self.block_w, batch_size)
+            convert_bcsr_cpp.forward_v3(activation, self.row, self.col, self.ext_buffer, self.seq_lens, self.w, self.h, 1, self.block_w, batch_size)
         out = torch.empty(self.out_shape, device=activation.device)
         # current the result is not correct just to simulate the speed
         openai_bmm_cpp.forward_condense(self.row, self.col, activation, self.weight, self.h, self.w, self.weight.size(0), self.block_w, 1 , 1, 1)
