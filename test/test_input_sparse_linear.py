@@ -30,7 +30,7 @@ for sparsity in [0.98, 0.985, 0.99, 0.995, 0.999]:
     # t_end = time.time()
     # print('Transpose time: ', (t_end-t_start)*1000/RUNTIME)
 
-    # in_linear.set_global_seqlens(seqlens)
+    in_linear.set_global_seqlens(seqlens)
     print('Sparsity', sparsity)
     RUNTIME = 1000
     torch.cuda.synchronize()

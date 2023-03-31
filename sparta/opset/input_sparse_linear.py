@@ -16,6 +16,15 @@ from .sparse_opbase import SparseOPBase
 class InSparseLinear(SparseOPBase):
     global_seqlen = None
     instances = []
+
+    @staticmethod
+    def update_all_instance(seqlens):
+        for obj in InSparseLinear.instances:
+            if obj.seq_lens:
+                device = obj.seq_lens.device
+                obj.seq_lens = seqlens.to(device)
+
+
     @staticmethod
     def set_global_seqlens(seqlens):
         # seqlens is an one-dimension tensor with size of [Batchsize]
@@ -25,13 +34,8 @@ class InSparseLinear(SparseOPBase):
         assert seqlens.is_cuda
         assert seqlens.dtype == torch.int32, "only support int32 type"
         InSparseLinear.global_seqlen = seqlens
-        InSparseLinear.update_all_instances() # set the sequence lengths for all instance
+        InSparseLinear.update_all_instance(seqlens) # set the sequence lengths for all instance
         
-    @staticmethod
-    def update_all_instance(seqlens):
-        for obj in InSparseLinear.instances:
-            device = obj.seq_lens.device
-            obj.seq_lens = seqlens.to(device)
 
     def __init__(self, ori_linear):
         super(InSparseLinear, self).__init__()
