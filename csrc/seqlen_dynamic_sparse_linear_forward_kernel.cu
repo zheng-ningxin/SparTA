@@ -923,8 +923,15 @@ at::Tensor seqlen_dynamic_sparse_linear_forward_2(
     torch::Tensor seqlens
 ){
     cudaSetDevice(activation.get_device());
-    int batch_size = activation.size(0);
-    int max_seq_len = activation.size(1);
+    int batch_size = seqlens.size(0);
+    int max_seq_len;
+    if(activation.dim()==3){
+        max_seq_len = activation.size(1);
+    }
+    else{
+        assert(activation.dim()==2);
+        max_seq_len = activation.size(0);
+    }
     int in_hidden = weight.size(1);
     int out_hidden = weight.size(0);
     int M = max_seq_len;
@@ -953,8 +960,15 @@ at::Tensor seqlen_dynamic_sparse_linear_forward(
 )
 {
     cudaSetDevice(activation.get_device());
-    int batch_size = activation.size(0);
-    int max_seq_len = activation.size(1);
+    int batch_size = seqlens.size(0);
+    int max_seq_len;
+    if(activation.dim()==3){
+        max_seq_len = activation.size(1);
+    }
+    else{
+        assert(activation.dim()==2);
+        max_seq_len = activation.size(0);
+    }
     int in_hidden = weight.size(1);
     int out_hidden = weight.size(0);
     int M = max_seq_len;
