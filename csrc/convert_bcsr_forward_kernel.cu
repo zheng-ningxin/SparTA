@@ -461,6 +461,7 @@ __global__ void convert_bcsr_v3_kernel_1(float* activation, int h, int w, int * 
     int bx_within_batch = bx % (max_seq_len/BLOCK_SIZE_W);
     if(bx_within_batch * BLOCK_SIZE_W >= cur_seq_len)
         return;
+    int REMAINED_LEN = min(BLOCK_SIZE_W, cur_seq_len - bx_within_batch * BLOCK_SIZE_W);
     int tid = threadIdx.x;
     const int TOTAL_THREADS = N_WARP * 32;
     const int THREAD_PER_ROW = BLOCK_SIZE_W / 4; // float4 load
@@ -481,9 +482,10 @@ __global__ void convert_bcsr_v3_kernel_1(float* activation, int h, int w, int * 
     
     #pragma unroll
     for(int step=0; step<BLOCK_SIZE_W/32; step++){
-        reg = s_data[wid][step*32+tid_];
-        have_val += (reg!=0); // < threshold
-    
+        if(step*32+tid_<REMAINED_LEN){
+            reg = s_data[wid][step*32+tid_];
+            have_val += (reg!=0); // < threshold
+        }
     }
     #pragma unroll
     for (int offset = 16; offset > 0; offset /= 2) {
