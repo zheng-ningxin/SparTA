@@ -96,7 +96,7 @@ class SeqlenDynamicSparseLinear(SparseOPBase):
             assert isinstance(seqlens, torch.Tensor)
             assert seqlens.size(0) == activation.size(0)
         else:
-            seqlens = SeqlenDynamicSparseLinear.global_seqlen
+            seqlens = SeqlenDynamicSparseLinear.global_seqlen.to(activation.device)
         # need create val each time
         assert isinstance(activation, torch.Tensor)
         result = SeqlenDynamicSparseLinearFunction.apply(activation,

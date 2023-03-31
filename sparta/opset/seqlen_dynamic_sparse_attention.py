@@ -102,7 +102,7 @@ class SeqlenDynamicSparseAttention(SparseOPBase):
             assert isinstance(seqlens, torch.Tensor)
             assert seqlens.size(0) == Q.size(0)
         else:
-            seqlens = SeqlenDynamicSparseAttention.global_seqlen
+            seqlens = SeqlenDynamicSparseAttention.global_seqlen.to(Q.device)
         # need create val each time
         assert isinstance(Q, torch.Tensor)
         assert isinstance(K, torch.Tensor)
