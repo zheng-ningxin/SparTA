@@ -949,7 +949,11 @@ at::Tensor seqlen_dynamic_sparse_linear_forward_2(
                                     M, K, N, batch_size,
                                     output.data_ptr<scalar_t>()
                                 ); }));
-    return output;
+    if(activation.dim()==3)
+        return output;
+    else{
+        return output.view({activation.size(0), out_hidden});
+    }
 }
 
 
@@ -996,7 +1000,11 @@ at::Tensor seqlen_dynamic_sparse_linear_forward(
     //                                 M, K, N, batch_size,
     //                                 output.data_ptr<float>()
     //                             ); }));
-    return output;
+    if(activation.dim()==3)
+        return output;
+    else{
+        return output.view({activation.size(0), out_hidden});
+    }
 }
 
 vector<at::Tensor> seqlen_dynamic_sparse_linear_backward(
