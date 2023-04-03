@@ -930,7 +930,8 @@ at::Tensor seqlen_dynamic_sparse_linear_forward_2(
     }
     else{
         assert(activation.dim()==2);
-        max_seq_len = activation.size(0);
+        assert(activation.size(0)%batch_size==0);
+        max_seq_len = activation.size(0)/batch_size;
     }
     int in_hidden = weight.size(1);
     int out_hidden = weight.size(0);
@@ -967,7 +968,8 @@ at::Tensor seqlen_dynamic_sparse_linear_forward(
     }
     else{
         assert(activation.dim()==2);
-        max_seq_len = activation.size(0);
+        assert(activation.size(0)%batch_size==0);
+        max_seq_len = activation.size(0)/batch_size;
     }
     int in_hidden = weight.size(1);
     int out_hidden = weight.size(0);

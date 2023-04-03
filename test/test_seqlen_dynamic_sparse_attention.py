@@ -181,12 +181,12 @@ def test_triton(seqlens, head_num, seq_len, hidden_n, device):
 
     print('Triton Forward Implementation', end-st)
 if __name__ == '__main__':
-    batch_size = 32
+    batch_size = 1
     max_seq_len = 128
     HEAD_NUM = 12
     hidden_n = 64
     triangle = True
-    test_type = torch.float16
+    test_type = torch.float32
     device = torch.device('cuda:0')
     
     
