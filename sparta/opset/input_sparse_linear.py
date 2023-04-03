@@ -20,7 +20,7 @@ class InSparseLinear(SparseOPBase):
     @staticmethod
     def update_all_instance(seqlens):
         for obj in InSparseLinear.instances:
-            if obj.seq_lens:
+            if obj.seq_lens is not None:
                 device = obj.seq_lens.device
                 obj.seq_lens = seqlens.to(device)
 
