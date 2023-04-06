@@ -76,6 +76,7 @@ class TritonDynamicLinear(torch.nn.Module):
         if self.profile:
             torch.cuda.synchronize()
             t_start = time.time()    
+        mask = mask.to(data.device)
         block_mask = mask
         if self.full_mask:
             ori_mask_size = mask.size()

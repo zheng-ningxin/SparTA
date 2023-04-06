@@ -2,9 +2,9 @@ import torch
 import triton
 import time
 class TritonDynamicAttention(torch.nn.Module):
-    global_sparse_dot_sdd_nt = None
-    global_sparse_dot_dsd_nn = None
-    global_sparse_softmax = None
+    global_sparse_dot_sdd_nt = {}
+    global_sparse_dot_dsd_nn = {}
+    global_sparse_softmax = {}
     global_convert_overhead = []
     def __init__(self, block_h, block_w, head_num, full_mask=True, profile=False, global_model=False):
         super(TritonDynamicAttention, self).__init__()
@@ -21,22 +21,24 @@ class TritonDynamicAttention(torch.nn.Module):
         self.convert_overhead = []
         self.global_model = global_model
 
-    def set_global_mask(self, mask, is_full_mask, block_h, block_w, head_num):
+    def set_global_mask(self, mask, is_full_mask, block_h, block_w, head_num, device_num=1):
         torch.cuda.synchronize()
-        t_start = time.time()
-        if not is_full_mask:
-            block_mask = mask
-        else:
-            conv = torch.nn.Conv2d(head_num, head_num, (block_h, block_w), (block_h, block_w), groups=head_num, bias=False).cuda()
-            conv.eval()
-            conv.weight.data[:] = 1
-            ori_mask_size = mask.size()
-            mask = mask.view(1, head_num, ori_mask_size[-2], ori_mask_size[-1]).to(torch.float32)
-            block_mask = conv(mask)
-            block_mask = (block_mask.view(head_num, ori_mask_size[-2]//block_h, ori_mask_size[-1]//block_w)>0).to(torch.int32)
-        TritonDynamicAttention.global_sparse_dot_sdd_nt = triton.ops.blocksparse.matmul(block_mask, block_h, "sdd", trans_a=False, trans_b=True, device=mask.device)
-        TritonDynamicAttention.global_sparse_dot_dsd_nn = triton.ops.blocksparse.matmul(block_mask, block_h, "dsd", trans_a=False, trans_b=False, device=mask.device)
-        TritonDynamicAttention.global_sparse_softmax = triton.ops.blocksparse.softmax(block_mask, block_h, device=mask.device)
+        for device_id in range(device_num):
+            device = torch.device(f'cuda:{device_id}')
+            t_start = time.time()
+            if not is_full_mask:
+                block_mask = mask
+            else:
+                conv = torch.nn.Conv2d(head_num, head_num, (block_h, block_w), (block_h, block_w), groups=head_num, bias=False).cuda()
+                conv.eval()
+                conv.weight.data[:] = 1
+                ori_mask_size = mask.size()
+                mask = mask.view(1, head_num, ori_mask_size[-2], ori_mask_size[-1]).to(torch.float32)
+                block_mask = conv(mask)
+                block_mask = (block_mask.view(head_num, ori_mask_size[-2]//block_h, ori_mask_size[-1]//block_w)>0).to(torch.int32)
+            TritonDynamicAttention.global_sparse_dot_sdd_nt[device_id] = triton.ops.blocksparse.matmul(block_mask.to(device), block_h, "sdd", trans_a=False, trans_b=True, device=device)
+            TritonDynamicAttention.global_sparse_dot_dsd_nn[device_id] = triton.ops.blocksparse.matmul(block_mask.to(device), block_h, "dsd", trans_a=False, trans_b=False, device=device)
+            TritonDynamicAttention.global_sparse_softmax[device_id] = triton.ops.blocksparse.softmax(block_mask.to(device), block_h, device=device)
         torch.cuda.synchronize()
         t_end = time.time()
         TritonDynamicAttention.global_convert_overhead.append((t_end-t_start)*1000)
@@ -63,9 +65,11 @@ class TritonDynamicAttention(torch.nn.Module):
                 t_end = time.time()
                 self.convert_overhead.append((t_end-t_start)*1000)
         else:
-            sparse_dot_sdd_nt = TritonDynamicAttention.global_sparse_dot_sdd_nt
-            sparse_dot_dsd_nn = TritonDynamicAttention.global_sparse_dot_dsd_nn
-            sparse_softmax = TritonDynamicAttention.global_sparse_softmax
+            # import ipdb; ipdb.set_trace()
+            dev_id = query.device.index
+            sparse_dot_sdd_nt = TritonDynamicAttention.global_sparse_dot_sdd_nt[dev_id]
+            sparse_dot_dsd_nn = TritonDynamicAttention.global_sparse_dot_dsd_nn[dev_id]
+            sparse_softmax = TritonDynamicAttention.global_sparse_softmax[dev_id]
         w = sparse_dot_sdd_nt(query, key)
         w = sparse_softmax(w, scale=scale, is_causal=True)
         a = sparse_dot_dsd_nn(w, value)
