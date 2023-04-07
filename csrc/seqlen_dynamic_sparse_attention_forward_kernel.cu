@@ -1387,6 +1387,76 @@ __global__ void BLOCK_SPARSE_MATMUL_TN_OUT_32_64_32(
     }
 }
 
+template<
+    const int SOFTMAX_ROW_TILE,
+    const int ROW_MAX_SIZE
+>
+__global__ void SPARSE_SOFTMAX_BACKWARD(float * inter_result, float *attn_grad, float* score_grad, int * seqlens, int M, int N, int head_num)
+{
+    // grad[i] = sum(-grad[j]*out[j]*out[i] if i!=j else grad[j]*(1-out[j])*out[j])
+    
+    // const int ROW_MAX_SIZE = 4096;
+    const int WARP_SIZE = 32;
+    __shared__ float shared_v[SOFTMAX_ROW_TILE*ROW_MAX_SIZE];
+    __shared__ float shared_g[SOFTMAX_ROW_TILE*ROW_MAX_SIZE];
+    
+    float * vs = shared_v;
+    float * gs = shared_g;
+    const int bid = blockIdx.y / head_num;
+    const int cur_seq_len = seqlens[bid];
+
+    inter_result += blockIdx.y * M * N;
+    attn_grad += blockIdx.y * M * N;
+    score_grad += blockIdx.y * M * N;
+
+    uint bm = threadIdx.x / WARP_SIZE + blockIdx.x * SOFTMAX_ROW_TILE; // lineid
+    uint bn = threadIdx.x % WARP_SIZE;
+    assert(cur_seq_len<ROW_MAX_SIZE);
+    if(bm>cur_seq_len){
+        return;
+    }
+
+    float regC = 0.0f;
+    float regSum = 0.0f;
+    // const int wtid = threadIdx.x % WARP_SIZE;
+    vs += ROW_MAX_SIZE * int(threadIdx.x/WARP_SIZE);
+    gs += ROW_MAX_SIZE * int(threadIdx.x/WARP_SIZE);
+    // load from the global memory to the shared memory
+    #pragma unroll
+    for (int pos = bn; pos < cur_seq_len; pos+=WARP_SIZE) {
+        // FIXME: there need one more for loop to handle the WARP_SIZE -> BLOCK_W
+        int _index =  bm * N + pos;
+        gs[pos] = attn_grad[_index];
+        vs[pos] = inter_result[_index];
+    }
+
+    // calculate the regSum
+    #pragma unroll
+    for (int pos = bn; pos < cur_seq_len; pos+=WARP_SIZE) {
+        regSum += gs[pos] * vs[pos];
+    }
+
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        regSum += __shfl_down_sync(FULL_MASK, regSum, offset);
+    }
+    regSum = __shfl_sync(FULL_MASK, regSum, 0);
+    // calculate the corresponding value for each element
+
+    #pragma unroll
+    for (int pos = bn; pos < cur_seq_len; pos+=WARP_SIZE) {
+        vs[pos] = vs[pos] * gs[pos] - regSum* vs[pos];
+    }
+
+    // Write the results back to the global memory
+    #pragma unroll
+    for (int pos = bn; pos < cur_seq_len; pos+=WARP_SIZE) {
+        // FIXME: there need one more for loop to handle the WARP_SIZE -> BLOCK_W
+        int _index =  bm * N + pos;
+        score_grad[_index] = vs[pos];
+    }
+}
+
 
 void seqlen_backward_function(float * grad_in, float * Q, float* K, float* V, float* inter_result, int * seqlens, float* Q_grad, float*K_grad, float* V_grad, float * Attn_grad, float* Score_grad, int batchsize, int head_num, int hidden_dim, int q_seq_len, int k_seq_len)
 {
@@ -1401,6 +1471,47 @@ void seqlen_backward_function(float * grad_in, float * Q, float* K, float* V, fl
     dim3 gradv_dimBlock(256);
     BLOCK_SPARSE_MATMUL_TN_OUT_32_64_32<<<gradv_dimGrid, gradv_dimBlock>>>(inter_result, grad_in, V_grad, seqlens, grad_v_M, grad_v_K, grad_v_N);
     
+    // Calculate the Attn_grad
+    // Grad_Attn = grad_out x V^T
+    // batch head q_seq k_seq = batch head q_seq hidden x (batch head k_seq hiddeh) 
+    const int attn_M = q_seq_len;
+    const int attn_K = hidden_dim;
+    const int attn_N = k_seq_len;
+    dim3 attn_dimGrid(attn_M /32 * attn_N/32, head_num, batchsize);
+    dim3 attn_dimBlock(256);
+    BLOCK_SPARSE_MATMUL_OUT_32_64_32<<<attn_dimGrid, attn_dimBlock>>>(grad_in, V, Attn_grad, seqlens, attn_M, attn_K, attn_N);
+    if(k_seq_len<512){
+        const int ROW_MAX = 512;
+        const int ROW_TILE = 8;
+        dim3 soft_dimBlock(32*ROW_TILE);
+        dim3 soft_dimGrid(q_seq_len/ROW_TILE, head_num*batchsize);
+        SPARSE_SOFTMAX_BACKWARD<ROW_TILE, ROW_MAX><<<soft_dimGrid, soft_dimBlock>>>(inter_result, Attn_grad, Score_grad, seqlens, q_seq_len, k_seq_len, head_num);
+    }else if(k_seq_len < 1024){
+        const int ROW_MAX = 1024;
+        const int ROW_TILE = 4;
+        dim3 soft_dimBlock(32*ROW_TILE);
+        dim3 soft_dimGrid(q_seq_len/ROW_TILE, head_num*batchsize);
+        SPARSE_SOFTMAX_BACKWARD<ROW_TILE, ROW_MAX><<<soft_dimGrid, soft_dimBlock>>>(inter_result, Attn_grad, Score_grad, seqlens, q_seq_len, k_seq_len, head_num);
+    }else if(k_seq_len < 2048){
+        const int ROW_MAX = 2048;
+        const int ROW_TILE = 2;
+        dim3 soft_dimBlock(32*ROW_TILE);
+        dim3 soft_dimGrid(q_seq_len/ROW_TILE, head_num*batchsize);
+        SPARSE_SOFTMAX_BACKWARD<ROW_TILE, ROW_MAX><<<soft_dimGrid, soft_dimBlock>>>(inter_result, Attn_grad, Score_grad, seqlens, q_seq_len, k_seq_len, head_num);
+    }else if(k_seq_len<4096){
+        const int ROW_MAX = 4096;
+        const int ROW_TILE = 1;
+        dim3 soft_dimBlock(32*ROW_TILE);
+        dim3 soft_dimGrid(q_seq_len/ROW_TILE, head_num*batchsize);
+        SPARSE_SOFTMAX_BACKWARD<ROW_TILE, ROW_MAX><<<soft_dimGrid, soft_dimBlock>>>(inter_result, Attn_grad, Score_grad, seqlens, q_seq_len, k_seq_len, head_num);
+    }else{
+        printf("Too long please use the extremly long kernel in the dynamic sparse attention!\n");
+        assert(false);
+    }
+    // Calculate the Q_grad
+    // Grad_Q = Grad_softmax * K
+    // (q_seq_len x k_seq_len) x (k_seq_len x hidden_dim)
+
 }
 
 std::vector<at::Tensor> seqlen_dynamic_sparse_attention_backward(
@@ -1423,7 +1534,7 @@ std::vector<at::Tensor> seqlen_dynamic_sparse_attention_backward(
     torch::Tensor K_grad = torch::empty_like(K);
     torch::Tensor V_grad = torch::empty_like(V);
     torch::Tensor Attn_grad = torch::empty_like(inter_result);
-    torch::Tensor Score_grad = torch::empty_like(inter_result);
+    torch::Tensor Score_grad = torch::zeros_like(inter_result);
     AT_DISPATCH_FLOATING_TYPES(Q.type(), "our_sparse_attention", ([&]
         { seqlen_backward_function(
                 grad.data_ptr<float>(),
