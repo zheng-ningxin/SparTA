@@ -1007,6 +1007,12 @@ at::Tensor seqlen_dynamic_sparse_linear_forward(
     }
 }
 
+
+void backward_function()
+{
+    
+}
+
 vector<at::Tensor> seqlen_dynamic_sparse_linear_backward(
     torch::Tensor activation,
     torch::Tensor weight,
@@ -1015,8 +1021,9 @@ vector<at::Tensor> seqlen_dynamic_sparse_linear_backward(
 {
     cudaSetDevice(activation.get_device());
     // TODO: support backward in the future
-    torch::Tensor a_grad = torch::zeros_like(activation);
-    torch::Tensor w_grad = at::matmul(grad_c.t(), activation);
+    torch::Tensor a_grad = torch::empty_like(activation);
+    torch::Tensor w_grad = torch::empty_like(weight);
+
     vector<torch::Tensor> grads({a_grad, w_grad});
     return grads;
 }

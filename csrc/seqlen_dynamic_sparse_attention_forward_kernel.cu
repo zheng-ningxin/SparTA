@@ -1473,7 +1473,7 @@ __global__ void BLOCK_SPARSE_MATMUL_TN_OUT_32_64_32(
             for (int j = 0; j < 4; j++)
                 regC[i][j] = 0.0f;
 
-        for (int k_seq = 0; k_seq < (int)(K/64); k_seq++)
+        for (int k_seq = 0; k_seq < (int)((cur_seq_len+63)/64); k_seq++)
         {
             uint offsetA00 = ori_offsetA00 + 64 * k_seq * M;
             uint offsetA16 = ori_offsetA16 + 64 * k_seq * M;
