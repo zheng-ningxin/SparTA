@@ -18,8 +18,14 @@ def test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n, dtype):
     # activation = torch.rand(batch_size * max_seqlen, hidden_n, dtype=dtype)
     a1 = activation.clone().detach().cuda()
     a2 = activation.clone().detach().cuda()
+    a1.requires_grad_()
+    a2.requires_grad_()
+    
     o1 = spl(a1)
     o2 = spl.reference_forward(a2)
+    tmp_grad = torch.rand_like(o1)
+    o1.backward(tmp_grad)
+    o2.backward(tmp_grad)
     import ipdb; ipdb.set_trace()
     for bid in range(batch_size):
         cur_seq_len = seqlens[bid]
@@ -61,7 +67,7 @@ if __name__ == '__main__':
     spl = SeqlenDynamicSparseLinear(ori_linear, True)
     SeqlenDynamicSparseLinear.set_global_seqlens(seqlens)
     print(seqlens)
-    sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n, test_type)
-    dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n, test_type)
+    # sparse_speed(spl, seqlens, batch_size, max_seqlen, hidden_n, test_type)
+    # dense_speed(spl, seqlens, batch_size, max_seqlen, hidden_n, test_type)
     test_correstness(spl, seqlens, batch_size, max_seqlen, hidden_n, dtype=test_type)
 

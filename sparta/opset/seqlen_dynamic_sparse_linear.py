@@ -27,8 +27,12 @@ class SeqlenDynamicSparseLinearFunction(torch.autograd.Function):
         bias,
         seqlens
     ):
-        # ctx.save_for_backward(
-        # )
+        ctx.save_for_backward(
+            activation,
+            weight,
+            bias,
+            seqlens
+        )
         if bias is not None:
             return seqlen_dynamic_sparse_linear_cpp.forward(
                 activation,
@@ -45,8 +49,9 @@ class SeqlenDynamicSparseLinearFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *grad_outputs):
         # Not implemented yet
-        pass
-
+        activation, weight, bias, seqlens = ctx.saved_tensors
+        a_grad, w_grad = seqlen_dynamic_sparse_linear_cpp.backward(activation, weight, seqlens, grad_outputs[0])
+        return a_grad, w_grad, None, None
 
 class SeqlenDynamicSparseLinear(SparseOPBase):
     """
