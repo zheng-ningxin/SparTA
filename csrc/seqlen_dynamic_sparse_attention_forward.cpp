@@ -15,9 +15,10 @@ std::vector<at::Tensor> seqlen_dynamic_sparse_attention_backward(
     torch::Tensor grad,
     torch::Tensor Q,
     torch::Tensor K,
-    torch::Tensor V
-    );
-
+    torch::Tensor V,
+    torch::Tensor inter_result,
+    torch::Tensor seqlens
+);
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("forward", &seqlen_dynamic_sparse_attention_forward, "our sparse attention forward");

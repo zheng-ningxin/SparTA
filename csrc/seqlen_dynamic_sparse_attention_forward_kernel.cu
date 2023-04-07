@@ -1173,12 +1173,276 @@ at::Tensor seqlen_dynamic_sparse_attention_forward(
     return output;
 }
 
+
+
+
+__global__ void BLOCK_SPARSE_MATMUL_TN_OUT_32_64_32(
+    float* A,
+    float* B,
+    float* C_val,
+    int * seqlens,
+    int GLOBAL_M,
+    int GLOBAL_K,
+    int GLOBAL_N){
+    /*
+    description:
+    tiling k dimension
+    smm_dd_s_nn: sparse matmul, dense (MxK, along K) x dense (KxN, along N) -> sparse (MxN, along N)
+    the output sparse is block size 32x32, the blocks will be written to bcsr 32x64
+    */
+    const int BLOCK_SIZE_M = 32;  // 64
+    const int BLOCK_SIZE_K = 64;  //8
+    const int BLOCK_SIZE_N = 32;  //128
+    const int THREAD_SIZE_K = 64;
+    const int M = GLOBAL_M;
+    const int K = GLOBAL_K;
+    const int N = GLOBAL_N;
+    int batch_idx = blockIdx.z;
+    int head_idx = blockIdx.y + gridDim.y * blockIdx.z; // launch config: block_idx, head_idx, batch_idx
+    // if(threadIdx.x==0 && blockIdx.x==0){
+    //     printf("hid:%d, bY:%d, bZ:%d , gdim:%d \n", head_idx, blockIdx.y, blockIdx.z, gridDim.y);
+    // }
+    A += M * K * head_idx;
+    B += K * N * head_idx;
+    C_val += GLOBAL_M * GLOBAL_N * head_idx;
+    uint cur_seq_len = seqlens[batch_idx];
+
+    assert(blockDim.x % 32 == 0);
+    uint n_warp = 8; // blockDim.x / 32
+    assert(THREAD_SIZE_K % n_warp == 0);
+    // THREAD_SIZE_K: one loop k
+    assert(K % THREAD_SIZE_K == 0);
+
+    assert(BLOCK_SIZE_M == BLOCK_SIZE_N);
+    __shared__ float fShare[65 * 32 * 2];
+    char* bShare = (char*)fShare;
+
+    uint tid = threadIdx.x;
+    uint bx = (blockIdx.x % (GLOBAL_N / BLOCK_SIZE_N));
+    uint by = (blockIdx.x / (GLOBAL_N / BLOCK_SIZE_N));
+    // uint bx = col_index[blockIdx.x]; // N
+    // uint by = row_index[blockIdx.x]; // M
+
+    if (by * BLOCK_SIZE_M < cur_seq_len ){
+        // if(threadIdx.x==0 ){
+        //     printf("## bid:%d blockIdx.y:%d bx:%d by:%d seqlen:%d headid:%d\n", batch_idx, blockIdx.y, bx, by, cur_seq_len, head_idx);
+        // }
+        uint tx = tid % 16;
+        uint ty = tid / 16;
+        assert(THREAD_SIZE_K % 16 == 0);
+        uint k = tx * 4;
+        uint ori_offsetA00 = by * BLOCK_SIZE_M + tid / (BLOCK_SIZE_M/4) * M + (tid % (BLOCK_SIZE_M/4)) * 4;;
+        uint ori_offsetA16 = ori_offsetA00 + M * 32;
+        uint ori_offsetB00 = bx * BLOCK_SIZE_N + tid / (BLOCK_SIZE_N/4) * N + (tid % (BLOCK_SIZE_N/4)) * 4;
+        uint ori_offsetB16 = ori_offsetB00 + N * 32;
+
+        uint tid224 = tid & 224;
+        uint storAB = (tx * 32 * 4 + ty + tx * 2) * 4;
+        uint storB = (tid * 4 + tid / (BLOCK_SIZE_N/4) / 4 *2) * 4; // (tid *4 + tid / (BLOCK_SIZE_N/4) / 4 * 2)*4
+        uint storA = (tid * 4 + tid / (BLOCK_SIZE_M/4) / 4 *2) * 4; // (tid *4 + tid / (BLOCK_SIZE_N/4) / 4 * 2)*4
+        uint loadA = (((tid & 16) >> 3) | (tid & 1)) << 4;
+        uint loadB = ((tid >> 1) & 7) << 4;
+        loadA += (tid224 * 32) + (tid224 / 2);
+        loadB += (tid224 * 32) + (tid224 / 2);
+
+        // This keeps all prior logic outside of the loops.
+        asm("mov.b32 %0, %0;" : "+r"(storAB) : );
+        asm("mov.b32 %0, %0;" : "+r"(loadA)  : );
+        asm("mov.b32 %0, %0;" : "+r"(loadB)  : );
+
+        float regC[8][4];
+        for (int i = 0; i < 8; i++)
+            for (int j = 0; j < 4; j++)
+                regC[i][j] = 0.0f;
+
+        for (int k_seq = 0; k_seq < (int)(K/64); k_seq++)
+        {
+            uint offsetA00 = ori_offsetA00 + 64 * k_seq * M;
+            uint offsetA16 = ori_offsetA16 + 64 * k_seq * M;
+            uint offsetB00 = ori_offsetB00 + 64 * k_seq * N;
+            uint offsetB16 = ori_offsetB16 + 64 * k_seq * N;
+
+            float4 a00 = {0}, a16 = {0};
+            float4 b00 = {0}, b16 = {0};
+            a00 = __ldg((const float4*)(add_ptr_f(A, offsetA00)));
+            a16 = __ldg((const float4*)(add_ptr_f(A, offsetA16)));
+            b00 = __ldg((const float4*)(add_ptr_f(B, offsetB00)));
+            b16 = __ldg((const float4*)(add_ptr_f(B, offsetB16)));
+            // if(by==0 && bx== 0 && tid%8==0 && head_idx==0)
+            //     printf("cur_seqlen:%d bx:%d by:%d tid:%d offsetB00:%d offsetB16:%d %f %f %f %f\n",cur_seq_len, bx, by, tid, offsetB00, offsetB16, b16.x, b16.y, b16.z, b16.w);
+            __syncthreads();
+
+            *(float*)&bShare[storA + (0*65*32)*4] = a00.x;
+            *(float*)&bShare[storA + (0*65*32 + 1)*4] = a00.y;
+            *(float*)&bShare[storA + (0*65*32 + 2)*4] = a00.z;
+            *(float*)&bShare[storA + (0*65*32 + 3)*4] = a00.w;
+            *(float*)&bShare[storA + (32*32 + 8*2 + 0*65*32)*4] = a16.x;
+            *(float*)&bShare[storA + (32*32 + 8*2 + 0*65*32 + 1)*4] = a16.y;
+            *(float*)&bShare[storA + (32*32 + 8*2 + 0*65*32 + 2)*4] = a16.z;
+            *(float*)&bShare[storA + (32*32 + 8*2 + 0*65*32 + 3)*4] = a16.w;
+
+            *(float*)&bShare[storB + (1*65*32)*4] = b00.x;
+            *(float*)&bShare[storB + (1*65*32 + 1)*4] = b00.y;
+            *(float*)&bShare[storB + (1*65*32 + 2)*4] = b00.z;
+            *(float*)&bShare[storB + (1*65*32 + 3)*4] = b00.w;
+            *(float*)&bShare[storB + (32*32 + 8*2 + 1*65*32)*4] = b16.x;
+            *(float*)&bShare[storB + (32*32 + 8*2 + 1*65*32 + 1)*4] = b16.y;
+            *(float*)&bShare[storB + (32*32 + 8*2 + 1*65*32 + 2)*4] = b16.z;
+            *(float*)&bShare[storB + (32*32 + 8*2 + 1*65*32 + 3)*4] = b16.w;
+            __syncthreads();
+
+            float regA[8], regB[4];
+            #pragma unroll
+            for (int j = 0; j < 4; j++)
+            {
+                // fetch outer product data
+                *(float4*)&regA[0] = *(float4*)&bShare[loadA + (32*j +  0)*4];
+                *(float4*)&regA[4] = *(float4*)&bShare[loadA + (32*j + 16)*4];
+                *(float4*)&regB[0] = *(float4*)&bShare[loadB + (32*j + 65*32)*4];
+
+                for (int i = 0; i < 8; i++)
+                    for (int j = 0; j < 4; j++)
+                        regC[i][j] += regA[i] * regB[j];
+            }
+            #pragma unroll
+            for (int j = 4; j < 8; j++)
+            {
+                *(float2*)&regA[0] = *(float2*)&bShare[loadA + (32*j +  0 + (j/4)*2)*4];
+                *(float2*)&regA[2] = *(float2*)&bShare[loadA + (32*j +  2 + (j/4)*2)*4];
+                *(float2*)&regA[4] = *(float2*)&bShare[loadA + (32*j + 16 + (j/4)*2)*4];
+                *(float2*)&regA[6] = *(float2*)&bShare[loadA + (32*j + 18 + (j/4)*2)*4];
+                *(float2*)&regB[0] = *(float2*)&bShare[loadB + (32*j +  0 + (j/4)*2 + 65*32)*4];
+                *(float2*)&regB[2] = *(float2*)&bShare[loadB + (32*j +  2 + (j/4)*2 + 65*32)*4];
+
+                for (int i = 0; i < 8; i++)
+                    for (int j = 0; j < 4; j++)
+                        regC[i][j] += regA[i] * regB[j];
+            }
+        }
+
+        asm volatile ("mov.u32 %0, %tid.x;"   : "=r"(tid)   :);
+        asm volatile ("mov.u32 %0, %ctaid.x;" : "=r"(bx)   :);
+        asm volatile ("mov.u32 %0, %ctaid.y;" : "=r"(by) :);
+
+        ty = ((tid & 16) >> 3) + (tid & 1);
+        tx = ((tid >> 1) & 7) + ((tid & 224) >> 2) + (ty << 2);
+
+        uint storC = ty*32*8*4 + tx*4;
+
+        tx = tid % 16;
+        ty = tid / 16;
+
+        uint readC = ty*32*8 + tx*2 + ((tid & 192)>>2);
+
+        // uint blk_index = block_index[blockIdx.x] / 2;
+        // uint blk_index = blockIdx.x;
+        // uint intra_blk_index = block_index[blockIdx.x] % 2;
+        // C_val += 32 * 32 * blk_index;
+        // if(threadIdx.x==0 ){
+        //     printf("#&& bid:%d blockIdx.y:%d bx:%d by:%d seqlen:%d headid:%d\n", batch_idx, blockIdx.y, (blockIdx.x % (GLOBAL_N / BLOCK_SIZE_N)), (blockIdx.x / (GLOBAL_N / BLOCK_SIZE_N)), cur_seq_len, head_idx);
+        // }
+        C_val += ((blockIdx.x / (GLOBAL_N / BLOCK_SIZE_N)) * BLOCK_SIZE_M + ty) * GLOBAL_N + (blockIdx.x % (GLOBAL_N / BLOCK_SIZE_N)) * BLOCK_SIZE_N + tx * 2;
+        // C_val += ty * 32 + tx * 2;
+
+        __syncthreads();
+        *(float4*)&fShare[storC + 0*32*8] = *(float4*)regC[0];
+        *(float4*)&fShare[storC + 1*32*8] = *(float4*)regC[1];
+        *(float4*)&fShare[storC + 2*32*8] = *(float4*)regC[2];
+        *(float4*)&fShare[storC + 3*32*8] = *(float4*)regC[3];
+        __syncthreads();
+
+        float2 c2[8];
+        for (int i = 0; i < 8; i++)
+            c2[i] = *(float2*)&fShare[readC + i*32];
+
+        // Tree reduce
+        for (int j = 4; j > 0; j >>= 1)
+            for (int i = 0; i < j; i++)
+                c2[i] = _add(c2[i], c2[i+j]);
+
+        //-> store((bhalf2*)C, c2[0]);
+        *(float2*)C_val = c2[0];
+        // if(by==0 && bx== 0 && tid==0 && head_idx==0)
+        //     printf("write: %f %f\n", c2[0].x, c2[0].y);
+        __syncthreads();
+        *(float4*)&fShare[storC + 0*32*8] = *(float4*)regC[4];
+        *(float4*)&fShare[storC + 1*32*8] = *(float4*)regC[5];
+        *(float4*)&fShare[storC + 2*32*8] = *(float4*)regC[6];
+        *(float4*)&fShare[storC + 3*32*8] = *(float4*)regC[7];
+        __syncthreads();
+
+        for (int i = 0; i < 8; i++)
+            c2[i] = *(float2*)&fShare[readC + i*32];
+
+        // Tree reduce
+        for (int j = 4; j > 0; j >>= 1)
+            for (int i = 0; i < j; i++)
+                c2[i] = _add(c2[i], c2[i+j]);
+
+        // C_val += 16 * 32;
+        C_val += 16 * GLOBAL_N;
+        *(float2*)C_val = c2[0];
+
+
+    }
+}
+
+
+void seqlen_backward_function(float * grad_in, float * Q, float* K, float* V, float* inter_result, int * seqlens, float* Q_grad, float*K_grad, float* V_grad, float * Attn_grad, float* Score_grad, int batchsize, int head_num, int hidden_dim, int q_seq_len, int k_seq_len)
+{
+
+    // grad_v: Batch x Head x k_seq_len, hidden_dim
+    // Grad_V = Attn^T x grad_out
+    // Attn: q_seq_len, k_seq_len
+    const int grad_v_M = k_seq_len;
+    const int grad_v_K = q_seq_len;
+    const int grad_v_N = hidden_dim;
+    dim3 gradv_dimGrid(grad_v_N/32 * grad_v_M/32, head_num, batchsize);
+    dim3 gradv_dimBlock(256);
+    BLOCK_SPARSE_MATMUL_TN_OUT_32_64_32<<<gradv_dimGrid, gradv_dimBlock>>>(inter_result, grad_in, V_grad, seqlens, grad_v_M, grad_v_K, grad_v_N);
+    
+}
+
 std::vector<at::Tensor> seqlen_dynamic_sparse_attention_backward(
     torch::Tensor grad,
     torch::Tensor Q,
     torch::Tensor K,
-    torch::Tensor V
+    torch::Tensor V,
+    torch::Tensor inter_result,
+    torch::Tensor seqlens
     )
 {
     // TODO: support backward for the seqlen_dynamic_sparse_attention
+    cudaSetDevice(Q.get_device());
+    int batch_size = Q.size(0);
+    int head_num = Q.size(1);
+    int q_seq_length = Q.size(2);
+    int hidden_dim = Q.size(3);
+    int k_seq_length = K.size(2);
+    torch::Tensor Q_grad = torch::empty_like(Q);
+    torch::Tensor K_grad = torch::empty_like(K);
+    torch::Tensor V_grad = torch::empty_like(V);
+    torch::Tensor Attn_grad = torch::empty_like(inter_result);
+    torch::Tensor Score_grad = torch::empty_like(inter_result);
+    AT_DISPATCH_FLOATING_TYPES(Q.type(), "our_sparse_attention", ([&]
+        { seqlen_backward_function(
+                grad.data_ptr<float>(),
+                Q.data_ptr<float>(),
+                K.data_ptr<float>(),
+                V.data_ptr<float>(),
+                inter_result.data_ptr<float>(),
+                seqlens.data_ptr<int>(),
+                Q_grad.data_ptr<float>(),
+                K_grad.data_ptr<float>(),
+                V_grad.data_ptr<float>(),
+                Attn_grad.data_ptr<float>(),
+                Score_grad.data_ptr<float>(),
+                batch_size,
+                head_num,
+                hidden_dim,
+                q_seq_length,
+                k_seq_length
+        ); }));
+
+    return vector<at::Tensor>({Q_grad, K_grad, V_grad, Attn_grad, Score_grad});
 }

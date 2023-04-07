@@ -31,8 +31,13 @@ class SeqlenDynamicSparseAttentionFunction(torch.autograd.Function):
         head_num,
         triangle
     ):
-        # ctx.save_for_backward(
-        # )
+        ctx.save_for_backward(
+            Q,
+            K,
+            V,
+            inter_result,
+            seqlens
+        )
 
         return seqlen_dynamic_sparse_attention_cpp.forward(
             Q,
@@ -47,8 +52,9 @@ class SeqlenDynamicSparseAttentionFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *grad_outputs):
         # Not implemented yet
-        pass
-
+        Q, K, V, inter_result, seqlens = ctx.saved_tensors
+        Q_grad, K_grad, V_grad, Attn_grad, Score_grad = seqlen_dynamic_sparse_attention_cpp.backward(grad_outputs[0], Q, K, V, inter_result, seqlens)
+        return Q_grad, K_grad, V_grad, None, None, None, None
 
 class SeqlenDynamicSparseAttention(SparseOPBase):
     """

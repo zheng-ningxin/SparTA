@@ -58,7 +58,7 @@ def convert_to_attention_mask(seq_lens, max_seq_len):
     attention_mask = torch.zeros(batch_size, 1, 1, max_seq_len, dtype=torch.int32)
     for bid in range(seq_lens.size(0)):
         cur_len = seq_lens[bid]
-        attention_mask.data[bid][0][0][:cur_len] = 1
+        attention_mask[bid][0][0][:cur_len] = 1
     return attention_mask
 
 
@@ -98,8 +98,8 @@ def debug_reference_forward(Q, K, V, attention_mask):
     added = torch.add(dots, add_mask)
     # import ipdb; ipdb.set_trace()
     attn = added.softmax(dim=-1)
-    nan_pos = torch.isnan(attn)
-    attn[nan_pos] = 0.0
+    # nan_pos = torch.isnan(attn)
+    # attn[nan_pos] = 0.0
     # return attn
     ref_out = torch.einsum('b h m n, b h n k -> b h m k', attn, V)
     return ref_out
@@ -129,11 +129,21 @@ def test_correctness(sparse_attention, seq_len_pattern, HEAD_NUM, max_seq_len, h
     v1.requires_grad_()
     v2.requires_grad_()
     out_2 = debug_reference_forward(q2, k2, v2, attention_mask)
-
-
     out = sparse_attention(q1, k1, v1)
-    dots = sparse_attention.inter_result
+    # tmp = 
+    # sparse_attention.inter_result.data[0,0,:,:32] = 1
+    # sparse_attention.inter_result.data[:] = 1
+
+    # tmp_grad = torch.ones_like(out)
+    tmp_grad = torch.rand_like(out)
+    tmp_grad.data[0,0,:,:1] = 1
+    out.backward(tmp_grad)
+    out_2.backward(tmp_grad)
+    dots = sparse_attention.inter_result.view(32, 12, 128, 128)
+    ref_grad_v = torch.einsum('b h k m, b h k n -> b h m n', dots, tmp_grad)
     import ipdb; ipdb.set_trace()
+    # with torch.autograd.set_detect_anomaly(True):
+    
     # mask the useless token manually here
     for bid in range(seq_len_pattern.size(0)):
         cur_len = seq_len_pattern[bid]
@@ -181,11 +191,11 @@ def test_triton(seqlens, head_num, seq_len, hidden_n, device):
 
     print('Triton Forward Implementation', end-st)
 if __name__ == '__main__':
-    batch_size = 1
+    batch_size = 32
     max_seq_len = 128
     HEAD_NUM = 12
     hidden_n = 64
-    triangle = True
+    triangle = False
     test_type = torch.float32
     device = torch.device('cuda:0')
     
@@ -195,7 +205,7 @@ if __name__ == '__main__':
 
     spa = SeqlenDynamicSparseAttention(True, triangle)
     SeqlenDynamicSparseAttention.set_global_seqlens(seqlens)
-    test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
-    dense_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
-    # test_correctness(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, dtype=test_type)
+    # test_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
+    # dense_speed(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, test_type)
+    test_correctness(spa, seqlens, HEAD_NUM, max_seq_len, hidden_n, device, dtype=test_type)
     # test_triton(seqlens, HEAD_NUM, max_seq_len, hidden_n, device)
