@@ -1738,6 +1738,12 @@ void seqlen_backward_function(float * grad_in, float * Q, float* K, float* V, fl
 
     // Calculate the K_grad
     // Grad_K = Grad_Score^T X Q
+    const int grad_k_M = k_seq_len;
+    const int grad_k_K = q_seq_len;
+    const int grad_k_N = hidden_dim;
+    dim3 gradk_dimGrid(grad_k_N/32 * grad_k_M/32, head_num, batchsize);
+    dim3 gradk_dimBlock(256);
+    BLOCK_SPARSE_MATMUL_TN_OUT_32_64_32<<<gradk_dimGrid, gradk_dimBlock>>>(Score_grad, Q, K_grad, seqlens, grad_k_M, grad_k_K, grad_k_N);
 }
 
 std::vector<at::Tensor> seqlen_dynamic_sparse_attention_backward(
