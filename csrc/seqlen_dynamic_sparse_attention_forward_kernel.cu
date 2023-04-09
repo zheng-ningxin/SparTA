@@ -1156,126 +1156,126 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
                     c10::Half * inter_result, int * seqlens,
                     int batch_size, int head_num, int max_seq_length, int hidden_dim, c10::Half* output, bool triangle=false)
 {
-#if (__CUDA_ARCH__ == 800)
+// #if (__CUDA_ARCH__ == 800)
 
-    CUDA_SAFE_CALL(cudaMemset(inter_result, 0, sizeof(half) * max_seq_length * max_seq_length * batch_size * head_num));
-    if(max_seq_length==128 && hidden_dim==64){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 32;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
-        const dim3 dimBlock(32*N_WARP);
-        const dim3 dimGrid(block_nnz, head_num, batch_size);
-        BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
-        const int ROWTILE = 8;
-        const dim3 softBlock(32*ROWTILE);
-        const dim3 softGrid(128/ROWTILE, head_num, batch_size);
-        SPARSE_SOFTMAX_FP16<128, 128, 128, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
-        const int BLOCK_SIZE_M_2 = 32;
-        const int BLOCK_SIZE_K_2 = 32;
-        const int BLOCK_SIZE_N_2 = 64;
-        const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
-        const dim3 dimBlock_2(32*N_WARP_2);
-        const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
-        BLOCK_SPARSE_MATMUL_SDD_FP16<128, 128, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
+//     CUDA_SAFE_CALL(cudaMemset(inter_result, 0, sizeof(half) * max_seq_length * max_seq_length * batch_size * head_num));
+//     if(max_seq_length==128 && hidden_dim==64){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 32;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
+//         const dim3 dimBlock(32*N_WARP);
+//         const dim3 dimGrid(block_nnz, head_num, batch_size);
+//         BLOCK_SPARSE_MATMUL_OUT_FP16<128, 64, 128, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
+//         const int ROWTILE = 8;
+//         const dim3 softBlock(32*ROWTILE);
+//         const dim3 softGrid(128/ROWTILE, head_num, batch_size);
+//         SPARSE_SOFTMAX_FP16<128, 128, 128, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
+//         const int BLOCK_SIZE_M_2 = 32;
+//         const int BLOCK_SIZE_K_2 = 32;
+//         const int BLOCK_SIZE_N_2 = 64;
+//         const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
+//         const dim3 dimBlock_2(32*N_WARP_2);
+//         const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
+//         BLOCK_SPARSE_MATMUL_SDD_FP16<128, 128, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
     
     
-    }else if(max_seq_length==256 && hidden_dim==64){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 32;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
-        const dim3 dimBlock(32*N_WARP);
-        const dim3 dimGrid(block_nnz, head_num, batch_size);
-        BLOCK_SPARSE_MATMUL_OUT_FP16<256, 64, 256, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
-        const int ROWTILE = 8;
-        const dim3 softBlock(32*ROWTILE);
-        const dim3 softGrid(256/ROWTILE, head_num, batch_size);
-        SPARSE_SOFTMAX_FP16<256, 256, 256, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
-        const int BLOCK_SIZE_M_2 = 32;
-        const int BLOCK_SIZE_K_2 = 32;
-        const int BLOCK_SIZE_N_2 = 64;
-        const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
-        const dim3 dimBlock_2(32*N_WARP_2);
-        const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
-        BLOCK_SPARSE_MATMUL_SDD_FP16<256, 256, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
+//     }else if(max_seq_length==256 && hidden_dim==64){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 32;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
+//         const dim3 dimBlock(32*N_WARP);
+//         const dim3 dimGrid(block_nnz, head_num, batch_size);
+//         BLOCK_SPARSE_MATMUL_OUT_FP16<256, 64, 256, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
+//         const int ROWTILE = 8;
+//         const dim3 softBlock(32*ROWTILE);
+//         const dim3 softGrid(256/ROWTILE, head_num, batch_size);
+//         SPARSE_SOFTMAX_FP16<256, 256, 256, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
+//         const int BLOCK_SIZE_M_2 = 32;
+//         const int BLOCK_SIZE_K_2 = 32;
+//         const int BLOCK_SIZE_N_2 = 64;
+//         const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
+//         const dim3 dimBlock_2(32*N_WARP_2);
+//         const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
+//         BLOCK_SPARSE_MATMUL_SDD_FP16<256, 256, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
 
 
-    }else if(max_seq_length==512 && hidden_dim==64){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 32;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
-        const dim3 dimBlock(32*N_WARP);
-        const dim3 dimGrid(block_nnz, head_num, batch_size);
-        BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
-        const int ROWTILE = 8;
-        const dim3 softBlock(32*ROWTILE);
-        const dim3 softGrid(512/ROWTILE, head_num, batch_size);
-        SPARSE_SOFTMAX_FP16<512, 512, 512, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
-        const int BLOCK_SIZE_M_2 = 32;
-        const int BLOCK_SIZE_K_2 = 32;
-        const int BLOCK_SIZE_N_2 = 64;
-        const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
-        const dim3 dimBlock_2(32*N_WARP_2);
-        const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
-        BLOCK_SPARSE_MATMUL_SDD_FP16<512, 512, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
-
-    
-    }else if(max_seq_length==1024 && hidden_dim==64){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 32;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
-        const dim3 dimBlock(32*N_WARP);
-        const dim3 dimGrid(block_nnz, head_num, batch_size);
-        BLOCK_SPARSE_MATMUL_OUT_FP16<1024, 64, 1024, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
-        const int ROWTILE = 8;
-        const dim3 softBlock(32*ROWTILE);
-        const dim3 softGrid(1024/ROWTILE, head_num, batch_size);
-        SPARSE_SOFTMAX_FP16<1024, 1024, 1024, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
-        const int BLOCK_SIZE_M_2 = 32;
-        const int BLOCK_SIZE_K_2 = 32;
-        const int BLOCK_SIZE_N_2 = 64;
-        const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
-        const dim3 dimBlock_2(32*N_WARP_2);
-        const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
-        BLOCK_SPARSE_MATMUL_SDD_FP16<1024, 1024, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
-
-
-
-    }else if(max_seq_length==4096 && hidden_dim==64){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 32;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
-        const dim3 dimBlock(32*N_WARP);
-        const dim3 dimGrid(block_nnz, head_num, batch_size);
-        BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
-        const int ROWTILE = 4;
-        const dim3 softBlock(32*ROWTILE);
-        const dim3 softGrid(4096/ROWTILE, head_num, batch_size);
-        SPARSE_SOFTMAX_FP16<4096, 4096, 4096, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
-        const int BLOCK_SIZE_M_2 = 32;
-        const int BLOCK_SIZE_K_2 = 32;
-        const int BLOCK_SIZE_N_2 = 64;
-        const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
-        const dim3 dimBlock_2(32*N_WARP_2);
-        const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
-        BLOCK_SPARSE_MATMUL_SDD_FP16<4096, 4096, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
+//     }else if(max_seq_length==512 && hidden_dim==64){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 32;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
+//         const dim3 dimBlock(32*N_WARP);
+//         const dim3 dimGrid(block_nnz, head_num, batch_size);
+//         BLOCK_SPARSE_MATMUL_OUT_FP16<512, 64, 512, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
+//         const int ROWTILE = 8;
+//         const dim3 softBlock(32*ROWTILE);
+//         const dim3 softGrid(512/ROWTILE, head_num, batch_size);
+//         SPARSE_SOFTMAX_FP16<512, 512, 512, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
+//         const int BLOCK_SIZE_M_2 = 32;
+//         const int BLOCK_SIZE_K_2 = 32;
+//         const int BLOCK_SIZE_N_2 = 64;
+//         const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
+//         const dim3 dimBlock_2(32*N_WARP_2);
+//         const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
+//         BLOCK_SPARSE_MATMUL_SDD_FP16<512, 512, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
 
     
-    }else{
-        // please add more shape here
-        assert(false);
-    }
-    // BLOCK_SPARSE_MATMUL_OUT_FP16<>
-#endif
+//     }else if(max_seq_length==1024 && hidden_dim==64){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 32;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
+//         const dim3 dimBlock(32*N_WARP);
+//         const dim3 dimGrid(block_nnz, head_num, batch_size);
+//         BLOCK_SPARSE_MATMUL_OUT_FP16<1024, 64, 1024, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
+//         const int ROWTILE = 8;
+//         const dim3 softBlock(32*ROWTILE);
+//         const dim3 softGrid(1024/ROWTILE, head_num, batch_size);
+//         SPARSE_SOFTMAX_FP16<1024, 1024, 1024, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
+//         const int BLOCK_SIZE_M_2 = 32;
+//         const int BLOCK_SIZE_K_2 = 32;
+//         const int BLOCK_SIZE_N_2 = 64;
+//         const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
+//         const dim3 dimBlock_2(32*N_WARP_2);
+//         const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
+//         BLOCK_SPARSE_MATMUL_SDD_FP16<1024, 1024, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
+
+
+
+//     }else if(max_seq_length==4096 && hidden_dim==64){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 32;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         int block_nnz = max_seq_length * max_seq_length / BLOCK_SIZE_M / BLOCK_SIZE_N;
+//         const dim3 dimBlock(32*N_WARP);
+//         const dim3 dimGrid(block_nnz, head_num, batch_size);
+//         BLOCK_SPARSE_MATMUL_OUT_FP16<4096, 64, 4096, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<dimGrid, dimBlock>>>((half*)Q, (half*)K, (half*)inter_result, seqlens, triangle);
+//         const int ROWTILE = 4;
+//         const dim3 softBlock(32*ROWTILE);
+//         const dim3 softGrid(4096/ROWTILE, head_num, batch_size);
+//         SPARSE_SOFTMAX_FP16<4096, 4096, 4096, ROWTILE><<<softGrid, softBlock>>>((half*)inter_result, seqlens, triangle);
+//         const int BLOCK_SIZE_M_2 = 32;
+//         const int BLOCK_SIZE_K_2 = 32;
+//         const int BLOCK_SIZE_N_2 = 64;
+//         const int N_WARP_2 = (BLOCK_SIZE_M_2/16) * (BLOCK_SIZE_N_2/16);
+//         const dim3 dimBlock_2(32*N_WARP_2);
+//         const dim3 dimGrid_2(hidden_dim/BLOCK_SIZE_N_2, max_seq_length/BLOCK_SIZE_M_2, head_num*batch_size);
+//         BLOCK_SPARSE_MATMUL_SDD_FP16<4096, 4096, 64, BLOCK_SIZE_M_2, BLOCK_SIZE_K_2, BLOCK_SIZE_N_2, N_WARP_2><<<dimGrid_2, dimBlock_2>>>((half*)inter_result, (half*)V, (half*)output, seqlens, head_num, triangle);
+
+    
+//     }else{
+//         // please add more shape here
+//         assert(false);
+//     }
+//     // BLOCK_SPARSE_MATMUL_OUT_FP16<>
+// #endif
 }
 void seqlen_dynamic_forward_function(double* Q, double* K, double* V,
                     double * inter_result, int * seqlens,

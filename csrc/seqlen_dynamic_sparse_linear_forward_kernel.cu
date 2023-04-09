@@ -658,24 +658,24 @@ void seqlen_dynamic_forward_function(float* activation, float* weight,
 
 }
 
-#if (__CUDA_ARCH__ == 800)
+// #if (__CUDA_ARCH__ == 800)
 
-template<
-    const int GLOBAL_M,
-    const int GLOBAL_K,
-    const int GLOBAL_N,
-    const int BLOCK_SIZE_M,
-    const int BLOCK_SIZE_K,
-    const int BLOCK_SIZE_N,
-    const int N_WARP
->
-__global__ void BLOCK_SPARSE_MATMUL_BIAS_FP16(
-    half* __restrict__ A,
-    half* __restrict__ B,
-    half* __restrict__ C_val,
-    int * seqlens
-)
-{
+// template<
+//     const int GLOBAL_M,
+//     const int GLOBAL_K,
+//     const int GLOBAL_N,
+//     const int BLOCK_SIZE_M,
+//     const int BLOCK_SIZE_K,
+//     const int BLOCK_SIZE_N,
+//     const int N_WARP
+// >
+// __global__ void BLOCK_SPARSE_MATMUL_BIAS_FP16(
+//     half* __restrict__ A,
+//     half* __restrict__ B,
+//     half* __restrict__ C_val,
+//     int * seqlens
+// )
+// {
     // const int M = GLOBAL_M;
     // const int K = GLOBAL_K;
     // const int N = GLOBAL_N;
@@ -825,92 +825,92 @@ __global__ void BLOCK_SPARSE_MATMUL_BIAS_FP16(
     //     }
     // }
 
-}
+// }
 
-#endif
+// #endif
 
 void seqlen_dynamic_forward_function(c10::Half* activation, c10::Half* weight,
                     c10::Half * bias, int * seqlens, int M, int K, int N, int batchsize, c10::Half*output)
 {    
         // dense x dense^T -> sparse output
-#if (__CUDA_ARCH__ == 800)
-    if(M==128 && K==768 && N==768){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 64;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
-        dim3 blockDim(N_WARP*32);
-        BLOCK_SPARSE_MATMUL_BIAS_FP16<128, 768, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
-    }else if(M==128 && K==768 && N==3072){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 64;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
-        dim3 blockDim(N_WARP*32);
-        BLOCK_SPARSE_MATMUL_BIAS_FP16<128, 768, 3072, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
-    }else if(M==128 && K==3072 && N==768){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 64;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
-        dim3 blockDim(N_WARP*32);
-        BLOCK_SPARSE_MATMUL_BIAS_FP16<128, 3072, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
-    }else if(M==256 && K==768 && N==768){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 64;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
-        dim3 blockDim(N_WARP*32);
-        BLOCK_SPARSE_MATMUL_BIAS_FP16<256, 768, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
-    }else if(M==256 && K==768 && N==3072){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 64;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
-        dim3 blockDim(N_WARP*32);
-        BLOCK_SPARSE_MATMUL_BIAS_FP16<256, 768, 3072, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
-    }else if(M==256 && K==3072 && N==768){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 64;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
-        dim3 blockDim(N_WARP*32);
-        BLOCK_SPARSE_MATMUL_BIAS_FP16<256, 3072, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
-    }else if(M==4096 && K==768 && N==768){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 64;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
-        dim3 blockDim(N_WARP*32);
-        BLOCK_SPARSE_MATMUL_BIAS_FP16<4096, 768, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
-    }else if(M==4096 && K==768 && N==3072){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 64;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
-        dim3 blockDim(N_WARP*32);
-        BLOCK_SPARSE_MATMUL_BIAS_FP16<4096, 768, 3072, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
-    }else if(M==4096 && K==3072 && N==768){
-        const int BLOCK_SIZE_M = 32;
-        const int BLOCK_SIZE_K = 64;
-        const int BLOCK_SIZE_N = 64;
-        const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
-        dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
-        dim3 blockDim(N_WARP*32);
-        BLOCK_SPARSE_MATMUL_BIAS_FP16<4096, 3072, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
-    }else{
-        printf("Please extend the shape accordingly for the seqlens linear\n");
-        assert(false);
-    }
-#endif
+// #if (__CUDA_ARCH__ == 800)
+//     if(M==128 && K==768 && N==768){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 64;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
+//         dim3 blockDim(N_WARP*32);
+//         BLOCK_SPARSE_MATMUL_BIAS_FP16<128, 768, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
+//     }else if(M==128 && K==768 && N==3072){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 64;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
+//         dim3 blockDim(N_WARP*32);
+//         BLOCK_SPARSE_MATMUL_BIAS_FP16<128, 768, 3072, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
+//     }else if(M==128 && K==3072 && N==768){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 64;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
+//         dim3 blockDim(N_WARP*32);
+//         BLOCK_SPARSE_MATMUL_BIAS_FP16<128, 3072, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
+//     }else if(M==256 && K==768 && N==768){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 64;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
+//         dim3 blockDim(N_WARP*32);
+//         BLOCK_SPARSE_MATMUL_BIAS_FP16<256, 768, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
+//     }else if(M==256 && K==768 && N==3072){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 64;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
+//         dim3 blockDim(N_WARP*32);
+//         BLOCK_SPARSE_MATMUL_BIAS_FP16<256, 768, 3072, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
+//     }else if(M==256 && K==3072 && N==768){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 64;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
+//         dim3 blockDim(N_WARP*32);
+//         BLOCK_SPARSE_MATMUL_BIAS_FP16<256, 3072, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
+//     }else if(M==4096 && K==768 && N==768){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 64;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
+//         dim3 blockDim(N_WARP*32);
+//         BLOCK_SPARSE_MATMUL_BIAS_FP16<4096, 768, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
+//     }else if(M==4096 && K==768 && N==3072){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 64;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
+//         dim3 blockDim(N_WARP*32);
+//         BLOCK_SPARSE_MATMUL_BIAS_FP16<4096, 768, 3072, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
+//     }else if(M==4096 && K==3072 && N==768){
+//         const int BLOCK_SIZE_M = 32;
+//         const int BLOCK_SIZE_K = 64;
+//         const int BLOCK_SIZE_N = 64;
+//         const int N_WARP = (BLOCK_SIZE_M/16) * (BLOCK_SIZE_N/16);
+//         dim3 gridDim(N/BLOCK_SIZE_N, M/BLOCK_SIZE_M, batchsize);
+//         dim3 blockDim(N_WARP*32);
+//         BLOCK_SPARSE_MATMUL_BIAS_FP16<4096, 3072, 768, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, N_WARP><<<gridDim, blockDim>>>((half*)activation, (half*) weight, (half*)output, seqlens);
+//     }else{
+//         printf("Please extend the shape accordingly for the seqlens linear\n");
+//         assert(false);
+//     }
+// #endif
 }
 
 void seqlen_dynamic_forward_function(double* activation, double* weight,
