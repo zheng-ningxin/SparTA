@@ -102,11 +102,11 @@ def _setup():
                                                                 'csrc/dynamic_sparse_linear_condense_forward_v2_kernel.cu'],
                                     extra_compile_args=['-std=c++14', '-O3'])
         ext_modules.append(condense_sparse_linear_ext_v2)
-        # moe_ext = CUDAExtension(name='sparse_moe', sources=['csrc/moe_sparse_forward.cpp',\
-        #                                                         'csrc/moe_sparse_forward_kernel.cu'],
-        #                             extra_compile_args=['-std=c++14', '-O3',  '-lineinfo', "-U__CUDA_NO_HALF_OPERATORS__",
-        #                                                 "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
-        # ext_modules.append(moe_ext)
+        moe_ext = CUDAExtension(name='sparse_moe', sources=['csrc/moe_sparse_forward.cpp',\
+                                                                'csrc/moe_sparse_forward_kernel.cu'],
+                                    extra_compile_args=['-std=c++14', '-O3',  '-lineinfo', "-U__CUDA_NO_HALF_OPERATORS__",
+                                                        "-U__CUDA_NO_HALF_CONVERSIONS__", "-U__CUDA_NO_HALF_CONVERSIONS__"])
+        ext_modules.append(moe_ext)
 
         cache_atten_ext = CUDAExtension(name='sparse_cache_atten', sources=['csrc/dynamic_sparse_cache_attention_forward.cpp',\
                                                                 'csrc/dynamic_sparse_cache_attention_forward_kernel.cu'],
