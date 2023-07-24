@@ -91,7 +91,7 @@ __device__ __forceinline__ const float* add_ptr_f(const float* src, int offset) 
 
 __device__ __forceinline__ float2  _add(float2 x, float2 y) { float2 res; res.x = x.x + y.x; res.y = x.y + y.y; return res; }
 
-#if (__CUDA_ARCH__ == 800)
+// #if (__CUDA_ARCH__ == 800)
 
 template<
     const int GLOBAL_M,
@@ -266,7 +266,7 @@ __global__ void BLOCK_SPARSE_MATMUL_OUT_FP16(
     }
 
 }
-#endif
+// #endif
 
 __global__ void BLOCK_SPARSE_MATMUL_OUT_32_64_32(
     float* A,
@@ -1156,7 +1156,7 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
                     c10::Half * inter_result, int * seqlens,
                     int batch_size, int head_num, int max_seq_length, int hidden_dim, c10::Half* output, bool triangle=false)
 {
-#if (__CUDA_ARCH__ == 800)
+// #if (__CUDA_ARCH__ == 800)
 
     CUDA_SAFE_CALL(cudaMemset(inter_result, 0, sizeof(half) * max_seq_length * max_seq_length * batch_size * head_num));
     if(max_seq_length==128 && hidden_dim==64){
@@ -1275,7 +1275,7 @@ void seqlen_dynamic_forward_function(c10::Half* Q, c10::Half* K, c10::Half* V,
         assert(false);
     }
     // BLOCK_SPARSE_MATMUL_OUT_FP16<>
-#endif
+// #endif
 }
 void seqlen_dynamic_forward_function(double* Q, double* K, double* V,
                     double * inter_result, int * seqlens,
