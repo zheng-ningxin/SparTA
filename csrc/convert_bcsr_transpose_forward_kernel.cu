@@ -224,7 +224,7 @@ std::vector<at::Tensor> convert_bcsr_forward(
     torch::Tensor t_values = dense_values.t().contiguous();
     // allocate enough memory for the sparse values
     torch::Tensor csr_values = torch::empty_like(dense_values);
-    torch::Tensor csr_row = torch::zeros({h/block_h+1}, sparse_pattern.options());
+    torch::Tensor csr_row = torch::zeros({max(h/block_h, w/block_w)+1}, sparse_pattern.options());
     int n_total_block = h * w / block_h / block_w;
     torch::Tensor csr_row_pos = torch::zeros({n_total_block}, sparse_pattern.options());
     torch::Tensor csr_col = torch::zeros({n_total_block}, sparse_pattern.options());
