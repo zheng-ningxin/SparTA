@@ -36,8 +36,8 @@ if __name__ == '__main__':
     B = 32
     S = 128
     N_exp = 8
-    in_hidden = 3072
-    out_hidden = 768
+    in_hidden = 1536
+    out_hidden = 384
     with_relu = False
 
     exps = []
