@@ -1752,7 +1752,7 @@ void forward_function(
         //BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
         // V2 does not work for the small or middel shapes
         // BATCH_BLOCK_SPARSE_MATMUL_FP16_TEMPLATE_V2<GLOBAL_K, GLOBAL_N, BLOCK_SIZE_M, BLOCK_SIZE_K, BLOCK_SIZE_N, 8><<<gridDim, blockDim>>>((half *)tokens, sparse_index, expert_count, (half *)weight, (half *)output, TMAX);
-    }else if(in_hidden==384 && out_hidden=1536){
+    }else if(in_hidden==384 && out_hidden==1536){
         const int GLOBAL_K = 384;
         const int GLOBAL_N = 1536;
         assert(in_hidden==GLOBAL_K);
